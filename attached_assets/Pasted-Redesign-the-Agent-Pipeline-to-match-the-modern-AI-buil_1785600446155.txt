@@ -1,0 +1,56 @@
+Redesign the Agent Pipeline to match the modern AI builder interface shown in the reference.
+
+Requirements:
+
+- Replace the current boxed list with a clean conversational activity feed.
+- Each agent action should appear as a timeline entry with subtle spacing.
+- Use rounded cards with a dark glassmorphism appearance.
+- Display the execution time at the top (e.g. "Worked for 12 seconds").
+- Every agent message should look like a progress update rather than a log.
+- Show expandable "Actions" chips (e.g. "10 actions") for internal steps.
+- Add small icons before each action (📖 Read, 💻 Code, 🧠 Think, ⚙️ Execute, 🔍 Search).
+- Show a "Thinking..." indicator with animated dots while an agent is working.
+- Use smooth fade-in animations for new messages.
+- Auto-scroll as new updates are streamed.
+- Support Markdown formatting and syntax-highlighted code blocks.
+- Each agent should have its own colored avatar/icon.
+- Active agents should pulse subtly while running.
+- Completed agents should display a green checkmark.
+- Failed agents should display a red error badge with retry support.
+- The layout should feel similar to ChatGPT, Cursor, Lovable, and Claude—not like a terminal.
+
+The panel must be resizable by dragging its right border.
+Remember the user's preferred width.
+Allow collapsing and expanding the panel.
+
+The panel should stream updates such as:
+
+🧠 Architect
+Analyzing requirements...
+Designing system architecture...
+Selecting technology stack...
+
+⚙️ Backend Agent
+Generating API...
+Creating authentication...
+Building endpoints...
+
+🎨 Frontend Agent
+Creating components...
+Building dashboard...
+Connecting to backend...
+
+🗄️ Database Agent
+Generating MongoDB schema...
+Creating indexes...
+
+🔐 Security Agent
+Scanning generated code...
+
+🧪 QA Agent
+Running automated tests...
+
+🚀 Deployment Agent
+Preparing production build...
+
+Use modern typography, subtle borders, soft shadows, rounded corners, and smooth animations. The experience should feel premium and resemble a professional AI development environment rather than a traditional IDE.

@@ -60,6 +60,14 @@ npm run server   # Express backend on :3001
 
 Vite proxies all `/api/*` requests to `http://localhost:3001`.
 
+## Known Gotcha — Replit proxy in lockfile
+
+`package-lock.json` regenerated on Replit will bake in `package-firewall.replit.local` as the registry for every package. Railway (and any external CI) cannot reach that host and the build fails. If you ever run `npm install` on Replit and then push, regenerate the lockfile with the public registry first:
+
+```bash
+rm package-lock.json && npm install --registry https://registry.npmjs.org
+```
+
 ## Deploying to Railway
 
 Single service — Express serves the built frontend + API:
