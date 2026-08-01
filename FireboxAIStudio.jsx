@@ -290,6 +290,14 @@ export default function FireboxAIStudio() {
   const streamingRef = useRef({});
   const editorRef    = useRef(null);
 
+  /* mobile breakpoint */
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
   /* scroll terminal to bottom */
   useEffect(() => {
     if (terminalRef.current)
@@ -491,51 +499,73 @@ export default function FireboxAIStudio() {
         .close-btn        { opacity:0; transition:opacity 0.1s; }
         .tab-item:hover .close-btn { opacity:1; }
         .tab-item.active  .close-btn { opacity:1; }
+        @media (max-width:767px) {
+          ::-webkit-scrollbar { width:4px; height:4px; }
+        }
       `}</style>
 
       <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:VS.editorBg, fontFamily:FONT_UI, color:VS.text, overflow:"hidden" }}>
 
         {/* ══ Title bar ═══════════════════════════════════════════════════ */}
         <div style={{
-          height:30, flexShrink:0, background:VS.titleBar,
+          height: isMobile ? 44 : 30, flexShrink:0, background:VS.titleBar,
           display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"0 12px", borderBottom:`1px solid ${VS.border}`, WebkitAppRegion:"drag",
+          padding: isMobile ? "0 10px" : "0 12px",
+          borderBottom:`1px solid ${VS.border}`, WebkitAppRegion:"drag",
           userSelect:"none",
         }}>
-          {/* macOS-style traffic lights */}
-          <div style={{ display:"flex", gap:6, alignItems:"center", WebkitAppRegion:"no-drag" }}>
-            {["#FF5F57","#FFBD2E","#28C840"].map((c,i) => (
-              <div key={i} style={{ width:12, height:12, borderRadius:"50%", background:c, flexShrink:0 }}/>
-            ))}
-          </div>
+          {/* macOS-style traffic lights — hidden on mobile */}
+          {!isMobile && (
+            <div style={{ display:"flex", gap:6, alignItems:"center", WebkitAppRegion:"no-drag" }}>
+              {["#FF5F57","#FFBD2E","#28C840"].map((c,i) => (
+                <div key={i} style={{ width:12, height:12, borderRadius:"50%", background:c, flexShrink:0 }}/>
+              ))}
+            </div>
+          )}
+          {/* Mobile: hamburger to toggle sidebar */}
+          {isMobile && (
+            <button
+              onClick={() => setSideOpen(p => !p)}
+              style={{
+                display:"flex", alignItems:"center", justifyContent:"center",
+                width:32, height:32, background: sideOpen ? "#3D3D3D" : "transparent",
+                border:`1px solid ${sideOpen ? VS.accent : VS.border}`,
+                borderRadius:6, cursor:"pointer", WebkitAppRegion:"no-drag", flexShrink:0,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sideOpen ? VS.accent : VS.textMuted} strokeWidth="2" strokeLinecap="round">
+                <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+          )}
           {/* Title */}
-          <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:VS.textMuted }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:VS.textMuted, flex: isMobile ? 1 : "unset", justifyContent: isMobile ? "center" : "unset", marginLeft: isMobile ? 0 : 0 }}>
             <Zap size={13} color={VS.accent}/>
-            <span style={{ color:VS.text, fontWeight:500 }}>Firebox AI Studio</span>
-            {activeFile && (
+            <span style={{ color:VS.text, fontWeight:500, fontSize: isMobile ? 13 : 12 }}>Firebox AI Studio</span>
+            {!isMobile && activeFile && (
               <>
                 <span style={{ color:VS.textFaint }}>—</span>
                 <span>{activeFile.path.split("/").pop()}</span>
               </>
             )}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:12, WebkitAppRegion:"no-drag" }}>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 6 : 12, WebkitAppRegion:"no-drag" }}>
             {phase !== "idle" && (
               <button onClick={reset} style={{
-                display:"flex", alignItems:"center", gap:5, padding:"2px 8px",
+                display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
                 background:"transparent", border:`1px solid ${VS.border}`,
                 color:VS.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
               }}>
-                <RotateCcw size={11}/> New
+                <RotateCcw size={11}/>{!isMobile && " New"}
               </button>
             )}
             <button onClick={() => setHistoryOpen(p=>!p)} style={{
-              display:"flex", alignItems:"center", gap:5, padding:"2px 8px",
+              display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
               background: historyOpen ? "#3D3D3D" : "transparent",
               border:`1px solid ${VS.border}`,
               color:VS.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
             }}>
-              <History size={11}/> History
+              <History size={11}/>{!isMobile && " History"}
             </button>
           </div>
         </div>
@@ -561,61 +591,120 @@ export default function FireboxAIStudio() {
         )}
 
         {/* ══ Main area (activity bar + side panel + editor) ══════════════ */}
-        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+        <div style={{ flex:1, display:"flex", overflow:"hidden", position:"relative" }}>
 
-          {/* ── Activity bar ──────────────────────────────────────────── */}
-          <div style={{
-            width:48, flexShrink:0, background:VS.activityBar,
-            borderRight:`1px solid ${VS.border}`,
-            display:"flex", flexDirection:"column", alignItems:"center",
-            paddingTop:8, gap:0,
-          }}>
-            {[
+          {/* ── Activity bar — desktop: left column; mobile: bottom strip ── */}
+          {(() => {
+            const navItems = [
               { id:"explorer", Icon:Files,     title:"Explorer",    badge: allFiles.length || null },
               { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"search",   Icon:Search,    title:"Search"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
-            ].map(({ id, Icon, title, badge, badgeColor }) => (
-              <button
-                key={id}
-                className="act-btn"
-                title={title}
-                onClick={() => { setActivity(id); setSideOpen(p => activity===id ? !p : true); }}
-                style={{
-                  position:"relative", display:"flex", alignItems:"center", justifyContent:"center",
+            ];
+            if (isMobile) {
+              return (
+                <div style={{
+                  position:"absolute", bottom:0, left:0, right:0, zIndex:200,
+                  height:52, flexShrink:0, background:VS.activityBar,
+                  borderTop:`1px solid ${VS.border}`,
+                  display:"flex", flexDirection:"row", alignItems:"center",
+                  justifyContent:"space-around",
+                }}>
+                  {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
+                    <button
+                      key={id}
+                      className="act-btn"
+                      title={title}
+                      onClick={() => { setActivity(id); setSideOpen(p => activity===id ? !p : true); }}
+                      style={{
+                        position:"relative", display:"flex", flexDirection:"column",
+                        alignItems:"center", justifyContent:"center",
+                        flex:1, height:52, background:"transparent", border:"none",
+                        borderTop:`2px solid ${activity===id && sideOpen ? VS.accent : "transparent"}`,
+                        color: activity===id && sideOpen ? VS.textActive : VS.textMuted,
+                        cursor:"pointer", transition:"color 0.15s", gap:3,
+                      }}
+                    >
+                      <Icon size={18}/>
+                      <span style={{ fontSize:9, fontWeight:500 }}>{title}</span>
+                      {badge && (
+                        <span style={{
+                          position:"absolute", top:4, right:"calc(50% - 16px)", minWidth:14, height:14, borderRadius:7,
+                          background: badgeColor || VS.accent, color:"#fff",
+                          fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
+                          padding:"0 3px",
+                        }}>{typeof badge==="number" ? badge : null}</span>
+                      )}
+                    </button>
+                  ))}
+                  <button className="act-btn" title="Settings" style={{
+                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                    flex:1, height:52, background:"transparent", border:"none",
+                    borderTop:"2px solid transparent", color:VS.textMuted, cursor:"pointer", gap:3,
+                  }}>
+                    <Settings size={18}/>
+                    <span style={{ fontSize:9, fontWeight:500 }}>Settings</span>
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div style={{
+                width:48, flexShrink:0, background:VS.activityBar,
+                borderRight:`1px solid ${VS.border}`,
+                display:"flex", flexDirection:"column", alignItems:"center",
+                paddingTop:8, gap:0,
+              }}>
+                {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
+                  <button
+                    key={id}
+                    className="act-btn"
+                    title={title}
+                    onClick={() => { setActivity(id); setSideOpen(p => activity===id ? !p : true); }}
+                    style={{
+                      position:"relative", display:"flex", alignItems:"center", justifyContent:"center",
+                      width:48, height:48, background:"transparent", border:"none",
+                      borderLeft:`2px solid ${activity===id && sideOpen ? VS.accent : "transparent"}`,
+                      color: activity===id && sideOpen ? VS.textActive : VS.textMuted,
+                      cursor:"pointer", transition:"color 0.15s",
+                    }}
+                  >
+                    <Icon size={22}/>
+                    {badge && (
+                      <span style={{
+                        position:"absolute", top:6, right:6, minWidth:14, height:14, borderRadius:7,
+                        background: badgeColor || VS.accent, color:"#fff",
+                        fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
+                        padding:"0 3px",
+                      }}>{typeof badge==="number" ? badge : null}</span>
+                    )}
+                  </button>
+                ))}
+                {/* Spacer + settings */}
+                <div style={{ flex:1 }}/>
+                <button className="act-btn" title="Settings" style={{
+                  display:"flex", alignItems:"center", justifyContent:"center",
                   width:48, height:48, background:"transparent", border:"none",
-                  borderLeft:`2px solid ${activity===id && sideOpen ? VS.accent : "transparent"}`,
-                  color: activity===id && sideOpen ? VS.textActive : VS.textMuted,
-                  cursor:"pointer", transition:"color 0.15s",
-                }}
-              >
-                <Icon size={22}/>
-                {badge && (
-                  <span style={{
-                    position:"absolute", top:6, right:6, minWidth:14, height:14, borderRadius:7,
-                    background: badgeColor || VS.accent, color:"#fff",
-                    fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
-                    padding:"0 3px",
-                  }}>{typeof badge==="number" ? badge : null}</span>
-                )}
-              </button>
-            ))}
-            {/* Spacer + settings */}
-            <div style={{ flex:1 }}/>
-            <button className="act-btn" title="Settings" style={{
-              display:"flex", alignItems:"center", justifyContent:"center",
-              width:48, height:48, background:"transparent", border:"none",
-              borderLeft:"2px solid transparent", color:VS.textMuted, cursor:"pointer", marginBottom:4,
-            }}>
-              <Settings size={22}/>
-            </button>
-          </div>
+                  borderLeft:"2px solid transparent", color:VS.textMuted, cursor:"pointer", marginBottom:4,
+                }}>
+                  <Settings size={22}/>
+                </button>
+              </div>
+            );
+          })()}
 
           {/* ── Side panel ────────────────────────────────────────────── */}
           {sideOpen && (
             <div style={{
-              width:260, flexShrink:0, background:VS.sideBar,
-              borderRight:`1px solid ${VS.border}`,
+              ...(isMobile ? {
+                position:"absolute", top:0, left:0, right:0,
+                bottom:52, zIndex:100,
+              } : {
+                width:260, flexShrink:0,
+              }),
+              background:VS.sideBar,
+              borderRight: isMobile ? "none" : `1px solid ${VS.border}`,
+              borderBottom: isMobile ? `1px solid ${VS.border}` : "none",
               display:"flex", flexDirection:"column", overflow:"hidden",
             }}>
 
@@ -844,7 +933,7 @@ export default function FireboxAIStudio() {
           )}
 
           {/* ── Editor area ────────────────────────────────────────────── */}
-          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom: isMobile ? 52 : 0 }}>
 
             {/* Tab bar */}
             <div style={{
@@ -927,15 +1016,15 @@ export default function FireboxAIStudio() {
                   onChange={handleEditorChange}
                   theme="firebox-dark"
                   options={{
-                    minimap:              { enabled: true, scale: 1 },
-                    lineNumbers:          "on",
+                    minimap:              { enabled: !isMobile, scale: 1 },
+                    lineNumbers:          isMobile ? "off" : "on",
                     folding:              true,
                     foldingHighlight:     true,
-                    wordWrap:             "off",
-                    fontSize:             13,
+                    wordWrap:             isMobile ? "on" : "off",
+                    fontSize:             isMobile ? 12 : 13,
                     fontFamily:           FONT_MONO,
-                    fontLigatures:        true,
-                    lineHeight:           22,
+                    fontLigatures:        !isMobile,
+                    lineHeight:           isMobile ? 20 : 22,
                     renderLineHighlight:  "all",
                     scrollBeyondLastLine: false,
                     smoothScrolling:      true,
@@ -945,18 +1034,18 @@ export default function FireboxAIStudio() {
                     tabSize:              2,
                     insertSpaces:         true,
                     bracketPairColorization: { enabled: true },
-                    guides:               { bracketPairs: "active", indentation: true },
+                    guides:               { bracketPairs: "active", indentation: !isMobile },
                     scrollbar: {
                       vertical:              "visible",
-                      horizontal:            "visible",
+                      horizontal:            isMobile ? "hidden" : "visible",
                       useShadows:            false,
-                      verticalScrollbarSize: 10,
-                      horizontalScrollbarSize: 10,
+                      verticalScrollbarSize: isMobile ? 4 : 10,
+                      horizontalScrollbarSize: isMobile ? 4 : 10,
                     },
                     padding:              { top: 10, bottom: 10 },
                     renderValidationDecorations: "off",
-                    overviewRulerLanes:   3,
-                    stickyScroll:         { enabled: true },
+                    overviewRulerLanes:   isMobile ? 0 : 3,
+                    stickyScroll:         { enabled: !isMobile },
                   }}
                 />
               ) : (
@@ -1039,39 +1128,44 @@ export default function FireboxAIStudio() {
 
         {/* ══ Status bar ══════════════════════════════════════════════════ */}
         <div style={{
-          height:22, flexShrink:0, background: phase==="error" ? "#5A1D1D" : VS.statusBar,
+          height: isMobile ? 20 : 22, flexShrink:0,
+          background: phase==="error" ? "#5A1D1D" : VS.statusBar,
           display:"flex", alignItems:"center", justifyContent:"space-between",
           padding:"0 10px", fontSize:11, color:"#fff", userSelect:"none",
-          transition:"background 0.3s",
+          transition:"background 0.3s", overflow:"hidden",
         }}>
           {/* Left */}
-          <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-              <GitBranch size={12}/>
-              <span>main</span>
-            </div>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 14, overflow:"hidden" }}>
+            {!isMobile && (
+              <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0 }}>
+                <GitBranch size={12}/>
+                <span>main</span>
+              </div>
+            )}
             {phase === "building" && (
-              <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                <Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/>
-                <span>{activeAgent ? `${activeAgent} generating…` : "Starting pipeline…"}</span>
+              <div style={{ display:"flex", alignItems:"center", gap:5, overflow:"hidden" }}>
+                <Loader2 size={11} style={{ animation:"spin 1s linear infinite", flexShrink:0 }}/>
+                <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {activeAgent ? `${activeAgent} generating…` : "Starting pipeline…"}
+                </span>
               </div>
             )}
             {phase === "complete" && (
-              <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0 }}>
                 <CheckCircle2 size={11}/>
                 <span>{allFiles.length} files generated</span>
               </div>
             )}
             {phase === "error" && (
-              <div style={{ display:"flex", alignItems:"center", gap:5, color:"#F48771" }}>
-                <AlertTriangle size={11}/>
-                <span>{errorMsg}</span>
+              <div style={{ display:"flex", alignItems:"center", gap:5, color:"#F48771", overflow:"hidden" }}>
+                <AlertTriangle size={11} style={{ flexShrink:0 }}/>
+                <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{errorMsg}</span>
               </div>
             )}
           </div>
           {/* Right */}
-          <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-            {activeFile && (
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 14, flexShrink:0 }}>
+            {!isMobile && activeFile && (
               <>
                 <span>Ln {lineCol.line}, Col {lineCol.col}</span>
                 <span>Spaces: 2</span>
@@ -1081,9 +1175,14 @@ export default function FireboxAIStudio() {
                 </span>
               </>
             )}
-            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+            {isMobile && activeFile && (
+              <span style={{ textTransform:"capitalize" }}>
+                {getMonacoLang(activeFile.path, activeFile.language)}
+              </span>
+            )}
+            <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
               <Zap size={11}/>
-              <span>Firebox AI</span>
+              {!isMobile && <span>Firebox AI</span>}
             </div>
           </div>
         </div>
