@@ -3,7 +3,12 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import { connectDB } from "./db.js";
+import { connectDB, isDBConnected } from "./db.js";
+
+const dbRequired = (req, res, next) => {
+  if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
+  next();
+};
 import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
@@ -17,7 +22,7 @@ app.use(express.json());
 app.use("/api/git", gitRouter);
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
-app.post("/api/build", async (req, res) => {
+app.post("/api/build", dbRequired, async (req, res) => {
   const { description } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
@@ -32,7 +37,7 @@ app.post("/api/build", async (req, res) => {
 });
 
 /* ── GET /api/build/:id/events — SSE stream ─────────────────────────────── */
-app.get("/api/build/:id/events", async (req, res) => {
+app.get("/api/build/:id/events", dbRequired, async (req, res) => {
   let build;
   try { build = await Build.findById(req.params.id); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
@@ -53,7 +58,7 @@ app.get("/api/build/:id/events", async (req, res) => {
 });
 
 /* ── GET /api/builds — recent builds (no file content) ──────────────────── */
-app.get("/api/builds", async (req, res) => {
+app.get("/api/builds", dbRequired, async (req, res) => {
   const builds = await Build.find()
     .sort({ createdAt: -1 })
     .limit(20)
@@ -63,7 +68,7 @@ app.get("/api/builds", async (req, res) => {
 });
 
 /* ── GET /api/build/:id — full build ────────────────────────────────────── */
-app.get("/api/build/:id", async (req, res) => {
+app.get("/api/build/:id", dbRequired, async (req, res) => {
   try {
     const build = await Build.findById(req.params.id).lean();
     if (!build) return res.status(404).json({ error: "Not found" });
@@ -74,7 +79,7 @@ app.get("/api/build/:id", async (req, res) => {
 });
 
 /* ── GET /api/build/:id/files — list files (no content) ─────────────────── */
-app.get("/api/build/:id/files", async (req, res) => {
+app.get("/api/build/:id/files", dbRequired, async (req, res) => {
   try {
     const build = await Build.findById(req.params.id).select("files.agent files.path files.language").lean();
     if (!build) return res.status(404).json({ error: "Not found" });
@@ -85,7 +90,7 @@ app.get("/api/build/:id/files", async (req, res) => {
 });
 
 /* ── GET /api/build/:id/file?path=... — single file content ─────────────── */
-app.get("/api/build/:id/file", async (req, res) => {
+app.get("/api/build/:id/file", dbRequired, async (req, res) => {
   const { path } = req.query;
   if (!path) return res.status(400).json({ error: "path query param required" });
   try {

@@ -3,7 +3,11 @@ import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groq;
+function getGroq() {
+  if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  return groq;
+}
 
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -31,7 +35,7 @@ export async function runAgentPipeline(build, res, signal) {
     }
 
     try {
-      const stream = await groq.chat.completions.create({
+      const stream = await getGroq().chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: agentDef.systemPrompt },

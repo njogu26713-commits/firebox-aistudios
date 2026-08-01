@@ -308,6 +308,15 @@ export default function FireboxAIStudio() {
   const [gitPushMsg,    setGitPushMsg]    = useState("");
   const [gitPushResult, setGitPushResult] = useState(null);  // { commitUrl } | { error }
 
+  /* git — saved token + repo list */
+  const [gitTokenSaved,    setGitTokenSaved]    = useState(false);   // token exists in DB
+  const [gitTokenSaving,   setGitTokenSaving]   = useState(false);
+  const [gitRepos,         setGitRepos]         = useState([]);
+  const [gitReposLoading,  setGitReposLoading]  = useState(false);
+  const [gitRepoFilter,    setGitRepoFilter]    = useState("");
+  const [gitChangePrompt,  setGitChangePrompt]  = useState("");      // "what changes?" after repo select
+  const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
+
   const terminalRef  = useRef(null);
   const esRef        = useRef(null);
   const streamingRef = useRef({});
@@ -463,25 +472,82 @@ export default function FireboxAIStudio() {
       return s;
     }), []);
 
+  /* ── Git: load saved token on mount ─────────────────────────────────────── */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res  = await fetch("/api/git/token");
+        const data = await res.json();
+        if (data.token) {
+          setGitToken(data.token);
+          setGitTokenSaved(true);
+          // also pre-load repos
+          setGitReposLoading(true);
+          try {
+            const r2   = await fetch("/api/git/repos");
+            const list = await r2.json();
+            if (r2.ok) setGitRepos(list);
+          } catch {}
+          setGitReposLoading(false);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  /* ── Git: save token to DB + fetch repos ────────────────────────────────── */
+  const saveGitToken = useCallback(async () => {
+    if (!gitTokenInput.trim()) return;
+    setGitTokenSaving(true); setGitError("");
+    try {
+      const res = await fetch("/api/git/token", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: gitTokenInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGitToken(gitTokenInput);
+      setGitTokenSaved(true);
+      setGitTokenInput("");
+      // fetch repos
+      setGitReposLoading(true);
+      const r2   = await fetch("/api/git/repos");
+      const list = await r2.json();
+      if (!r2.ok) throw new Error(list.error);
+      setGitRepos(list);
+    } catch (err) { setGitError(err.message); }
+    setGitReposLoading(false);
+    setGitTokenSaving(false);
+  }, [gitTokenInput]);
+
+  /* ── Git: remove saved token ─────────────────────────────────────────────── */
+  const removeGitToken = useCallback(async () => {
+    await fetch("/api/git/token", { method:"DELETE" });
+    setGitToken(""); setGitTokenSaved(false); setGitRepos([]);
+    setGitRepo(null); setGitFileShas({}); setGitError("");
+    setGitPushResult(null); setGitShowPromptStep(false);
+  }, []);
+
   /* ── Git: connect repo ───────────────────────────────────────────────────── */
-  const connectGitRepo = useCallback(async () => {
-    if (!gitRepoUrl.trim() || !gitTokenInput.trim()) return;
+  const connectGitRepo = useCallback(async (repoFullName) => {
+    const token = gitToken;
+    if (!repoFullName || !token) return;
     setGitConnecting(true); setGitError(""); setGitRepo(null);
     try {
       const res  = await fetch("/api/git/connect", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ repoUrl: gitRepoUrl, token: gitTokenInput }),
+        body: JSON.stringify({ repoUrl: `github.com/${repoFullName}`, token }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setGitRepo(data);
-      setGitToken(gitTokenInput);
       setGitFileShas({});
       setGitExpandedDirs(new Set());
       setGitPushResult(null);
+      setGitShowPromptStep(true);  // show "what changes?" step
+      setGitChangePrompt("");
     } catch (err) { setGitError(err.message); }
     setGitConnecting(false);
-  }, [gitRepoUrl, gitTokenInput]);
+  }, [gitToken]);
 
   /* ── Git: open a file from the repo ─────────────────────────────────────── */
   const openGitFile = useCallback(async (filePath) => {
@@ -1078,8 +1144,9 @@ export default function FireboxAIStudio() {
                   <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <span>SOURCE CONTROL</span>
                     {gitRepo && (
-                      <button onClick={() => { setGitRepo(null); setGitToken(""); setGitFileShas({}); setGitError(""); setGitPushResult(null); }}
-                        style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:2 }} title="Disconnect">
+                      <button
+                        onClick={() => { setGitRepo(null); setGitFileShas({}); setGitError(""); setGitPushResult(null); setGitShowPromptStep(false); setGitChangePrompt(""); }}
+                        style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:2 }} title="Back to repo list">
                         <X size={12}/>
                       </button>
                     )}
@@ -1087,40 +1154,21 @@ export default function FireboxAIStudio() {
 
                   <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column" }}>
 
-                    {/* ── Connect form ── */}
-                    {!gitRepo && (
+                    {/* ── Step 1: Token entry (no saved token) ── */}
+                    {!gitRepo && !gitTokenSaved && (
                       <div style={{ padding:"10px 10px 0" }}>
                         <div style={{ fontSize:12, color:VS.textMuted, marginBottom:10, lineHeight:1.6 }}>
-                          Connect a GitHub repo to browse, AI-edit, and push files.
+                          Enter your GitHub personal access token to see all your repositories.
                         </div>
 
-                        {/* Repo URL */}
-                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
-                          <Link size={12} color={VS.textMuted} style={{ flexShrink:0 }}/>
-                          <input
-                            value={gitRepoUrl}
-                            onChange={e => setGitRepoUrl(e.target.value)}
-                            onKeyDown={e => e.key==="Enter" && connectGitRepo()}
-                            placeholder="github.com/owner/repo"
-                            style={{
-                              flex:1, background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                              borderRadius:4, padding:"5px 8px", color:VS.text,
-                              fontSize:12, outline:"none", fontFamily:FONT_MONO,
-                            }}
-                            onFocus={e => (e.target.style.borderColor=VS.accent)}
-                            onBlur={e  => (e.target.style.borderColor=VS.border)}
-                          />
-                        </div>
-
-                        {/* Token */}
-                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
                           <Key size={12} color={VS.textMuted} style={{ flexShrink:0 }}/>
                           <input
                             type="password"
                             value={gitTokenInput}
                             onChange={e => setGitTokenInput(e.target.value)}
-                            onKeyDown={e => e.key==="Enter" && connectGitRepo()}
-                            placeholder="GitHub access token"
+                            onKeyDown={e => e.key==="Enter" && saveGitToken()}
+                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                             style={{
                               flex:1, background:"#3C3C3C", border:`1px solid ${VS.border}`,
                               borderRadius:4, padding:"5px 8px", color:VS.text,
@@ -1132,19 +1180,19 @@ export default function FireboxAIStudio() {
                         </div>
 
                         <button
-                          onClick={connectGitRepo}
-                          disabled={gitConnecting || !gitRepoUrl.trim() || !gitTokenInput.trim()}
+                          onClick={saveGitToken}
+                          disabled={gitTokenSaving || !gitTokenInput.trim()}
                           className="build-btn"
                           style={{
                             display:"flex", alignItems:"center", justifyContent:"center", gap:6,
                             width:"100%", padding:"7px", borderRadius:4, border:"none",
-                            background: gitRepoUrl.trim() && gitTokenInput.trim() ? VS.accent : "#3C3C3C",
-                            color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer",
+                            background: gitTokenInput.trim() ? VS.accent : "#3C3C3C",
+                            color:"#fff", fontSize:12, fontWeight:600, cursor: gitTokenInput.trim() ? "pointer" : "not-allowed",
                           }}
                         >
-                          {gitConnecting
+                          {gitTokenSaving
                             ? <><Loader2 size={12} style={{ animation:"spin 1s linear infinite" }}/> Connecting…</>
-                            : <><GitBranch size={12}/> Connect Repository</>}
+                            : <><GitBranch size={12}/> Connect GitHub</>}
                         </button>
 
                         {gitError && (
@@ -1153,6 +1201,110 @@ export default function FireboxAIStudio() {
                             <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{gitError}</span>
                           </div>
                         )}
+
+                        <div style={{ marginTop:10, fontSize:11, color:VS.textFaint, lineHeight:1.6 }}>
+                          Generate a token at{" "}
+                          <a href="https://github.com/settings/tokens/new?scopes=repo" target="_blank" rel="noreferrer"
+                            style={{ color:VS.accent }}>github.com/settings/tokens</a>
+                          {" "}with <code style={{ fontSize:10, background:"#3C3C3C", padding:"1px 4px", borderRadius:3 }}>repo</code> scope.
+                          The token is saved to your database.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Step 2: Repo picker (token saved, no repo selected) ── */}
+                    {!gitRepo && gitTokenSaved && (
+                      <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
+                        {/* Header row */}
+                        <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                          <div style={{ position:"relative", flex:1 }}>
+                            <Search size={11} color={VS.textMuted} style={{ position:"absolute", left:7, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}/>
+                            <input
+                              value={gitRepoFilter}
+                              onChange={e => setGitRepoFilter(e.target.value)}
+                              placeholder="Filter repositories…"
+                              style={{
+                                width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
+                                borderRadius:4, padding:"5px 8px 5px 24px", color:VS.text,
+                                fontSize:12, outline:"none", fontFamily:FONT_UI, boxSizing:"border-box",
+                              }}
+                              onFocus={e => (e.target.style.borderColor=VS.accent)}
+                              onBlur={e  => (e.target.style.borderColor=VS.border)}
+                            />
+                          </div>
+                          <button
+                            onClick={() => { setGitReposLoading(true); fetch("/api/git/repos").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setGitRepos(d); setGitReposLoading(false); }).catch(()=>setGitReposLoading(false)); }}
+                            title="Refresh repositories"
+                            style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}
+                          >
+                            <RefreshCw size={12}/>
+                          </button>
+                          <button onClick={removeGitToken} title="Disconnect GitHub account"
+                            style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}>
+                            <X size={12}/>
+                          </button>
+                        </div>
+
+                        {gitError && (
+                          <div style={{ margin:"0 10px 6px", padding:"6px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6 }}>
+                            <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
+                            <span style={{ fontSize:11, color:VS.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
+                            <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}><X size={10}/></button>
+                          </div>
+                        )}
+
+                        {/* Repos list */}
+                        <div style={{ flex:1, overflowY:"auto" }}>
+                          {gitReposLoading ? (
+                            <div style={{ padding:"20px 10px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                              <Loader2 size={14} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                              <span style={{ fontSize:12, color:VS.textMuted }}>Loading repositories…</span>
+                            </div>
+                          ) : gitConnecting ? (
+                            <div style={{ padding:"20px 10px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                              <Loader2 size={14} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                              <span style={{ fontSize:12, color:VS.textMuted }}>Connecting…</span>
+                            </div>
+                          ) : gitRepos.filter(r => !gitRepoFilter || r.fullName.toLowerCase().includes(gitRepoFilter.toLowerCase())).length === 0 ? (
+                            <div style={{ padding:"20px 10px", textAlign:"center", fontSize:12, color:VS.textFaint }}>
+                              {gitRepos.length === 0 ? "No repositories found." : "No matches."}
+                            </div>
+                          ) : (
+                            gitRepos
+                              .filter(r => !gitRepoFilter || r.fullName.toLowerCase().includes(gitRepoFilter.toLowerCase()))
+                              .map(r => (
+                                <button
+                                  key={r.id}
+                                  onClick={() => connectGitRepo(r.fullName)}
+                                  style={{
+                                    display:"block", width:"100%", textAlign:"left",
+                                    background:"transparent", border:"none", borderBottom:`1px solid ${VS.border}`,
+                                    padding:"8px 12px", cursor:"pointer", color:VS.text,
+                                  }}
+                                  onMouseEnter={e => (e.currentTarget.style.background="#2A2D2E")}
+                                  onMouseLeave={e => (e.currentTarget.style.background="transparent")}
+                                >
+                                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                                    <GitBranch size={11} color={r.private ? VS.warning : VS.success} style={{ flexShrink:0 }}/>
+                                    <span style={{ fontSize:12, fontWeight:600, fontFamily:FONT_MONO, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                      {r.fullName}
+                                    </span>
+                                    {r.private && (
+                                      <span style={{ fontSize:9, background:"#3C3C3C", color:VS.textMuted, padding:"1px 5px", borderRadius:10, flexShrink:0 }}>private</span>
+                                    )}
+                                  </div>
+                                  {r.description && (
+                                    <div style={{ fontSize:11, color:VS.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingLeft:17 }}>
+                                      {r.description}
+                                    </div>
+                                  )}
+                                  {r.language && (
+                                    <div style={{ fontSize:10, color:VS.textFaint, paddingLeft:17, marginTop:1 }}>{r.language}</div>
+                                  )}
+                                </button>
+                              ))
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1178,6 +1330,77 @@ export default function FireboxAIStudio() {
                               {" · "}{gitRepo.files.length} files
                             </div>
                           </div>
+
+                          {/* ── "What changes?" prompt step ── */}
+                          {gitShowPromptStep && (
+                            <div style={{ margin:"8px 8px 0", padding:"10px", borderRadius:6, background:"rgba(0,122,204,0.08)", border:`1px solid rgba(0,122,204,0.3)` }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                                <Sparkles size={11} color={VS.accent}/>
+                                <span style={{ fontSize:11, fontWeight:700, color:VS.text }}>What would you like to change?</span>
+                                <button
+                                  onClick={() => setGitShowPromptStep(false)}
+                                  style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}
+                                >
+                                  <X size={11}/>
+                                </button>
+                              </div>
+                              <textarea
+                                value={gitChangePrompt}
+                                onChange={e => setGitChangePrompt(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key==="Enter" && (e.ctrlKey||e.metaKey)) {
+                                    setGitInstruction(gitChangePrompt);
+                                    setGitAiOpen(true);
+                                    setGitShowPromptStep(false);
+                                  }
+                                }}
+                                placeholder={`e.g. "Add dark mode toggle", "Fix the login bug", "Add TypeScript types"…`}
+                                rows={3}
+                                style={{
+                                  width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
+                                  borderRadius:4, padding:"6px 8px", color:VS.text,
+                                  fontSize:11, fontFamily:FONT_MONO, resize:"none", outline:"none",
+                                  lineHeight:1.6, boxSizing:"border-box",
+                                }}
+                                onFocus={e => (e.target.style.borderColor=VS.accent)}
+                                onBlur={e  => (e.target.style.borderColor=VS.border)}
+                                autoFocus
+                              />
+                              <div style={{ display:"flex", gap:5, marginTop:6 }}>
+                                <button
+                                  onClick={() => {
+                                    if (gitChangePrompt.trim()) {
+                                      setGitInstruction(gitChangePrompt);
+                                      setGitAiOpen(true);
+                                    }
+                                    setGitShowPromptStep(false);
+                                  }}
+                                  disabled={!gitChangePrompt.trim()}
+                                  style={{
+                                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                    padding:"6px", borderRadius:4, border:"none",
+                                    background: gitChangePrompt.trim() ? VS.accent : "#3C3C3C",
+                                    color:"#fff", fontSize:11, fontWeight:600,
+                                    cursor: gitChangePrompt.trim() ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  <Sparkles size={11}/> Apply with AI
+                                </button>
+                                <button
+                                  onClick={() => setGitShowPromptStep(false)}
+                                  style={{
+                                    padding:"6px 10px", borderRadius:4, border:`1px solid ${VS.border}`,
+                                    background:"transparent", color:VS.textMuted, fontSize:11, cursor:"pointer",
+                                  }}
+                                >
+                                  Browse files
+                                </button>
+                              </div>
+                              <div style={{ fontSize:10, color:VS.textFaint, marginTop:5 }}>
+                                Ctrl+Enter to confirm · Open a file in the tree, then AI Edit will apply your instruction
+                              </div>
+                            </div>
+                          )}
 
                           {/* File tree */}
                           <div style={{ flex:1, overflowY:"auto" }}>

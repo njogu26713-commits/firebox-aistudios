@@ -1,8 +1,19 @@
 import express from "express";
 import Groq from "groq-sdk";
+import GithubToken from "../models/GithubToken.js";
+import { isDBConnected } from "../db.js";
+
+const dbRequired = (req, res, next) => {
+  if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
+  next();
+};
 
 const router = express.Router();
-const groq   = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groq;
+function getGroq() {
+  if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  return groq;
+}
 
 /* ── GitHub API helper ───────────────────────────────────────────────────── */
 async function ghFetch(path, token, options = {}) {
@@ -27,6 +38,72 @@ function parseRepoUrl(url) {
   if (!m) throw new Error("Invalid GitHub URL — expected github.com/owner/repo");
   return { owner: m[1], repo: m[2] };
 }
+
+/* ── GET /api/git/token — retrieve saved token ──────────────────────────── */
+router.get("/token", dbRequired, async (req, res) => {
+  try {
+    const doc = await GithubToken.findById("singleton").lean();
+    if (!doc) return res.json({ token: null });
+    res.json({ token: doc.token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── POST /api/git/token — save token ───────────────────────────────────── */
+router.post("/token", dbRequired, async (req, res) => {
+  const { token } = req.body;
+  if (!token?.trim()) return res.status(400).json({ error: "token is required" });
+  try {
+    await GithubToken.findByIdAndUpdate(
+      "singleton",
+      { token: token.trim(), createdAt: new Date() },
+      { upsert: true, new: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── DELETE /api/git/token — remove saved token ─────────────────────────── */
+router.delete("/token", dbRequired, async (req, res) => {
+  try {
+    await GithubToken.findByIdAndDelete("singleton");
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── GET /api/git/repos — list all repos for the saved token ────────────── */
+router.get("/repos", dbRequired, async (req, res) => {
+  try {
+    const doc = await GithubToken.findById("singleton").lean();
+    if (!doc) return res.status(401).json({ error: "No token saved. Please connect your GitHub account first." });
+    const token = doc.token;
+
+    // Fetch up to 100 repos sorted by last updated
+    const repos = await ghFetch(
+      "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
+      token
+    );
+    res.json(repos.map(r => ({
+      id:          r.id,
+      fullName:    r.full_name,
+      owner:       r.owner.login,
+      name:        r.name,
+      description: r.description || "",
+      private:     r.private,
+      htmlUrl:     r.html_url,
+      language:    r.language || "",
+      updatedAt:   r.updated_at,
+      defaultBranch: r.default_branch,
+    })));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 /* ── POST /api/git/connect ───────────────────────────────────────────────── */
 router.post("/connect", async (req, res) => {
@@ -85,7 +162,7 @@ router.post("/ai-edit", async (req, res) => {
   const sse = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    const stream = await groq.chat.completions.create({
+    const stream = await getGroq().chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
