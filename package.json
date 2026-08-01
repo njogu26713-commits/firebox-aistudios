@@ -1,20 +1,27 @@
 {
   "name": "firebox-ai-studio",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5000 --host 0.0.0.0"
+    "dev": "vite --port 5000 --host 0.0.0.0",
+    "server": "node server/index.js",
+    "build": "vite build"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "groq-sdk": "^0.5.0",
     "lucide-react": "^0.400.0",
+    "mongoose": "^8.24.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.7.0",
-    "autoprefixer": "^10.5.4",
-    "postcss": "^8.5.25",
-    "tailwindcss": "^3.4.19",
-    "vite": "^5.4.21"
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "vite": "^5.3.4"
   }
 }
