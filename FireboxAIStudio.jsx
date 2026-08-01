@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
 import MonacoEditor from "@monaco-editor/react";
+import JSZip from "jszip";
 import {
   Brain, Server, Palette, Database, ShieldCheck, FlaskConical, Rocket,
   CheckCircle2, AlertTriangle, Loader2, Play, Sparkles, Terminal,
@@ -8,7 +9,7 @@ import {
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
-  Eye, EyeOff, Globe,
+  Eye, EyeOff, Globe, Plus, Github,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -362,6 +363,11 @@ export default function FireboxAIStudio() {
   const [agentVisSteps,   setAgentVisSteps]   = useState({});  // { name: visibleCount }
   const [stepsCollapsed,  setStepsCollapsed]  = useState({});  // { name: bool } true=collapsed
 
+  /* new-project dropdown */
+  const [newProjOpen, setNewProjOpen] = useState(false);
+  const [importing,   setImporting]   = useState(false);
+  const newProjRef = useRef(null);
+
   /* layout state */
   const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"|"projects"
   const [sideOpen,    setSideOpen]    = useState(true);
@@ -424,8 +430,101 @@ export default function FireboxAIStudio() {
     fetch("/api/builds").then(r => r.json()).then(setRecentBuilds).catch(()=>{});
   }, []);
 
+  /* close new-project dropdown on outside click */
+  useEffect(() => {
+    if (!newProjOpen) return;
+    const handler = (e) => {
+      if (newProjRef.current && !newProjRef.current.contains(e.target))
+        setNewProjOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [newProjOpen]);
+
   const updateAgent = useCallback((name, patch) =>
     setAgentStates(prev => prev.map(a => a.name===name ? {...a,...patch} : a)), []);
+
+  /* ── Import: local folder ─────────────────────────────────────────────── */
+  const importFolder = useCallback(async () => {
+    setNewProjOpen(false);
+    if (!window.showDirectoryPicker) {
+      alert("Folder import requires Chrome or Edge. Try uploading a ZIP instead.");
+      return;
+    }
+    let dirHandle;
+    try { dirHandle = await window.showDirectoryPicker(); }
+    catch (err) { if (err.name !== "AbortError") console.error(err); return; }
+
+    setImporting(true);
+    const files = [];
+
+    async function readDir(handle, prefix) {
+      for await (const [name, entry] of handle.entries()) {
+        if (name.startsWith(".") || name === "node_modules") continue;
+        const path = prefix ? `${prefix}/${name}` : name;
+        if (entry.kind === "file") {
+          try {
+            const f = await entry.getFile();
+            const content = await f.text();
+            files.push({ path, content, agent: "Import", language: "" });
+          } catch {}
+        } else {
+          await readDir(entry, path);
+        }
+      }
+    }
+
+    await readDir(dirHandle, dirHandle.name);
+    setAllFiles(files);
+    setOpenTabs([]); setActiveTabPath(null); setTabContents({});
+    if (files.length > 0) {
+      const f = files[0];
+      setOpenTabs([f]); setActiveTabPath(f.path);
+      setTabContents({ [f.path]: f.content });
+    }
+    setActivity("explorer"); setImporting(false);
+  }, []);
+
+  /* ── Import: ZIP file ─────────────────────────────────────────────────── */
+  const importZip = useCallback(() => {
+    setNewProjOpen(false);
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".zip";
+    input.onchange = async () => {
+      if (!input.files?.[0]) return;
+      setImporting(true);
+      try {
+        const zip = await JSZip.loadAsync(input.files[0]);
+        const files = [];
+        for (const [path, entry] of Object.entries(zip.files)) {
+          if (entry.dir) continue;
+          const seg = path.split("/");
+          if (seg.some(s => s.startsWith(".") || s === "node_modules")) continue;
+          try {
+            const content = await entry.async("string");
+            files.push({ path, content, agent: "Import", language: "" });
+          } catch {}
+        }
+        setAllFiles(files);
+        setOpenTabs([]); setActiveTabPath(null); setTabContents({});
+        if (files.length > 0) {
+          const f = files[0];
+          setOpenTabs([f]); setActiveTabPath(f.path);
+          setTabContents({ [f.path]: f.content });
+        }
+        setActivity("explorer");
+      } catch (err) { console.error(err); }
+      setImporting(false);
+    };
+    input.click();
+  }, []);
+
+  /* ── Import: GitHub (open git panel) ─────────────────────────────────── */
+  const importGithub = useCallback(() => {
+    setNewProjOpen(false);
+    setActivity("git");
+    setSideOpen(true);
+  }, []);
 
   /* ── Start build ──────────────────────────────────────────────────────── */
   const startBuild = useCallback(async () => {
@@ -926,7 +1025,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               </>
             )}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 6 : 12, WebkitAppRegion:"no-drag" }}>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 6 : 8, WebkitAppRegion:"no-drag" }}>
             {phase !== "idle" && (
               <button onClick={reset} style={{
                 display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
@@ -936,6 +1035,78 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <RotateCcw size={11}/>{!isMobile && " New"}
               </button>
             )}
+
+            {/* ── New Project button + dropdown ── */}
+            <div ref={newProjRef} style={{ position:"relative" }}>
+              <button
+                onClick={() => setNewProjOpen(p => !p)}
+                disabled={importing}
+                style={{
+                  display:"flex", alignItems:"center", gap:5,
+                  padding: isMobile ? "4px 8px" : "3px 10px",
+                  background: newProjOpen ? VS.accent : "rgba(0,120,212,0.15)",
+                  border:`1px solid ${newProjOpen ? VS.accent : "rgba(0,120,212,0.4)"}`,
+                  color: newProjOpen ? "#fff" : VS.accent,
+                  fontSize:11, borderRadius:5, cursor:"pointer",
+                  fontWeight:500, transition:"all 0.15s",
+                  opacity: importing ? 0.6 : 1,
+                }}
+              >
+                {importing
+                  ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/>{!isMobile && " Importing…"}</>
+                  : <><Plus size={11}/>{!isMobile && " New Project"}</>
+                }
+              </button>
+
+              {newProjOpen && (
+                <div style={{
+                  position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
+                  width:200, background:"#252526",
+                  border:`1px solid ${VS.border}`, borderRadius:8,
+                  boxShadow:"0 8px 32px rgba(0,0,0,0.5)",
+                  overflow:"hidden", animation:"fadeIn 0.12s ease",
+                }}>
+                  {/* Header */}
+                  <div style={{ padding:"8px 12px 6px", fontSize:10, fontWeight:700, color:VS.textMuted, letterSpacing:"0.08em", borderBottom:`1px solid ${VS.border}` }}>
+                    NEW PROJECT
+                  </div>
+
+                  {[
+                    { Icon:FolderOpen, label:"Import Folder",      sub:"Open a local directory", action:importFolder },
+                    { Icon:Upload,     label:"Upload ZIP",          sub:"Extract from .zip file",  action:importZip },
+                    { Icon:Github,     label:"Import from GitHub",  sub:"Browse your repositories",action:importGithub },
+                  ].map(({ Icon, label, sub, action }) => (
+                    <button
+                      key={label}
+                      onClick={action}
+                      style={{
+                        display:"flex", alignItems:"center", gap:10,
+                        width:"100%", padding:"9px 12px",
+                        background:"transparent", border:"none",
+                        cursor:"pointer", textAlign:"left",
+                        transition:"background 0.1s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background="#2A2D2E"}
+                      onMouseLeave={e => e.currentTarget.style.background="transparent"}
+                    >
+                      <div style={{
+                        width:28, height:28, borderRadius:6, flexShrink:0,
+                        background:"rgba(255,255,255,0.05)",
+                        border:`1px solid ${VS.border}`,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                      }}>
+                        <Icon size={13} color={VS.textMuted}/>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:12, color:VS.text, fontWeight:500 }}>{label}</div>
+                        <div style={{ fontSize:10, color:VS.textFaint, marginTop:1 }}>{sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button onClick={() => setHistoryOpen(p=>!p)} style={{
               display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
               background: historyOpen ? "#3D3D3D" : "transparent",
