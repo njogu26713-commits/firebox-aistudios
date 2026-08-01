@@ -1,6 +1,7 @@
 import Groq from "groq-sdk";
 import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
+import { extractFiles } from "../utils/fileParser.js";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -16,36 +17,29 @@ export async function runAgentPipeline(build, res, signal) {
 
     const agentDef = AGENT_DEFS[i];
 
-    // Mark agent as working in DB
     await Build.findOneAndUpdate(
       { _id: build._id, "agents.name": agentDef.name },
-      {
-        $set: {
-          "agents.$.status": "working",
-          "agents.$.startedAt": new Date(),
-        },
-      }
+      { $set: { "agents.$.status": "working", "agents.$.startedAt": new Date() } }
     );
 
     sse(res, "agent-start", { agent: agentDef.name, task: agentDef.task });
 
-    // Build context: description + all prior agent outputs
+    // Build context from description + all prior agent outputs
     const contextLines = [`## App Description\n${build.description}`];
     for (const [name, output] of Object.entries(agentOutputs)) {
       contextLines.push(`\n## ${name} Agent Output\n${output}`);
     }
-    const userMessage = contextLines.join("\n\n");
 
     try {
       const stream = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: agentDef.systemPrompt },
-          { role: "user", content: userMessage },
+          { role: "user",   content: contextLines.join("\n\n") },
         ],
         stream: true,
         max_tokens: 2000,
-        temperature: 0.4,
+        temperature: 0.3,
       });
 
       let fullOutput = "";
@@ -56,48 +50,44 @@ export async function runAgentPipeline(build, res, signal) {
         const token = chunk.choices[0]?.delta?.content || "";
         if (!token) continue;
         fullOutput += token;
-        buffer += token;
-        // Flush buffer every ~30 chars for smooth streaming
+        buffer    += token;
         if (buffer.length >= 30) {
           sse(res, "agent-token", { agent: agentDef.name, token: buffer });
           buffer = "";
         }
       }
-      if (buffer) {
-        sse(res, "agent-token", { agent: agentDef.name, token: buffer });
-      }
+      if (buffer) sse(res, "agent-token", { agent: agentDef.name, token: buffer });
 
       agentOutputs[agentDef.name] = fullOutput;
 
-      // Persist completed output
+      // Extract named files from the output
+      const files = extractFiles(agentDef.name, fullOutput);
+
+      // Persist agent result + files
       await Build.findOneAndUpdate(
         { _id: build._id, "agents.name": agentDef.name },
         {
           $set: {
-            "agents.$.status": "done",
-            "agents.$.output": fullOutput,
+            "agents.$.status":      "done",
+            "agents.$.output":      fullOutput,
             "agents.$.completedAt": new Date(),
           },
         }
       );
 
-      sse(res, "agent-complete", {
-        agent: agentDef.name,
-        output: fullOutput,
-      });
+      if (files.length > 0) {
+        await Build.findByIdAndUpdate(build._id, { $push: { files: { $each: files } } });
+      }
+
+      sse(res, "agent-complete", { agent: agentDef.name, output: fullOutput, files });
+
     } catch (err) {
       console.error(`Agent ${agentDef.name} error:`, err.message);
-
       await Build.findOneAndUpdate(
         { _id: build._id, "agents.name": agentDef.name },
         { $set: { "agents.$.status": "error" } }
       );
-
-      sse(res, "agent-error", {
-        agent: agentDef.name,
-        message: err.message,
-      });
-
+      sse(res, "agent-error", { agent: agentDef.name, message: err.message });
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
       return;
     }
