@@ -351,6 +351,10 @@ export default function FireboxAIStudio() {
   const [errorMsg,    setErrorMsg]    = useState("");
   const [recentBuilds,setRecentBuilds]= useState([]);
 
+  /* chat state */
+  const [chatHistory, setChatHistory] = useState([]);  // [{role:"user"|"system", text:string}]
+  const [chatInput,   setChatInput]   = useState("");
+
   /* editor state */
   const [openTabs,       setOpenTabs]       = useState([]);          // [{path,agent,content,language}]
   const [activeTabPath,  setActiveTabPath]  = useState(null);
@@ -407,6 +411,7 @@ export default function FireboxAIStudio() {
   const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
 
   const terminalRef    = useRef(null);
+  const chatInputRef   = useRef(null);
   const esRef          = useRef(null);
   const streamingRef   = useRef({});
   const editorRef      = useRef(null);
@@ -527,8 +532,9 @@ export default function FireboxAIStudio() {
   }, []);
 
   /* ── Start build ──────────────────────────────────────────────────────── */
-  const startBuild = useCallback(async () => {
-    if (!description.trim()) return;
+  const startBuild = useCallback(async (desc) => {
+    const buildDesc = (desc ?? description).trim();
+    if (!buildDesc) return;
     setPhase("building");
     setErrorMsg("");
     streamingRef.current = {};
@@ -552,7 +558,7 @@ export default function FireboxAIStudio() {
     try {
       const res  = await fetch("/api/build", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description: buildDesc }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
@@ -654,7 +660,18 @@ export default function FireboxAIStudio() {
     });
 
     es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
-  }, [description, updateAgent]);
+  }, [updateAgent]);
+
+  /* ── Send chat message ─────────────────────────────────────────────────── */
+  const sendChatMessage = useCallback(() => {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatHistory(prev => [...prev, { role: "user", text }]);
+    setChatInput("");
+    setTimeout(() => chatInputRef.current?.focus(), 0);
+    setDescription(text);
+    startBuild(text);
+  }, [chatInput, startBuild]);
 
   /* ── Reset ────────────────────────────────────────────────────────────── */
   const reset = () => {
@@ -665,6 +682,7 @@ export default function FireboxAIStudio() {
     setActiveAgent(null); setErrorMsg(""); streamingRef.current = {};
     setActivity("agents");
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
+    setChatHistory([]); setChatInput("");
     Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
       clearInterval(elapsed); steps.forEach(clearTimeout);
     });
@@ -1326,60 +1344,41 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </div>
                   )}
 
+                  {/* ── Scrollable feed ──────────────────────────────────── */}
                   <div ref={terminalRef} style={{ flex:1, overflowY:"auto", padding:"8px 10px" }}>
 
-                    {/* Prompt input */}
-                    <div style={{ marginBottom: phase==="idle" ? 0 : 10 }}>
-                      {phase === "idle" ? (
-                        <>
-                          <div style={{ fontSize:14, fontWeight:600, color:VS.textActive, marginBottom:4, lineHeight:1.4 }}>
-                            Describe your app
-                          </div>
-                          <div style={{ fontSize:12, color:VS.textMuted, marginBottom:10, lineHeight:1.6 }}>
-                            7 AI agents will generate every file — live.
-                          </div>
-                          <textarea
-                            value={description}
-                            onChange={e => setDescription(e.target.value)}
-                            onKeyDown={e => { if (e.key==="Enter" && (e.ctrlKey||e.metaKey)) startBuild(); }}
-                            placeholder="e.g. A task management app with real-time collaboration, user auth, and analytics…"
-                            rows={5}
-                            style={{
-                              width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid rgba(255,255,255,0.1)`,
-                              borderRadius:8, padding:"8px 10px", color:VS.text,
-                              fontSize:12, fontFamily:FONT_MONO, resize:"none", outline:"none",
-                              lineHeight:1.6, transition:"border-color 0.2s",
-                            }}
-                            onFocus={e => (e.target.style.borderColor = VS.accent)}
-                            onBlur={e  => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
-                          />
-                          <button
-                            onClick={startBuild}
-                            disabled={!description.trim()}
-                            className="build-btn"
-                            style={{
-                              display:"flex", alignItems:"center", justifyContent:"center", gap:7,
-                              width:"100%", marginTop:8, padding:"9px",
-                              borderRadius:8, border:"none",
-                              background: description.trim() ? VS.accent : "#3C3C3C",
-                              color:"#fff", fontSize:12, fontFamily:FONT_UI, fontWeight:600,
-                              cursor: description.trim() ? "pointer" : "not-allowed", transition:"all 0.2s",
-                            }}
-                          >
-                            <Play size={12} fill="white"/> Build with AI
-                          </button>
-                          <div style={{ fontSize:11, color:VS.textFaint, textAlign:"center", marginTop:5 }}>Ctrl+Enter to start</div>
-                        </>
-                      ) : (
-                        <div style={{
-                          padding:"8px 12px", borderRadius:8, marginBottom:10,
-                          background:"rgba(0,120,212,0.08)", border:`1px solid rgba(0,120,212,0.2)`,
-                        }}>
-                          <div style={{ fontSize:10, color:VS.accent, fontWeight:600, letterSpacing:"0.08em", marginBottom:3 }}>BUILDING</div>
-                          <div style={{ fontSize:12, color:VS.text, lineHeight:1.5 }}>{description}</div>
+                    {/* Empty-state hint when no messages yet */}
+                    {chatHistory.length === 0 && phase === "idle" && (
+                      <div style={{ padding:"24px 8px 12px", textAlign:"center" }}>
+                        <Sparkles size={22} color={VS.accent} style={{ marginBottom:8, opacity:0.7 }}/>
+                        <div style={{ fontSize:13, fontWeight:600, color:VS.textActive, marginBottom:4 }}>
+                          Describe your app below
                         </div>
-                      )}
-                    </div>
+                        <div style={{ fontSize:11, color:VS.textMuted, lineHeight:1.6 }}>
+                          7 AI agents will generate every file — live.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chat history — user bubbles */}
+                    {chatHistory.map((msg, i) => (
+                      <div key={i} style={{
+                        display:"flex", flexDirection:"column", alignItems:"flex-end",
+                        marginBottom:10, animation:"fadeIn 0.2s ease",
+                      }}>
+                        <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingRight:2 }}>
+                          💬 You
+                        </div>
+                        <div style={{
+                          maxWidth:"90%", padding:"8px 12px", borderRadius:"10px 10px 2px 10px",
+                          background: VS.accent, color:"#fff",
+                          fontSize:12, lineHeight:1.5, fontFamily:FONT_MONO,
+                          wordBreak:"break-word",
+                        }}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
 
                     {/* Activity feed — one card per started agent */}
                     {AGENT_META.map(({ name, Icon, color }) => {
@@ -1508,10 +1507,79 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <CheckCircle2 size={14} color={VS.success}/>
                         <div>
                           <div style={{ fontSize:12, fontWeight:600, color:VS.success }}>Build complete</div>
-                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>All {AGENT_META.length} agents finished — files are in the Explorer.</div>
+                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>All {AGENT_META.length} agents finished — ask a follow-up below.</div>
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* ── Persistent chat input bar ─────────────────────── */}
+                  <div style={{
+                    flexShrink:0, padding:"8px 10px 10px",
+                    borderTop:`1px solid rgba(255,255,255,0.07)`,
+                    background: VS.sideBar,
+                  }}>
+                    <div style={{
+                      display:"flex", alignItems:"flex-end", gap:6,
+                      background:"rgba(255,255,255,0.05)",
+                      border:`1px solid rgba(255,255,255,0.1)`,
+                      borderRadius:10, padding:"6px 8px 6px 10px",
+                      transition:"border-color 0.2s",
+                    }}
+                    onFocus={e => { const el = e.currentTarget; el.style.borderColor = VS.accent; }}
+                    onBlur={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                    >
+                      <textarea
+                        ref={chatInputRef}
+                        value={chatInput}
+                        onChange={e => {
+                          setChatInput(e.target.value);
+                          e.target.style.height = "auto";
+                          e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            if (phase !== "building") sendChatMessage();
+                          }
+                        }}
+                        placeholder={
+                          phase === "building"
+                            ? "Agents are working…"
+                            : phase === "complete"
+                            ? "Ask a follow-up — Add login page, Connect MongoDB…"
+                            : "Message Firebox AI…"
+                        }
+                        disabled={phase === "building"}
+                        rows={1}
+                        style={{
+                          flex:1, background:"transparent", border:"none", outline:"none",
+                          color: phase === "building" ? VS.textFaint : VS.text,
+                          fontSize:12, fontFamily:FONT_MONO, resize:"none",
+                          lineHeight:1.6, minHeight:20, maxHeight:120,
+                          cursor: phase === "building" ? "not-allowed" : "text",
+                        }}
+                      />
+                      <button
+                        onClick={sendChatMessage}
+                        disabled={!chatInput.trim() || phase === "building"}
+                        title="Send (Enter)"
+                        style={{
+                          flexShrink:0, width:28, height:28,
+                          borderRadius:7, border:"none",
+                          background: chatInput.trim() && phase !== "building" ? VS.accent : "rgba(255,255,255,0.08)",
+                          color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
+                          transition:"all 0.15s",
+                        }}
+                      >
+                        <Send size={13}/>
+                      </button>
+                    </div>
+                    <div style={{ fontSize:10, color:VS.textFaint, textAlign:"center", marginTop:4 }}>
+                      Enter to send · Shift+Enter for new line
+                    </div>
                   </div>
                 </>
               )}
