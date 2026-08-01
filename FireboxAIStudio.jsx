@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
 import MonacoEditor from "@monaco-editor/react";
 import {
   Brain, Server, Palette, Database, ShieldCheck, FlaskConical, Rocket,
@@ -941,19 +942,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
           })()}
 
           {/* ── Side panel ────────────────────────────────────────────── */}
-          {sideOpen && (
-            <div style={{
-              ...(isMobile ? {
-                position:"absolute", top:0, left:0, right:0,
-                bottom:52, zIndex:100,
-              } : {
-                width:260, flexShrink:0,
-              }),
-              background:VS.sideBar,
-              borderRight: isMobile ? "none" : `1px solid ${VS.border}`,
-              borderBottom: isMobile ? `1px solid ${VS.border}` : "none",
-              display:"flex", flexDirection:"column", overflow:"hidden",
-            }}>
+          {/* ── Side panel + Editor: mobile keeps absolute overlay; desktop uses PanelGroup ── */}
+          {(() => {
+            /* side panel inner content — shared by mobile overlay & desktop Panel */
+            const sideContent = (
+              <React.Fragment>
 
               {/* Panel: Explorer */}
               {activity === "explorer" && (
@@ -1692,11 +1685,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   </div>
                 </>
               )}
-            </div>
-          )}
+              </React.Fragment>
+            );
 
-          {/* ── Editor area ────────────────────────────────────────────── */}
-          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom: isMobile ? 52 : 0 }}>
+            /* editor inner content — shared by mobile & desktop Panel */
+            const editorContent = (
+              <React.Fragment>
 
             {/* Tab bar */}
             <div style={{
@@ -1968,7 +1962,76 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               )}
 
             </div>{/* end split wrapper */}
-          </div>
+              </React.Fragment>
+            );
+
+            /* ── Conditional layout ── */
+            if (isMobile) {
+              return (
+                <>
+                  {sideOpen && (
+                    <div style={{
+                      position:"absolute", top:0, left:0, right:0,
+                      bottom:52, zIndex:100,
+                      background:VS.sideBar,
+                      borderBottom:`1px solid ${VS.border}`,
+                      display:"flex", flexDirection:"column", overflow:"hidden",
+                    }}>
+                      {sideContent}
+                    </div>
+                  )}
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom:52 }}>
+                    {editorContent}
+                  </div>
+                </>
+              );
+            }
+
+            /* Desktop: resizable PanelGroup */
+            return (
+              <PanelGroup
+                orientation="horizontal"
+                style={{ flex:1, overflow:"hidden" }}
+              >
+                {sideOpen && (
+                  <>
+                    <Panel
+                      defaultSize="20%"
+                      minSize="15%"
+                      maxSize="50%"
+                      style={{
+                        background: VS.sideBar,
+                        borderRight: `1px solid ${VS.border}`,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {sideContent}
+                    </Panel>
+                    <PanelResizeHandle
+                      style={{
+                        width: 4,
+                        background: VS.border,
+                        cursor: "col-resize",
+                        flexShrink: 0,
+                        transition: "background 0.15s",
+                      }}
+                    />
+                  </>
+                )}
+                <Panel
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  {editorContent}
+                </Panel>
+              </PanelGroup>
+            );
+          })()}
         </div>
 
         {/* ══ Status bar ══════════════════════════════════════════════════ */}
