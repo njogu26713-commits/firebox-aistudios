@@ -6,6 +6,7 @@ import {
   Copy, Check, ChevronRight, ChevronDown, RotateCcw, X, Search,
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Zap, Code2, Package,
+  Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -290,6 +291,23 @@ export default function FireboxAIStudio() {
   const [projectFilesMap,  setProjectFilesMap]  = useState({});   // { buildId: files[] }
   const [loadingProjectId, setLoadingProjectId] = useState(null);
 
+  /* git panel state */
+  const [gitRepoUrl,    setGitRepoUrl]    = useState("");
+  const [gitToken,      setGitToken]      = useState("");
+  const [gitTokenInput, setGitTokenInput] = useState("");
+  const [gitRepo,       setGitRepo]       = useState(null);   // { owner, repo, branch, files, fullName, htmlUrl }
+  const [gitConnecting, setGitConnecting] = useState(false);
+  const [gitError,      setGitError]      = useState("");
+  const [gitFileShas,   setGitFileShas]   = useState({});     // { path: sha }
+  const [gitLoadingFile,setGitLoadingFile]= useState(null);
+  const [gitExpandedDirs,setGitExpandedDirs] = useState(new Set());
+  const [gitAiOpen,     setGitAiOpen]     = useState(false);
+  const [gitInstruction,setGitInstruction]= useState("");
+  const [gitAiEditing,  setGitAiEditing]  = useState(false);
+  const [gitPushing,    setGitPushing]    = useState(false);
+  const [gitPushMsg,    setGitPushMsg]    = useState("");
+  const [gitPushResult, setGitPushResult] = useState(null);  // { commitUrl } | { error }
+
   const terminalRef  = useRef(null);
   const esRef        = useRef(null);
   const streamingRef = useRef({});
@@ -443,6 +461,116 @@ export default function FireboxAIStudio() {
       const s = new Set(prev);
       s.has(key) ? s.delete(key) : s.add(key);
       return s;
+    }), []);
+
+  /* ── Git: connect repo ───────────────────────────────────────────────────── */
+  const connectGitRepo = useCallback(async () => {
+    if (!gitRepoUrl.trim() || !gitTokenInput.trim()) return;
+    setGitConnecting(true); setGitError(""); setGitRepo(null);
+    try {
+      const res  = await fetch("/api/git/connect", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ repoUrl: gitRepoUrl, token: gitTokenInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGitRepo(data);
+      setGitToken(gitTokenInput);
+      setGitFileShas({});
+      setGitExpandedDirs(new Set());
+      setGitPushResult(null);
+    } catch (err) { setGitError(err.message); }
+    setGitConnecting(false);
+  }, [gitRepoUrl, gitTokenInput]);
+
+  /* ── Git: open a file from the repo ─────────────────────────────────────── */
+  const openGitFile = useCallback(async (filePath) => {
+    if (!gitRepo || !gitToken) return;
+    setGitLoadingFile(filePath);
+    try {
+      const res  = await fetch("/api/git/file", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ owner: gitRepo.owner, repo: gitRepo.repo, path: filePath, token: gitToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGitFileShas(prev => ({ ...prev, [filePath]: data.sha }));
+      openFile({ path: filePath, content: data.content, agent: "Git", language: "" });
+    } catch (err) { setGitError(err.message); }
+    setGitLoadingFile(null);
+  }, [gitRepo, gitToken, openFile]);
+
+  /* ── Git: AI edit active file ────────────────────────────────────────────── */
+  const runGitAiEdit = useCallback(async () => {
+    if (!gitInstruction.trim() || !activeTabPath) return;
+    const fileContent = tabContents[activeTabPath] ?? openTabs.find(t => t.path === activeTabPath)?.content ?? "";
+    if (!fileContent) return;
+    setGitAiEditing(true); setGitError("");
+    try {
+      const res = await fetch("/api/git/ai-edit", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ content: fileContent, path: activeTabPath, instruction: gitInstruction }),
+      });
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = "";
+      let   newContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
+        for (const part of parts) {
+          const line = part.replace(/^data: /, "").trim();
+          if (!line) continue;
+          try {
+            const evt = JSON.parse(line);
+            if (evt.token) {
+              newContent += evt.token;
+              setTabContents(prev => ({ ...prev, [activeTabPath]: newContent }));
+            }
+            if (evt.done && evt.content) {
+              setTabContents(prev => ({ ...prev, [activeTabPath]: evt.content }));
+            }
+            if (evt.error) setGitError(evt.error);
+          } catch {}
+        }
+      }
+      setGitInstruction("");
+      setGitAiOpen(false);
+    } catch (err) { setGitError(err.message); }
+    setGitAiEditing(false);
+  }, [gitInstruction, activeTabPath, tabContents, openTabs]);
+
+  /* ── Git: push active file ───────────────────────────────────────────────── */
+  const pushGitFile = useCallback(async () => {
+    if (!gitRepo || !gitToken || !activeTabPath) return;
+    setGitPushing(true); setGitError(""); setGitPushResult(null);
+    try {
+      const content = tabContents[activeTabPath] ?? openTabs.find(t => t.path === activeTabPath)?.content ?? "";
+      const sha     = gitFileShas[activeTabPath];
+      const res  = await fetch("/api/git/push", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          owner: gitRepo.owner, repo: gitRepo.repo, branch: gitRepo.branch,
+          path: activeTabPath, content, sha,
+          token: gitToken,
+          message: gitPushMsg.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGitFileShas(prev => ({ ...prev, [activeTabPath]: undefined }));
+      setGitPushResult({ commitUrl: data.commitUrl });
+      setGitPushMsg("");
+    } catch (err) { setGitError(err.message); setGitPushResult({ error: err.message }); }
+    setGitPushing(false);
+  }, [gitRepo, gitToken, activeTabPath, openTabs, tabContents, gitFileShas, gitPushMsg]);
+
+  const toggleGitDir = useCallback((key) =>
+    setGitExpandedDirs(prev => {
+      const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
     }), []);
 
   /* ── Load files for a past project ──────────────────────────────────────── */
@@ -944,14 +1072,269 @@ export default function FireboxAIStudio() {
                 </div>
               )}
 
-              {/* Panel: Git (placeholder) */}
+              {/* Panel: Git */}
               {activity === "git" && (
-                <div style={{ padding:"10px 12px" }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", marginBottom:10 }}>SOURCE CONTROL</div>
-                  <div style={{ fontSize:12, color:VS.textFaint }}>
-                    {allFiles.length > 0 ? `${allFiles.length} generated files` : "No files yet."}
+                <>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span>SOURCE CONTROL</span>
+                    {gitRepo && (
+                      <button onClick={() => { setGitRepo(null); setGitToken(""); setGitFileShas({}); setGitError(""); setGitPushResult(null); }}
+                        style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:2 }} title="Disconnect">
+                        <X size={12}/>
+                      </button>
+                    )}
                   </div>
-                </div>
+
+                  <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column" }}>
+
+                    {/* ── Connect form ── */}
+                    {!gitRepo && (
+                      <div style={{ padding:"10px 10px 0" }}>
+                        <div style={{ fontSize:12, color:VS.textMuted, marginBottom:10, lineHeight:1.6 }}>
+                          Connect a GitHub repo to browse, AI-edit, and push files.
+                        </div>
+
+                        {/* Repo URL */}
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                          <Link size={12} color={VS.textMuted} style={{ flexShrink:0 }}/>
+                          <input
+                            value={gitRepoUrl}
+                            onChange={e => setGitRepoUrl(e.target.value)}
+                            onKeyDown={e => e.key==="Enter" && connectGitRepo()}
+                            placeholder="github.com/owner/repo"
+                            style={{
+                              flex:1, background:"#3C3C3C", border:`1px solid ${VS.border}`,
+                              borderRadius:4, padding:"5px 8px", color:VS.text,
+                              fontSize:12, outline:"none", fontFamily:FONT_MONO,
+                            }}
+                            onFocus={e => (e.target.style.borderColor=VS.accent)}
+                            onBlur={e  => (e.target.style.borderColor=VS.border)}
+                          />
+                        </div>
+
+                        {/* Token */}
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+                          <Key size={12} color={VS.textMuted} style={{ flexShrink:0 }}/>
+                          <input
+                            type="password"
+                            value={gitTokenInput}
+                            onChange={e => setGitTokenInput(e.target.value)}
+                            onKeyDown={e => e.key==="Enter" && connectGitRepo()}
+                            placeholder="GitHub access token"
+                            style={{
+                              flex:1, background:"#3C3C3C", border:`1px solid ${VS.border}`,
+                              borderRadius:4, padding:"5px 8px", color:VS.text,
+                              fontSize:12, outline:"none", fontFamily:FONT_MONO,
+                            }}
+                            onFocus={e => (e.target.style.borderColor=VS.accent)}
+                            onBlur={e  => (e.target.style.borderColor=VS.border)}
+                          />
+                        </div>
+
+                        <button
+                          onClick={connectGitRepo}
+                          disabled={gitConnecting || !gitRepoUrl.trim() || !gitTokenInput.trim()}
+                          className="build-btn"
+                          style={{
+                            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                            width:"100%", padding:"7px", borderRadius:4, border:"none",
+                            background: gitRepoUrl.trim() && gitTokenInput.trim() ? VS.accent : "#3C3C3C",
+                            color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer",
+                          }}
+                        >
+                          {gitConnecting
+                            ? <><Loader2 size={12} style={{ animation:"spin 1s linear infinite" }}/> Connecting…</>
+                            : <><GitBranch size={12}/> Connect Repository</>}
+                        </button>
+
+                        {gitError && (
+                          <div style={{ marginTop:8, padding:"6px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6 }}>
+                            <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
+                            <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{gitError}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Connected: repo info + file tree ── */}
+                    {gitRepo && (() => {
+                      const tree = buildTree(gitRepo.files);
+                      return (
+                        <>
+                          {/* Repo header */}
+                          <div style={{ padding:"6px 10px 4px", borderBottom:`1px solid ${VS.border}`, flexShrink:0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <GitBranch size={12} color={VS.accent}/>
+                              <span style={{ fontSize:12, color:VS.textActive, fontWeight:600, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {gitRepo.fullName}
+                              </span>
+                              <a href={gitRepo.htmlUrl} target="_blank" rel="noreferrer"
+                                style={{ color:VS.textMuted, display:"flex", alignItems:"center" }} title="Open on GitHub">
+                                <ExternalLink size={11}/>
+                              </a>
+                            </div>
+                            <div style={{ fontSize:10, color:VS.textMuted, marginTop:2 }}>
+                              branch: <span style={{ color:VS.success }}>{gitRepo.branch}</span>
+                              {" · "}{gitRepo.files.length} files
+                            </div>
+                          </div>
+
+                          {/* File tree */}
+                          <div style={{ flex:1, overflowY:"auto" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", fontSize:12, color:VS.text, fontWeight:600 }}>
+                              <ChevronDown size={13} color={VS.textMuted}/>
+                              <FolderOpen size={13} color="#DCB67A"/>
+                              <span>{gitRepo.repo}</span>
+                            </div>
+                            <TreeNode
+                              name={gitRepo.repo}
+                              node={tree}
+                              depth={1}
+                              onOpenFile={(f) => openGitFile(f.path)}
+                              activeFilePath={activeTabPath}
+                              expandedDirs={gitExpandedDirs}
+                              toggleDir={toggleGitDir}
+                            />
+                            {gitLoadingFile && (
+                              <div style={{ padding:"4px 10px", display:"flex", alignItems:"center", gap:6 }}>
+                                <Loader2 size={11} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                                <span style={{ fontSize:11, color:VS.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                  {gitLoadingFile.split("/").pop()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── Bottom toolbar: AI edit + push ── */}
+                          <div style={{ borderTop:`1px solid ${VS.border}`, flexShrink:0, padding:"8px 8px 6px" }}>
+
+                            {/* Error */}
+                            {gitError && (
+                              <div style={{ marginBottom:6, padding:"5px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6, alignItems:"flex-start" }}>
+                                <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
+                                <span style={{ fontSize:11, color:VS.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
+                                <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0, flexShrink:0 }}>
+                                  <X size={10}/>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Push result */}
+                            {gitPushResult && !gitPushResult.error && (
+                              <div style={{ marginBottom:6, padding:"5px 8px", borderRadius:4, background:"rgba(78,201,148,0.08)", border:`1px solid rgba(78,201,148,0.25)`, display:"flex", gap:6, alignItems:"center" }}>
+                                <CheckCircle2 size={11} color={VS.success}/>
+                                <span style={{ fontSize:11, color:VS.success, flex:1 }}>Pushed!</span>
+                                {gitPushResult.commitUrl && (
+                                  <a href={gitPushResult.commitUrl} target="_blank" rel="noreferrer" style={{ color:VS.success }}>
+                                    <ExternalLink size={11}/>
+                                  </a>
+                                )}
+                                <button onClick={() => setGitPushResult(null)} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}>
+                                  <X size={10}/>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* AI Edit section */}
+                            {gitAiOpen && (
+                              <div style={{ marginBottom:6 }}>
+                                <textarea
+                                  value={gitInstruction}
+                                  onChange={e => setGitInstruction(e.target.value)}
+                                  onKeyDown={e => { if (e.key==="Enter" && (e.ctrlKey||e.metaKey)) runGitAiEdit(); }}
+                                  placeholder={`Describe what to change in ${activeTabPath?.split("/").pop() || "this file"}…`}
+                                  rows={3}
+                                  style={{
+                                    width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
+                                    borderRadius:4, padding:"6px 8px", color:VS.text,
+                                    fontSize:11, fontFamily:FONT_MONO, resize:"none", outline:"none",
+                                    lineHeight:1.6,
+                                  }}
+                                  onFocus={e => (e.target.style.borderColor=VS.accent)}
+                                  onBlur={e  => (e.target.style.borderColor=VS.border)}
+                                  autoFocus
+                                />
+                                <div style={{ display:"flex", gap:5, marginTop:4 }}>
+                                  <button
+                                    onClick={runGitAiEdit}
+                                    disabled={gitAiEditing || !gitInstruction.trim() || !activeTabPath}
+                                    style={{
+                                      flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                      padding:"5px", borderRadius:4, border:"none",
+                                      background: gitInstruction.trim() && activeTabPath ? VS.accent : "#3C3C3C",
+                                      color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer",
+                                    }}
+                                  >
+                                    {gitAiEditing
+                                      ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Editing…</>
+                                      : <><Sparkles size={11}/> Apply</>}
+                                  </button>
+                                  <button onClick={() => { setGitAiOpen(false); setGitInstruction(""); }}
+                                    style={{ padding:"5px 8px", borderRadius:4, border:`1px solid ${VS.border}`, background:"transparent", color:VS.textMuted, fontSize:11, cursor:"pointer" }}>
+                                    Cancel
+                                  </button>
+                                </div>
+                                <div style={{ fontSize:10, color:VS.textFaint, marginTop:3 }}>Ctrl+Enter to apply</div>
+                              </div>
+                            )}
+
+                            {/* Commit message (shown when pushing) */}
+                            {!gitAiOpen && (
+                              <input
+                                value={gitPushMsg}
+                                onChange={e => setGitPushMsg(e.target.value)}
+                                placeholder="Commit message (optional)"
+                                style={{
+                                  width:"100%", marginBottom:6, background:"#3C3C3C",
+                                  border:`1px solid ${VS.border}`, borderRadius:4,
+                                  padding:"5px 8px", color:VS.text, fontSize:11,
+                                  outline:"none", fontFamily:FONT_UI,
+                                }}
+                                onFocus={e => (e.target.style.borderColor=VS.accent)}
+                                onBlur={e  => (e.target.style.borderColor=VS.border)}
+                              />
+                            )}
+
+                            {/* Action buttons */}
+                            <div style={{ display:"flex", gap:5 }}>
+                              <button
+                                onClick={() => { setGitAiOpen(p => !p); setGitError(""); }}
+                                disabled={!activeTabPath}
+                                title={activeTabPath ? "AI-edit current file" : "Open a file first"}
+                                style={{
+                                  flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                  padding:"6px", borderRadius:4, border:`1px solid ${VS.border}`,
+                                  background: gitAiOpen ? "#3C3C3C" : "transparent",
+                                  color: activeTabPath ? VS.text : VS.textFaint,
+                                  fontSize:11, fontWeight:500, cursor: activeTabPath ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                <Sparkles size={11} color={activeTabPath ? VS.agentColors.Frontend : VS.textFaint}/>
+                                AI Edit
+                              </button>
+                              <button
+                                onClick={pushGitFile}
+                                disabled={gitPushing || !activeTabPath}
+                                title={activeTabPath ? `Push ${activeTabPath} to GitHub` : "Open a file first"}
+                                style={{
+                                  flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                  padding:"6px", borderRadius:4, border:"none",
+                                  background: activeTabPath && !gitPushing ? "#238636" : "#3C3C3C",
+                                  color:"#fff", fontSize:11, fontWeight:600,
+                                  cursor: activeTabPath && !gitPushing ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                {gitPushing
+                                  ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Pushing…</>
+                                  : <><Upload size={11}/> Push</>}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
               )}
 
               {/* Panel: Projects */}

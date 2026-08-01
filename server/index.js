@@ -7,12 +7,14 @@ import { connectDB } from "./db.js";
 import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
+import gitRouter from "./routes/git.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use("/api/git", gitRouter);
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", async (req, res) => {
