@@ -1,113 +1,43 @@
 # Firebox AI Studio
 
-A full-stack AI app builder: describe an app, and 7 real AI agents (powered by Groq's LLM API) generate every layer live — architecture, backend, frontend, database, security, tests, and deployment configs. Results are streamed in real-time and saved to MongoDB.
+A VS Code-style AI coding assistant that orchestrates 7 specialized agents (Architect, Backend, Frontend, Database, Security, QA, Deployment) to generate project files live, with a Monaco code editor and GitHub integration.
+
+## Running the project
+
+Two workflows must both be running:
+- **Start application** — Vite dev server on port 5000 (`npm run dev`)
+- **Start Backend** — Express API server on port 3001 (`npm run server`)
+
+## Required environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `GROQ_API_KEY` | Groq AI API key (free at console.groq.com). Required for AI agent features. |
+| `MONGODB_URI` | MongoDB Atlas connection string. Required for builds, history, and Git token storage. |
+
+Without these set, the app loads but all AI/build/history features return 503 errors.
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Frontend | React 18 + Vite (port 5000) |
-| Backend | Node.js + Express (port 3001) |
-| Database | MongoDB 7 via Mongoose |
-| AI | Groq API (`llama-3.3-70b-versatile`) |
-| Realtime | Server-Sent Events (SSE) |
-| Styling | Tailwind CSS + inline design tokens |
+- **Frontend**: React 18, Vite, Tailwind CSS, Monaco Editor, lucide-react
+- **Backend**: Express, Groq SDK (llama-3.3-70b-versatile), Mongoose + MongoDB
 
-## Architecture
+## How AI editing works
 
-```
-Browser
-  ├── Left column  — prompt input + live agent pipeline status
-  └── Right column — streaming code viewer (tabbed per agent)
-        │
-        │ SSE  /api/build/:id/events
-        ▼
-Express (port 3001)
-  ├── POST /api/build         — create build, return ID
-  ├── GET  /api/build/:id/events — SSE stream of agent events
-  ├── GET  /api/build/:id    — fetch completed build
-  └── GET  /api/builds       — recent builds list
-        │
-        ├── Groq API  (7 sequential agents, streaming tokens)
-        └── MongoDB   (persist builds + agent outputs)
-```
+When a build already exists, the chat input switches to **edit mode** — the AI uses a targeted search/replace diff format (Aider-style) to change only the specific lines needed, rather than regenerating entire files. The `POST /api/edit-files` endpoint handles this.
 
-## Project Structure
+The `POST /api/git/ai-edit` endpoint (used for GitHub repo files) also uses the same search/replace approach.
 
-```
-FireboxAIStudio.jsx     — Main React component (two-column UI)
-server/
-  index.js              — Express server entry point
-  db.js                 — MongoDB connection
-  models/Build.js       — Mongoose Build + Agent schema
-  agents/
-    config.js           — Agent definitions (name, system prompts)
-    runner.js           — Pipeline runner with Groq streaming
-src/
-  main.jsx              — React entry
-  index.css             — Tailwind directives
-vite.config.js          — Vite + /api proxy to port 3001
-```
+## Key files
 
-## Running Locally (Replit)
+- `FireboxAIStudio.jsx` — entire React UI (single component, ~2900 lines)
+- `server/index.js` — Express routes including `/api/build` and `/api/edit-files`
+- `server/agents/config.js` — 7 agent definitions and system prompts
+- `server/agents/runner.js` — SSE-streaming agent pipeline
+- `server/routes/git.js` — GitHub connect/file/AI-edit/push routes
+- `server/utils/editParser.js` — search/replace diff parser and applicator
+- `server/utils/fileParser.js` — `### FILE:` block extractor for build output
 
-Two workflows run concurrently:
+## User preferences
 
-```bash
-npm run dev      # Vite frontend on :5000
-npm run server   # Express backend on :3001
-```
-
-Vite proxies all `/api/*` requests to `http://localhost:3001`.
-
-## Known Gotcha — Replit proxy in lockfile
-
-`package-lock.json` regenerated on Replit will bake in `package-firewall.replit.local` as the registry for every package. Railway (and any external CI) cannot reach that host and the build fails. If you ever run `npm install` on Replit and then push, regenerate the lockfile with the public registry first:
-
-```bash
-rm package-lock.json && npm install --registry https://registry.npmjs.org
-```
-
-## Deploying to Railway
-
-Single service — Express serves the built frontend + API:
-
-1. Push to GitHub
-2. Create a new Railway project → "Deploy from GitHub repo"
-3. Railway auto-detects `railway.toml` and runs:
-   - **Build**: `npm run build` (Vite → `dist/`)
-   - **Start**: `npm start` (`NODE_ENV=production node server/index.js`)
-4. Set environment variables in Railway dashboard (see Required Secrets)
-5. In production, Express serves `dist/index.html` for all non-`/api` routes
-
-## Required Secrets
-
-| Variable | Description |
-|---|---|
-| `GROQ_API_KEY` | Single Groq key — from console.groq.com |
-| `GROQ_API_KEYS` | **Preferred**: comma-separated list of Groq keys (`key1,key2,key3`). Round-robins across keys and auto-retries on rate limits. Takes precedence over `GROQ_API_KEY`. |
-| `MONGODB_URI` | MongoDB Atlas connection string |
-
-Copy `.env.example` to `.env` for local development.
-
-## The 7 Agents
-
-Each agent receives the user's description **plus all previous agents' outputs** as context, then generates its piece using Groq streaming:
-
-1. **Architect** — Tech stack, system design, API surface, folder structure
-2. **Backend** — Express routes, middleware, business logic
-3. **Frontend** — React components, hooks, Tailwind UI
-4. **Database** — Mongoose schemas, indexes, seed data, queries
-5. **Security** — JWT auth middleware, validation, rate limiting, vulnerability audit
-6. **QA** — Jest unit tests, Supertest integration tests, edge cases
-7. **Deployment** — Dockerfile, docker-compose, GitHub Actions CI/CD
-
-## Customizing Agents
-
-Edit `server/agents/config.js` to change agent names, system prompts, or add/remove agents. The `AGENT_META` array in `FireboxAIStudio.jsx` mirrors this list for the UI — keep them in sync.
-
-## User Preferences
-
-- Keep the existing dark color scheme (tokens defined at top of `FireboxAIStudio.jsx`)
-- Two-column layout: agent pipeline left, code viewer right
-- Single self-contained frontend component pattern
+<!-- Add user preferences here as they are expressed -->

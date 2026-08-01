@@ -341,15 +341,22 @@ function defineFireboxTheme(monaco) {
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function FireboxAIStudio() {
   /* build state */
-  const [phase,       setPhase]       = useState("idle");
-  const [description, setDescription] = useState("");
-  const [agentStates, setAgentStates] = useState(
+  const [phase,          setPhase]          = useState("idle");
+  const [description,    setDescription]    = useState("");
+  const [agentStates,    setAgentStates]    = useState(
     AGENT_META.map((a) => ({ name:a.name, status:"idle", streaming:"" }))
   );
-  const [activeAgent, setActiveAgent] = useState(null);
-  const [allFiles,    setAllFiles]    = useState([]);
-  const [errorMsg,    setErrorMsg]    = useState("");
-  const [recentBuilds,setRecentBuilds]= useState([]);
+  const [activeAgent,    setActiveAgent]    = useState(null);
+  const [allFiles,       setAllFiles]       = useState([]);
+  const [errorMsg,       setErrorMsg]       = useState("");
+  const [recentBuilds,   setRecentBuilds]   = useState([]);
+  const [currentBuildId, setCurrentBuildId] = useState(null);
+
+  /* edit state */
+  const [editingFiles,     setEditingFiles]     = useState(false);
+  const [editStream,       setEditStream]       = useState("");
+  const [editChangedFiles, setEditChangedFiles] = useState([]); // [{path, applied, failed, isNew}]
+  const [editError,        setEditError]        = useState("");
 
   /* chat state */
   const [chatHistory, setChatHistory] = useState([]);  // [{role:"user"|"system", text:string}]
@@ -487,6 +494,7 @@ export default function FireboxAIStudio() {
       setOpenTabs([f]); setActiveTabPath(f.path);
       setTabContents({ [f.path]: f.content });
     }
+    setCurrentBuildId(null); // local import — no server build to edit against
     setActivity("explorer"); setImporting(false);
   }, []);
 
@@ -517,6 +525,7 @@ export default function FireboxAIStudio() {
           setOpenTabs([f]); setActiveTabPath(f.path);
           setTabContents({ [f.path]: f.content });
         }
+        setCurrentBuildId(null); // local import — no server build to edit against
         setActivity("explorer");
       } catch (err) { console.error(err); }
       setImporting(false);
@@ -563,6 +572,7 @@ export default function FireboxAIStudio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
       buildId = data.buildId;
+      setCurrentBuildId(data.buildId);
     } catch (err) { setPhase("error"); setErrorMsg(err.message); return; }
 
     const es = new EventSource(`/api/build/${buildId}/events`);
@@ -662,18 +672,119 @@ export default function FireboxAIStudio() {
     es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
   }, [updateAgent]);
 
+  /* ── Edit existing build files with targeted search/replace ───────────── */
+  const startEditFiles = useCallback(async (instruction) => {
+    if (!currentBuildId || !instruction.trim()) return;
+    setEditingFiles(true);
+    setEditStream("");
+    setEditChangedFiles([]);
+    setEditError("");
+    setActivity("agents");
+    setSideOpen(true);
+
+    try {
+      const res = await fetch("/api/edit-files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildId: currentBuildId, instruction }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop();
+
+        for (const part of parts) {
+          // SSE lines start with "event: X\ndata: {...}" or just "data: {...}"
+          const eventMatch = part.match(/^event:\s*(\S+)\ndata:\s*(.+)$/s);
+          const dataMatch  = !eventMatch && part.match(/^data:\s*(.+)$/s);
+          let   eventName  = eventMatch ? eventMatch[1] : null;
+          let   rawData    = eventMatch ? eventMatch[2] : dataMatch ? dataMatch[1] : null;
+          if (!rawData) continue;
+
+          let evt;
+          try { evt = JSON.parse(rawData); } catch { continue; }
+
+          if (eventName === "edit-token" || evt.token) {
+            setEditStream(prev => prev + (evt.token || ""));
+          } else if (eventName === "edit-file-updated" || evt.path) {
+            const { path: filePath, content: newContent, isNew, applied, failed } = evt;
+            // Surface partial failures as an edit error
+            if (typeof failed === "number" && failed > 0) {
+              const total = (applied || 0) + failed;
+              setEditError(prev => {
+                const msg = `${failed}/${total} change${total !== 1 ? "s" : ""} in ${filePath.split("/").pop()} could not be applied — SEARCH text didn't match.`;
+                return prev ? `${prev}\n${msg}` : msg;
+              });
+            }
+            // Only update the file in the editor if at least one hunk applied (or it's a new file)
+            const shouldUpdate = isNew || applied === undefined || applied > 0;
+            if (shouldUpdate) {
+              setAllFiles(prev => {
+                const idx = prev.findIndex(f => f.path === filePath);
+                if (idx !== -1) {
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], content: newContent };
+                  return next;
+                }
+                // New file
+                return [...prev, { agent: "Editor", path: filePath, content: newContent, language: filePath.split(".").pop() || "plaintext" }];
+              });
+              setTabContents(prev => {
+                if (prev[filePath] !== undefined) return { ...prev, [filePath]: newContent };
+                return prev;
+              });
+              if (isNew) {
+                setExpandedDirs(prev => {
+                  const s = new Set(prev);
+                  const parts = filePath.split("/");
+                  for (let i = 0; i < parts.length - 1; i++) s.add(`${i}:${parts[i]}`);
+                  return s;
+                });
+              }
+            }
+          } else if (eventName === "edit-complete" || evt.filesChanged !== undefined) {
+            setEditChangedFiles(evt.files || []);
+          } else if (eventName === "edit-error" || evt.message) {
+            setEditError(evt.message || "Edit failed");
+          }
+        }
+      }
+    } catch (err) {
+      setEditError(err.message);
+    }
+    setEditingFiles(false);
+  }, [currentBuildId]);
+
   /* ── Send chat message ─────────────────────────────────────────────────── */
   const sendChatMessage = useCallback(() => {
     const text = chatInput.trim();
     if (!text) return;
     setChatHistory(prev => [...prev, { role: "user", text }]);
     setChatInput("");
-    setActivity("agents");
-    setSideOpen(true);
     setTimeout(() => chatInputRef.current?.focus(), 0);
-    setDescription(text);
-    startBuild(text);
-  }, [chatInput, startBuild]);
+
+    // If we already have a build with files, use targeted edit instead of rebuild
+    if (currentBuildId && allFiles.length > 0) {
+      startEditFiles(text);
+    } else {
+      setActivity("agents");
+      setSideOpen(true);
+      setDescription(text);
+      startBuild(text);
+    }
+  }, [chatInput, startBuild, startEditFiles, currentBuildId, allFiles]);
 
   /* ── Reset ────────────────────────────────────────────────────────────── */
   const reset = () => {
@@ -685,6 +796,8 @@ export default function FireboxAIStudio() {
     setActivity("agents");
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
     setChatHistory([]); setChatInput("");
+    setCurrentBuildId(null);
+    setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
     Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
       clearInterval(elapsed); steps.forEach(clearTimeout);
     });
@@ -707,6 +820,8 @@ export default function FireboxAIStudio() {
       setTabContents({ [first.path]: first.content });
       setActivity("explorer"); setSideOpen(true);
       setDescription(build.description);
+      setCurrentBuildId(build._id);   // enables edit mode for this project
+      setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
       setPhase("complete");
     } catch (err) { console.error(err); }
     setLoadingProjectId(null);
@@ -1516,6 +1631,79 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       );
                     })}
 
+                    {/* Edit progress card */}
+                    {(editingFiles || editChangedFiles.length > 0 || editError) && (
+                      <div style={{
+                        marginBottom:10, borderRadius:10,
+                        background:"rgba(255,255,255,0.03)",
+                        border:`1px solid ${editingFiles ? "rgba(0,120,212,0.35)" : editError ? "rgba(244,135,113,0.25)" : "rgba(78,201,148,0.2)"}`,
+                        overflow:"hidden", animation:"fadeIn 0.3s ease",
+                        boxShadow: editingFiles ? "0 0 0 1px rgba(0,120,212,0.15), 0 4px 20px rgba(0,0,0,0.25)" : "0 2px 8px rgba(0,0,0,0.15)",
+                      }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 12px" }}>
+                          <div style={{
+                            width:32, height:32, borderRadius:8, flexShrink:0,
+                            background: editingFiles ? "rgba(0,120,212,0.15)" : editError ? "rgba(244,135,113,0.12)" : "rgba(78,201,148,0.12)",
+                            border:`1px solid ${editingFiles ? "rgba(0,120,212,0.35)" : editError ? "rgba(244,135,113,0.25)" : "rgba(78,201,148,0.25)"}`,
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                          }}>
+                            {editingFiles
+                              ? <Loader2 size={14} color="#0078D4" style={{ animation:"spin 1s linear infinite" }}/>
+                              : editError
+                              ? <AlertTriangle size={14} color={VS.error}/>
+                              : <CheckCircle2 size={14} color={VS.success}/>
+                            }
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600, color: editError ? VS.error : editingFiles ? "#0078D4" : VS.success }}>
+                              {editingFiles ? "Editing files…" : editError ? "Edit failed" : `${editChangedFiles.length} file${editChangedFiles.length !== 1 ? "s" : ""} updated`}
+                            </div>
+                            <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>
+                              {editingFiles
+                                ? <ThinkingDots/>
+                                : editError
+                                ? editError
+                                : editChangedFiles.map(f => f.path.split("/").pop()).join(", ")
+                              }
+                            </div>
+                          </div>
+                        </div>
+                        {/* Streaming preview */}
+                        {editingFiles && editStream && (
+                          <div style={{
+                            borderTop:"1px solid rgba(255,255,255,0.06)",
+                            padding:"6px 12px 8px",
+                            maxHeight:80, overflowY:"auto",
+                          }}>
+                            <pre style={{
+                              margin:0, fontSize:10, color:VS.textFaint,
+                              fontFamily:FONT_MONO, whiteSpace:"pre-wrap", wordBreak:"break-all",
+                              lineHeight:1.5,
+                            }}>{editStream.slice(-400)}</pre>
+                          </div>
+                        )}
+                        {/* Changed file chips */}
+                        {!editingFiles && !editError && editChangedFiles.length > 0 && (
+                          <div style={{
+                            borderTop:"1px solid rgba(255,255,255,0.06)",
+                            padding:"6px 12px 8px",
+                            display:"flex", flexWrap:"wrap", gap:5,
+                          }}>
+                            {editChangedFiles.map(f => (
+                              <span key={f.path} style={{
+                                fontSize:11, color: f.isNew ? "#0078D4" : VS.success,
+                                background: f.isNew ? "rgba(0,120,212,0.1)" : "rgba(78,201,148,0.08)",
+                                border:`1px solid ${f.isNew ? "rgba(0,120,212,0.2)" : "rgba(78,201,148,0.2)"}`,
+                                borderRadius:4, padding:"1px 6px", fontFamily:FONT_MONO,
+                              }}>
+                                {f.isNew ? "+" : "~"} {f.path.split("/").pop()}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Error banner */}
                     {errorMsg && (
                       <div style={{ marginTop:6, padding:"8px 12px", borderRadius:8, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.2)`, display:"flex", gap:7 }}>
@@ -1530,7 +1718,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <CheckCircle2 size={14} color={VS.success}/>
                         <div>
                           <div style={{ fontSize:12, fontWeight:600, color:VS.success }}>Build complete</div>
-                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>All {AGENT_META.length} agents finished — ask a follow-up below.</div>
+                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>Type below to edit files — the AI makes targeted changes, not a full rebuild.</div>
                         </div>
                       </div>
                     )}
@@ -2121,11 +2309,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     placeholder={
                       phase === "building"
                         ? "Agents are working…"
+                        : editingFiles
+                        ? "Editing files…"
                         : phase === "complete"
-                        ? "Ask a follow-up…"
+                        ? "Describe a change — AI will edit only what's needed…"
                         : "What do you want to build?"
                     }
-                    disabled={phase === "building"}
+                    disabled={phase === "building" || editingFiles}
                     rows={2}
                     style={{
                       display:"block", width:"100%",
@@ -2159,7 +2349,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {/* Send button — round, filled */}
                     <button
                       onClick={sendChatMessage}
-                      disabled={!chatInput.trim() || phase === "building"}
+                      disabled={!chatInput.trim() || phase === "building" || editingFiles}
                       title="Send (Enter)"
                       style={{
                         width:30, height:30, borderRadius:"50%", border:"none",

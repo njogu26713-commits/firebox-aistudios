@@ -2,6 +2,7 @@ import express from "express";
 import GithubToken from "../models/GithubToken.js";
 import { isDBConnected } from "../db.js";
 import { callWithFallback } from "../groqPool.js";
+import { parseEditOutput, applyEdits } from "../utils/editParser.js";
 
 const dbRequired = (req, res, next) => {
   if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
@@ -140,7 +141,7 @@ router.post("/file", async (req, res) => {
   }
 });
 
-/* ── POST /api/git/ai-edit — AI-powered file edit (SSE) ─────────────────── */
+/* ── POST /api/git/ai-edit — AI-powered file edit using search/replace (SSE) */
 router.post("/ai-edit", async (req, res) => {
   const { content, path, instruction } = req.body;
   if (!content || !instruction)
@@ -164,15 +165,26 @@ router.post("/ai-edit", async (req, res) => {
           {
             role: "system",
             content:
-              "You are an expert code editor. The user will give you a file and an instruction.\n" +
-              "Return ONLY the complete updated file content — no explanations, no markdown fences, " +
-              "no commentary. Just the raw file text, ready to be written directly to disk.",
+              "You are an expert code editor embedded in an AI coding assistant (like Replit).\n" +
+              "The user will give you a file and an edit instruction.\n" +
+              "Make ONLY the minimal, targeted changes needed — never rewrite the entire file.\n\n" +
+              "Use this EXACT format for every change:\n\n" +
+              "<<<<<<< SEARCH\n" +
+              "exact text from the current file (must match verbatim)\n" +
+              "=======\n" +
+              "replacement text\n" +
+              ">>>>>>> REPLACE\n\n" +
+              "Rules:\n" +
+              "- SEARCH text must match the file exactly (including whitespace).\n" +
+              "- Include enough surrounding lines so each SEARCH block is unique.\n" +
+              "- Use multiple SEARCH/REPLACE blocks if needed.\n" +
+              "- Output ONLY the diff blocks — no explanations, no full file.",
           },
           {
             role: "user",
             content:
               `File: ${path}\n\nCurrent content:\n${content}\n\nInstruction: ${instruction}\n\n` +
-              "Return the complete updated file:",
+              "Apply the minimal changes using SEARCH/REPLACE blocks:",
           },
         ],
         stream:      true,
@@ -188,7 +200,28 @@ router.post("/ai-edit", async (req, res) => {
       full += tok;
       sse({ token: tok });
     }
-    sse({ done: true, content: full });
+
+    // Parse and apply the search/replace hunks server-side.
+    // This is always an existing file, so fullContent is rejected — it would overwrite the file.
+    const parsed = parseEditOutput(`### FILE: ${path}\n${full}`);
+    const fileEdits = parsed[path];
+    const hasHunks = fileEdits?.hunks?.length > 0;
+
+    if (!fileEdits || !hasHunks) {
+      // No recognisable diff markers (or only a fenced full-file block) — return original unchanged
+      sse({ done: true, content, error: "The AI did not return valid SEARCH/REPLACE blocks. The file was not changed. Try rephrasing your instruction." });
+    } else {
+      const { content: newContent, applied, failed } = applyEdits(content, fileEdits);
+      if (applied === 0) {
+        // Hunks parsed but none matched — return original to avoid data loss
+        sse({ done: true, content, error: `${failed} SEARCH block${failed !== 1 ? "s" : ""} did not match the file content. The file was not changed. Try rephrasing your instruction.` });
+      } else if (failed > 0) {
+        // Partial application — return patched content with a warning
+        sse({ done: true, content: newContent, warning: `${failed} of ${applied + failed} change${applied + failed !== 1 ? "s" : ""} could not be applied (SEARCH text didn't match).` });
+      } else {
+        sse({ done: true, content: newContent });
+      }
+    }
   } catch (err) {
     sse({ error: err.message });
   }
