@@ -7,6 +7,7 @@ import {
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
+  Eye, EyeOff, Globe,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -285,6 +286,7 @@ export default function FireboxAIStudio() {
   const [sideOpen,    setSideOpen]    = useState(true);
   const [lineCol,     setLineCol]     = useState({ line:1, col:1 });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   /* projects panel state */
   const [expandedProjects, setExpandedProjects] = useState(new Set());
@@ -676,6 +678,33 @@ export default function FireboxAIStudio() {
     if (!activeFile) return [];
     return [activeFile.agent, ...activeFile.path.split("/")];
   }, [activeFile]);
+
+  /* ── Preview: build iframe-renderable HTML from the active file ────────── */
+  const previewContent = useMemo(() => {
+    if (!activeFile || !activeContent) return null;
+    const ext = activeFile.path.split(".").pop().toLowerCase();
+    if (ext === "html" || ext === "htm") return activeContent;
+    if (ext === "css") return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: #fff; color: #333; }
+  ${activeContent}
+</style></head><body><div class="preview-container"><p style="color:#888;font-size:12px;font-family:monospace">CSS preview — add HTML elements here to test styles</p></div></body></html>`;
+    if (ext === "js" || ext === "ts") return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>body{margin:16px;font-family:monospace;font-size:13px;background:#1e1e1e;color:#d4d4d4;white-space:pre-wrap;}</style></head>
+<body id="out"></body>
+<script>
+const _log=console.log.bind(console);
+const out=document.getElementById("out");
+console.log=(...a)=>{out.textContent+=a.map(x=>typeof x==="object"?JSON.stringify(x,null,2):String(x)).join(" ")+"\\n";_log(...a);};
+try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
+</script></html>`;
+    if (ext === "svg") return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1e1e1e;}</style></head><body>${activeContent}</body></html>`;
+    if (ext === "md") {
+      const escaped = activeContent.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:20px 28px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;max-width:800px;background:#fff;color:#333;}pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow:auto;}code{background:#f4f4f4;padding:1px 5px;border-radius:3px;font-size:13px;}</style></head><body><pre style="white-space:pre-wrap;font-family:inherit">${escaped}</pre></body></html>`;
+    }
+    return null; // unsupported — no preview
+  }, [activeFile, activeContent]);
 
   /* ── Monaco callbacks ─────────────────────────────────────────────────── */
   function handleEditorMount(editor, monaco) {
@@ -1716,6 +1745,28 @@ export default function FireboxAIStudio() {
               })}
               {/* Add-tab spacer */}
               <div style={{ flex:1, background:VS.tabBar, borderBottom:`1px solid transparent` }}/>
+
+              {/* Preview toggle button */}
+              {activeFile && (
+                <button
+                  onClick={() => setPreviewOpen(p => !p)}
+                  title={previewOpen ? "Close preview" : "Open live preview"}
+                  style={{
+                    display:"flex", alignItems:"center", gap:5,
+                    padding:"0 12px", height:"100%", flexShrink:0,
+                    background: previewOpen ? "rgba(0,122,204,0.15)" : "transparent",
+                    border:"none", borderLeft:`1px solid ${VS.border}`,
+                    color: previewOpen ? VS.accent : VS.textMuted,
+                    fontSize:11, fontWeight:600, cursor:"pointer",
+                    transition:"color 0.15s, background 0.15s",
+                  }}
+                  onMouseEnter={e => { if (!previewOpen) e.currentTarget.style.color=VS.text; }}
+                  onMouseLeave={e => { if (!previewOpen) e.currentTarget.style.color=VS.textMuted; }}
+                >
+                  {previewOpen ? <EyeOff size={13}/> : <Eye size={13}/>}
+                  {!isMobile && (previewOpen ? " Close Preview" : " Preview")}
+                </button>
+              )}
             </div>
 
             {/* Breadcrumb bar */}
@@ -1737,8 +1788,11 @@ export default function FireboxAIStudio() {
               </div>
             )}
 
-            {/* Monaco editor or empty state */}
-            <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
+            {/* Monaco editor + optional preview split */}
+            <div style={{ flex:1, overflow:"hidden", display:"flex" }}>
+
+              {/* Monaco editor pane */}
+              <div style={{ flex: previewOpen && previewContent ? "0 0 50%" : 1, overflow:"hidden", position:"relative", minWidth:0 }}>
               {activeFile ? (
                 <MonacoEditor
                   key={activeFile.path}
@@ -1856,7 +1910,64 @@ export default function FireboxAIStudio() {
                   )}
                 </div>
               )}
-            </div>
+              </div>{/* end Monaco pane */}
+
+              {/* ── Live preview pane ────────────────────────────────────── */}
+              {previewOpen && activeFile && (
+                <div style={{
+                  flex: "0 0 50%", display:"flex", flexDirection:"column",
+                  borderLeft:`1px solid ${VS.border}`, overflow:"hidden",
+                  background:"#fff",
+                }}>
+                  {/* Preview header */}
+                  <div style={{
+                    height:35, flexShrink:0, display:"flex", alignItems:"center",
+                    justifyContent:"space-between", padding:"0 12px",
+                    background:VS.titleBar, borderBottom:`1px solid ${VS.border}`,
+                  }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <Globe size={12} color={VS.accent}/>
+                      <span style={{ fontSize:11, fontWeight:600, color:VS.text }}>
+                        {activeFile.path.split("/").pop()} — Preview
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setPreviewOpen(false)}
+                      style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:2 }}
+                      title="Close preview"
+                    >
+                      <X size={12}/>
+                    </button>
+                  </div>
+
+                  {previewContent ? (
+                    <iframe
+                      key={activeFile.path}
+                      srcDoc={previewContent}
+                      title="Live preview"
+                      sandbox="allow-scripts allow-modals allow-forms allow-popups"
+                      style={{ flex:1, border:"none", width:"100%", background:"#fff" }}
+                    />
+                  ) : (
+                    <div style={{
+                      flex:1, display:"flex", flexDirection:"column",
+                      alignItems:"center", justifyContent:"center", gap:10,
+                      background:VS.editorBg, color:VS.textMuted,
+                    }}>
+                      <Eye size={28} color={VS.textFaint}/>
+                      <div style={{ fontSize:12, color:VS.textMuted, textAlign:"center", padding:"0 20px", lineHeight:1.6 }}>
+                        No preview for <code style={{ fontFamily:FONT_MONO, fontSize:11, background:"#3C3C3C", padding:"1px 5px", borderRadius:3 }}>
+                          .{activeFile.path.split(".").pop()}
+                        </code> files.
+                        <br/>
+                        Open an <strong>.html</strong>, <strong>.css</strong>, <strong>.js</strong>, <strong>.svg</strong>, or <strong>.md</strong> file.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>{/* end split wrapper */}
           </div>
         </div>
 
