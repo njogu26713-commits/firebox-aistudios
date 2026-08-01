@@ -668,6 +668,8 @@ export default function FireboxAIStudio() {
     if (!text) return;
     setChatHistory(prev => [...prev, { role: "user", text }]);
     setChatInput("");
+    setActivity("agents");
+    setSideOpen(true);
     setTimeout(() => chatInputRef.current?.focus(), 0);
     setDescription(text);
     startBuild(text);
@@ -1513,74 +1515,6 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     )}
                   </div>
 
-                  {/* ── Persistent chat input bar ─────────────────────── */}
-                  <div style={{
-                    flexShrink:0, padding:"8px 10px 10px",
-                    borderTop:`1px solid rgba(255,255,255,0.07)`,
-                    background: VS.sideBar,
-                  }}>
-                    <div style={{
-                      display:"flex", alignItems:"flex-end", gap:6,
-                      background:"rgba(255,255,255,0.05)",
-                      border:`1px solid rgba(255,255,255,0.1)`,
-                      borderRadius:10, padding:"6px 8px 6px 10px",
-                      transition:"border-color 0.2s",
-                    }}
-                    onFocus={e => { const el = e.currentTarget; el.style.borderColor = VS.accent; }}
-                    onBlur={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(255,255,255,0.1)"; }}
-                    >
-                      <textarea
-                        ref={chatInputRef}
-                        value={chatInput}
-                        onChange={e => {
-                          setChatInput(e.target.value);
-                          e.target.style.height = "auto";
-                          e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            if (phase !== "building") sendChatMessage();
-                          }
-                        }}
-                        placeholder={
-                          phase === "building"
-                            ? "Agents are working…"
-                            : phase === "complete"
-                            ? "Ask a follow-up — Add login page, Connect MongoDB…"
-                            : "Message Firebox AI…"
-                        }
-                        disabled={phase === "building"}
-                        rows={1}
-                        style={{
-                          flex:1, background:"transparent", border:"none", outline:"none",
-                          color: phase === "building" ? VS.textFaint : VS.text,
-                          fontSize:12, fontFamily:FONT_MONO, resize:"none",
-                          lineHeight:1.6, minHeight:20, maxHeight:120,
-                          cursor: phase === "building" ? "not-allowed" : "text",
-                        }}
-                      />
-                      <button
-                        onClick={sendChatMessage}
-                        disabled={!chatInput.trim() || phase === "building"}
-                        title="Send (Enter)"
-                        style={{
-                          flexShrink:0, width:28, height:28,
-                          borderRadius:7, border:"none",
-                          background: chatInput.trim() && phase !== "building" ? VS.accent : "rgba(255,255,255,0.08)",
-                          color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
-                          transition:"all 0.15s",
-                        }}
-                      >
-                        <Send size={13}/>
-                      </button>
-                    </div>
-                    <div style={{ fontSize:10, color:VS.textFaint, textAlign:"center", marginTop:4 }}>
-                      Enter to send · Shift+Enter for new line
-                    </div>
-                  </div>
                 </>
               )}
 
@@ -2122,6 +2056,75 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   </div>
                 </>
               )}
+              {/* ── Persistent chat input bar — always visible ───────── */}
+              <div style={{
+                flexShrink:0, padding:"8px 10px 10px",
+                borderTop:`1px solid rgba(255,255,255,0.07)`,
+                background: VS.sideBar,
+              }}>
+                <div style={{
+                  display:"flex", alignItems:"flex-end", gap:6,
+                  background:"rgba(255,255,255,0.05)",
+                  border:`1px solid rgba(255,255,255,0.1)`,
+                  borderRadius:10, padding:"6px 8px 6px 10px",
+                  transition:"border-color 0.2s",
+                }}
+                onFocus={e => { const el = e.currentTarget; el.style.borderColor = VS.accent; }}
+                onBlur={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                >
+                  <textarea
+                    ref={chatInputRef}
+                    value={chatInput}
+                    onChange={e => {
+                      setChatInput(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (phase !== "building") sendChatMessage();
+                      }
+                    }}
+                    placeholder={
+                      phase === "building"
+                        ? "Agents are working…"
+                        : phase === "complete"
+                        ? "Ask a follow-up — Add login page, Connect MongoDB…"
+                        : "Message Firebox AI…"
+                    }
+                    disabled={phase === "building"}
+                    rows={1}
+                    style={{
+                      flex:1, background:"transparent", border:"none", outline:"none",
+                      color: phase === "building" ? VS.textFaint : VS.text,
+                      fontSize:12, fontFamily:FONT_MONO, resize:"none",
+                      lineHeight:1.6, minHeight:20, maxHeight:120,
+                      cursor: phase === "building" ? "not-allowed" : "text",
+                    }}
+                  />
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={!chatInput.trim() || phase === "building"}
+                    title="Send (Enter)"
+                    style={{
+                      flexShrink:0, width:28, height:28,
+                      borderRadius:7, border:"none",
+                      background: chatInput.trim() && phase !== "building" ? VS.accent : "rgba(255,255,255,0.08)",
+                      color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
+                      transition:"all 0.15s",
+                    }}
+                  >
+                    <Send size={13}/>
+                  </button>
+                </div>
+                <div style={{ fontSize:10, color:VS.textFaint, textAlign:"center", marginTop:4 }}>
+                  Enter to send · Shift+Enter for new line
+                </div>
+              </div>
+
               </React.Fragment>
             );
 
