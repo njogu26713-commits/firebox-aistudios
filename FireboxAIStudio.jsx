@@ -2056,29 +2056,40 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   </div>
                 </>
               )}
-              {/* ── Persistent chat input bar — always visible ───────── */}
+              {/* ── Persistent chat input bar — Replit-style ─────────── */}
               <div style={{
-                flexShrink:0, padding:"8px 10px 10px",
-                borderTop:`1px solid rgba(255,255,255,0.07)`,
+                flexShrink:0, padding:"10px 12px 12px",
                 background: VS.sideBar,
               }}>
-                <div style={{
-                  display:"flex", alignItems:"flex-end", gap:6,
-                  background:"rgba(255,255,255,0.05)",
-                  border:`1px solid rgba(255,255,255,0.1)`,
-                  borderRadius:10, padding:"6px 8px 6px 10px",
-                  transition:"border-color 0.2s",
-                }}
-                onFocus={e => { const el = e.currentTarget; el.style.borderColor = VS.accent; }}
-                onBlur={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                {/* Outer card */}
+                <div
+                  style={{
+                    background:"#2A2A2A",
+                    border:`1.5px solid rgba(255,255,255,0.09)`,
+                    borderRadius:16,
+                    padding:"10px 10px 8px 14px",
+                    transition:"border-color 0.2s, box-shadow 0.2s",
+                    boxShadow:"0 2px 12px rgba(0,0,0,0.25)",
+                  }}
+                  onFocusCapture={e => {
+                    const el = e.currentTarget;
+                    el.style.borderColor = "rgba(0,120,212,0.55)";
+                    el.style.boxShadow = "0 0 0 3px rgba(0,120,212,0.12), 0 2px 12px rgba(0,0,0,0.25)";
+                  }}
+                  onBlurCapture={e => {
+                    const el = e.currentTarget;
+                    el.style.borderColor = "rgba(255,255,255,0.09)";
+                    el.style.boxShadow = "0 2px 12px rgba(0,0,0,0.25)";
+                  }}
                 >
+                  {/* Textarea row */}
                   <textarea
                     ref={chatInputRef}
                     value={chatInput}
                     onChange={e => {
                       setChatInput(e.target.value);
                       e.target.style.height = "auto";
-                      e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                      e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
                     }}
                     onKeyDown={e => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -2090,38 +2101,64 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       phase === "building"
                         ? "Agents are working…"
                         : phase === "complete"
-                        ? "Ask a follow-up — Add login page, Connect MongoDB…"
-                        : "Message Firebox AI…"
+                        ? "Ask a follow-up…"
+                        : "What do you want to build?"
                     }
                     disabled={phase === "building"}
-                    rows={1}
+                    rows={2}
                     style={{
-                      flex:1, background:"transparent", border:"none", outline:"none",
-                      color: phase === "building" ? VS.textFaint : VS.text,
-                      fontSize:12, fontFamily:FONT_MONO, resize:"none",
-                      lineHeight:1.6, minHeight:20, maxHeight:120,
+                      display:"block", width:"100%",
+                      background:"transparent", border:"none", outline:"none",
+                      color: phase === "building" ? VS.textFaint : VS.textActive,
+                      fontSize:13, fontFamily:FONT_UI, resize:"none",
+                      lineHeight:1.55, minHeight:38, maxHeight:140,
                       cursor: phase === "building" ? "not-allowed" : "text",
+                      marginBottom:6,
                     }}
                   />
-                  <button
-                    onClick={sendChatMessage}
-                    disabled={!chatInput.trim() || phase === "building"}
-                    title="Send (Enter)"
-                    style={{
-                      flexShrink:0, width:28, height:28,
-                      borderRadius:7, border:"none",
-                      background: chatInput.trim() && phase !== "building" ? VS.accent : "rgba(255,255,255,0.08)",
-                      color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
-                      transition:"all 0.15s",
-                    }}
-                  >
-                    <Send size={13}/>
-                  </button>
-                </div>
-                <div style={{ fontSize:10, color:VS.textFaint, textAlign:"center", marginTop:4 }}>
-                  Enter to send · Shift+Enter for new line
+                  {/* Bottom action row */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    {/* + attach button */}
+                    <button
+                      title="Attach context"
+                      style={{
+                        width:28, height:28, borderRadius:"50%",
+                        background:"transparent",
+                        border:"1.5px solid rgba(255,255,255,0.12)",
+                        color:VS.textMuted,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        cursor:"pointer", transition:"all 0.15s", flexShrink:0,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.25)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; }}
+                    >
+                      <Plus size={14}/>
+                    </button>
+
+                    {/* Send button — round, filled */}
+                    <button
+                      onClick={sendChatMessage}
+                      disabled={!chatInput.trim() || phase === "building"}
+                      title="Send (Enter)"
+                      style={{
+                        width:30, height:30, borderRadius:"50%", border:"none",
+                        background: chatInput.trim() && phase !== "building"
+                          ? "linear-gradient(135deg,#0078D4,#1a94ff)"
+                          : "rgba(255,255,255,0.07)",
+                        color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
+                        transition:"all 0.15s",
+                        boxShadow: chatInput.trim() && phase !== "building"
+                          ? "0 2px 8px rgba(0,120,212,0.4)"
+                          : "none",
+                      }}
+                      onMouseEnter={e => { if (chatInput.trim() && phase !== "building") e.currentTarget.style.transform = "scale(1.08)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                    >
+                      <Send size={13}/>
+                    </button>
+                  </div>
                 </div>
               </div>
 
