@@ -61,6 +61,64 @@ const AGENT_META = [
   { name: "Deployment", Icon: Rocket,       color: VS.agentColors.Deployment },
 ];
 
+/* ─── Agent sub-steps (shown as collapsible actions) ─────────────────────── */
+const AGENT_STEPS = {
+  Architect:  [
+    { icon:"🔍", text:"Analyzing requirements…"         },
+    { icon:"🧠", text:"Designing system architecture…"  },
+    { icon:"⚙️", text:"Selecting technology stack…"    },
+    { icon:"📖", text:"Defining API surface & data flow…"},
+    { icon:"💻", text:"Writing ARCHITECTURE.md…"        },
+    { icon:"💻", text:"Writing package.json…"           },
+    { icon:"💻", text:"Writing .env.example…"           },
+  ],
+  Backend:    [
+    { icon:"🧠", text:"Planning API structure…"          },
+    { icon:"⚙️", text:"Generating Express server…"      },
+    { icon:"💻", text:"Writing route handlers…"          },
+    { icon:"🔐", text:"Adding auth middleware…"          },
+    { icon:"💻", text:"Writing error handler…"           },
+    { icon:"✅", text:"Validating endpoint coverage…"   },
+  ],
+  Frontend:   [
+    { icon:"🧠", text:"Planning component tree…"         },
+    { icon:"🎨", text:"Designing UI layout…"             },
+    { icon:"💻", text:"Creating App.jsx…"                },
+    { icon:"💻", text:"Building page components…"        },
+    { icon:"🔗", text:"Connecting to backend API…"       },
+    { icon:"💻", text:"Writing global styles…"           },
+  ],
+  Database:   [
+    { icon:"🧠", text:"Analysing data model…"            },
+    { icon:"🗄️", text:"Designing MongoDB schemas…"      },
+    { icon:"💻", text:"Writing Mongoose models…"         },
+    { icon:"⚙️", text:"Creating compound indexes…"      },
+    { icon:"💻", text:"Writing seed data script…"        },
+  ],
+  Security:   [
+    { icon:"🔍", text:"Scanning generated code…"         },
+    { icon:"🛡️", text:"Configuring rate limiting…"      },
+    { icon:"💻", text:"Writing validation middleware…"   },
+    { icon:"🔐", text:"Implementing JWT utilities…"      },
+    { icon:"📖", text:"Writing SECURITY.md report…"      },
+  ],
+  QA:         [
+    { icon:"🧠", text:"Planning test strategy…"           },
+    { icon:"⚙️", text:"Setting up test environment…"    },
+    { icon:"💻", text:"Writing integration tests…"       },
+    { icon:"💻", text:"Writing auth flow tests…"         },
+    { icon:"✅", text:"Running edge case coverage…"      },
+  ],
+  Deployment: [
+    { icon:"🐳", text:"Writing Dockerfile…"              },
+    { icon:"⚙️", text:"Creating docker-compose.yml…"    },
+    { icon:"🔗", text:"Configuring CI/CD pipeline…"     },
+    { icon:"💻", text:"Writing nginx config…"            },
+    { icon:"📖", text:"Writing DEPLOYMENT.md…"           },
+    { icon:"🚀", text:"Finalising production build…"    },
+  ],
+};
+
 /* ─── File utilities ─────────────────────────────────────────────────────── */
 function getMonacoLang(path = "", lang = "") {
   const ext  = path.split(".").pop().toLowerCase();
@@ -185,6 +243,22 @@ function AgentBadge({ status }) {
   );
 }
 
+/* ─── Thinking dots animation ────────────────────────────────────────────── */
+function ThinkingDots() {
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:3, color:"#8B8B8B", fontSize:11 }}>
+      Thinking
+      {[0,1,2].map(i => (
+        <span key={i} style={{
+          width:3, height:3, borderRadius:"50%", background:"#8B8B8B",
+          display:"inline-block",
+          animation:`dotBounce 1.4s ease-in-out ${i*0.2}s infinite`,
+        }}/>
+      ))}
+    </span>
+  );
+}
+
 /* ─── Monaco before-mount theme definition ───────────────────────────────── */
 function defineFireboxTheme(monaco) {
   monaco.editor.defineTheme("firebox-dark", {
@@ -282,6 +356,12 @@ export default function FireboxAIStudio() {
   const [expandedDirs,   setExpandedDirs]   = useState(new Set());
   const [tabContents,    setTabContents]    = useState({});          // {path: currentContent}
 
+  /* agent timing + step state */
+  const [agentStartTimes, setAgentStartTimes] = useState({});  // { name: timestamp }
+  const [agentElapsed,    setAgentElapsed]    = useState({});  // { name: seconds }
+  const [agentVisSteps,   setAgentVisSteps]   = useState({});  // { name: visibleCount }
+  const [stepsCollapsed,  setStepsCollapsed]  = useState({});  // { name: bool } true=collapsed
+
   /* layout state */
   const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"|"projects"
   const [sideOpen,    setSideOpen]    = useState(true);
@@ -320,10 +400,11 @@ export default function FireboxAIStudio() {
   const [gitChangePrompt,  setGitChangePrompt]  = useState("");      // "what changes?" after repo select
   const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
 
-  const terminalRef  = useRef(null);
-  const esRef        = useRef(null);
-  const streamingRef = useRef({});
-  const editorRef    = useRef(null);
+  const terminalRef    = useRef(null);
+  const esRef          = useRef(null);
+  const streamingRef   = useRef({});
+  const editorRef      = useRef(null);
+  const agentTimerRefs = useRef({});  // { name: { elapsed: intervalId, steps: timeoutIds[] } }
 
   /* mobile breakpoint */
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
@@ -359,6 +440,14 @@ export default function FireboxAIStudio() {
     setTabContents({});
     setActiveAgent(null);
     setActivity("agents");
+    setAgentStartTimes({});
+    setAgentElapsed({});
+    setAgentVisSteps({});
+    setStepsCollapsed({});
+    Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
+      clearInterval(elapsed); steps.forEach(clearTimeout);
+    });
+    agentTimerRefs.current = {};
 
     let buildId;
     try {
@@ -379,6 +468,27 @@ export default function FireboxAIStudio() {
       setActiveAgent(agent);
       updateAgent(agent, { status:"working", streaming:"" });
       streamingRef.current[agent] = "";
+
+      // Start elapsed timer
+      const startTime = Date.now();
+      setAgentStartTimes(prev => ({ ...prev, [agent]: startTime }));
+      setAgentElapsed(prev => ({ ...prev, [agent]: 0 }));
+      setAgentVisSteps(prev => ({ ...prev, [agent]: 1 }));
+
+      const elapsedId = setInterval(() => {
+        setAgentElapsed(prev => ({ ...prev, [agent]: Math.round((Date.now() - startTime) / 1000) }));
+      }, 1000);
+
+      // Reveal sub-steps progressively over ~17 seconds
+      const steps = AGENT_STEPS[agent] || [];
+      const gap   = steps.length > 1 ? 17000 / (steps.length - 1) : 17000;
+      const stepIds = steps.slice(1).map((_, i) =>
+        setTimeout(() => {
+          setAgentVisSteps(prev => ({ ...prev, [agent]: i + 2 }));
+        }, gap * (i + 1))
+      );
+
+      agentTimerRefs.current[agent] = { elapsed: elapsedId, steps: stepIds };
     });
 
     es.addEventListener("agent-token", e => {
@@ -389,6 +499,13 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("agent-complete", e => {
       const { agent, files } = JSON.parse(e.data);
+      // Stop timers and show all steps
+      if (agentTimerRefs.current[agent]) {
+        clearInterval(agentTimerRefs.current[agent].elapsed);
+        agentTimerRefs.current[agent].steps.forEach(clearTimeout);
+        delete agentTimerRefs.current[agent];
+      }
+      setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent]||[]).length }));
       updateAgent(agent, { status:"done", streaming:"" });
       if (files?.length) {
         setAllFiles(prev => {
@@ -415,6 +532,12 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("agent-error", e => {
       const { agent, message } = JSON.parse(e.data);
+      if (agentTimerRefs.current[agent]) {
+        clearInterval(agentTimerRefs.current[agent].elapsed);
+        agentTimerRefs.current[agent].steps.forEach(clearTimeout);
+        delete agentTimerRefs.current[agent];
+      }
+      setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent]||[]).length }));
       updateAgent(agent, { status:"error", streaming:"" });
       setErrorMsg(`${agent}: ${message}`);
     });
@@ -442,6 +565,11 @@ export default function FireboxAIStudio() {
     setAgentStates(AGENT_META.map(a => ({name:a.name, status:"idle", streaming:""})));
     setActiveAgent(null); setErrorMsg(""); streamingRef.current = {};
     setActivity("agents");
+    setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
+    Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
+      clearInterval(elapsed); steps.forEach(clearTimeout);
+    });
+    agentTimerRefs.current = {};
   };
 
   /* ── Tab management ───────────────────────────────────────────────────── */
@@ -733,9 +861,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
         ::-webkit-scrollbar-track { background:transparent; }
         ::-webkit-scrollbar-thumb { background:#424242; border-radius:4px; }
         ::-webkit-scrollbar-thumb:hover { background:#555; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes spin   { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes pulse       { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes spin        { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes dotBounce   { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+        @keyframes avatarPulse { 0%,100%{box-shadow:0 0 0 0 transparent} 50%{box-shadow:0 0 8px 2px rgba(255,255,255,0.08)} }
         .tree-item:hover  { background:#2A2D2E !important; }
         .tab-item:hover   { background:#2D2D2D !important; }
         .act-btn:hover    { background:#444 !important; }
@@ -1002,15 +1132,33 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 </>
               )}
 
-              {/* Panel: Agent pipeline */}
+              {/* Panel: Agent pipeline — conversational activity feed */}
               {activity === "agents" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
-                    AGENT PIPELINE
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span>AGENT PIPELINE</span>
+                    {phase !== "idle" && (
+                      <span style={{ fontSize:10, color: phase==="complete" ? VS.success : VS.textMuted, fontWeight:500, letterSpacing:0 }}>
+                        {phase==="complete" ? `✓ ${doneCount}/${AGENT_META.length} done` : `${doneCount}/${AGENT_META.length}`}
+                      </span>
+                    )}
                   </div>
-                  <div style={{ flex:1, overflowY:"auto" }}>
+
+                  {/* Thin progress bar */}
+                  {phase !== "idle" && (
+                    <div style={{ height:2, background:"rgba(255,255,255,0.06)", flexShrink:0, margin:"0 12px 2px" }}>
+                      <div style={{
+                        height:"100%", borderRadius:1, transition:"width 0.5s ease",
+                        background: phase==="complete" ? VS.success : VS.accent,
+                        width:`${progress}%`,
+                      }}/>
+                    </div>
+                  )}
+
+                  <div ref={terminalRef} style={{ flex:1, overflowY:"auto", padding:"8px 10px" }}>
+
                     {/* Prompt input */}
-                    <div style={{ padding:"8px 10px 0" }}>
+                    <div style={{ marginBottom: phase==="idle" ? 0 : 10 }}>
                       {phase === "idle" ? (
                         <>
                           <div style={{ fontSize:14, fontWeight:600, color:VS.textActive, marginBottom:4, lineHeight:1.4 }}>
@@ -1026,13 +1174,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             placeholder="e.g. A task management app with real-time collaboration, user auth, and analytics…"
                             rows={5}
                             style={{
-                              width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                              borderRadius:4, padding:"8px 10px", color:VS.text,
+                              width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid rgba(255,255,255,0.1)`,
+                              borderRadius:8, padding:"8px 10px", color:VS.text,
                               fontSize:12, fontFamily:FONT_MONO, resize:"none", outline:"none",
                               lineHeight:1.6, transition:"border-color 0.2s",
                             }}
                             onFocus={e => (e.target.style.borderColor = VS.accent)}
-                            onBlur={e  => (e.target.style.borderColor = VS.border)}
+                            onBlur={e  => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
                           />
                           <button
                             onClick={startBuild}
@@ -1040,8 +1188,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             className="build-btn"
                             style={{
                               display:"flex", alignItems:"center", justifyContent:"center", gap:7,
-                              width:"100%", marginTop:8, padding:"8px",
-                              borderRadius:4, border:"none",
+                              width:"100%", marginTop:8, padding:"9px",
+                              borderRadius:8, border:"none",
                               background: description.trim() ? VS.accent : "#3C3C3C",
                               color:"#fff", fontSize:12, fontFamily:FONT_UI, fontWeight:600,
                               cursor: description.trim() ? "pointer" : "not-allowed", transition:"all 0.2s",
@@ -1052,95 +1200,145 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           <div style={{ fontSize:11, color:VS.textFaint, textAlign:"center", marginTop:5 }}>Ctrl+Enter to start</div>
                         </>
                       ) : (
-                        <div style={{ padding:"8px 10px", background:"#2D2D2D", borderRadius:4, border:`1px solid ${VS.border}`, marginBottom:4 }}>
-                          <div style={{ fontSize:10, color:VS.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:3 }}>BUILDING</div>
-                          <div style={{ fontSize:12, color:VS.text, fontFamily:FONT_MONO, lineHeight:1.5 }}>{description}</div>
+                        <div style={{
+                          padding:"8px 12px", borderRadius:8, marginBottom:10,
+                          background:"rgba(0,120,212,0.08)", border:`1px solid rgba(0,120,212,0.2)`,
+                        }}>
+                          <div style={{ fontSize:10, color:VS.accent, fontWeight:600, letterSpacing:"0.08em", marginBottom:3 }}>BUILDING</div>
+                          <div style={{ fontSize:12, color:VS.text, lineHeight:1.5 }}>{description}</div>
                         </div>
                       )}
                     </div>
 
-                    {/* Progress bar */}
-                    {phase !== "idle" && (
-                      <div style={{ padding:"10px 10px 0" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:11, color:VS.textMuted }}>
-                            {phase==="complete" ? "✓ Complete" : `${doneCount} / ${AGENT_META.length} agents`}
-                          </span>
-                          <span style={{ fontSize:11, color:VS.textMuted }}>{Math.round(progress)}%</span>
-                        </div>
-                        <div style={{ height:2, background:"#3C3C3C", borderRadius:1, overflow:"hidden" }}>
-                          <div style={{
-                            height:"100%", borderRadius:1, transition:"width 0.4s ease",
-                            background: phase==="complete" ? VS.success : VS.accent,
-                            width:`${progress}%`,
-                          }}/>
-                        </div>
-                      </div>
-                    )}
+                    {/* Activity feed — one card per started agent */}
+                    {AGENT_META.map(({ name, Icon, color }) => {
+                      const state    = agentStates.find(a => a.name === name);
+                      if (!state || state.status === "idle") return null;
 
-                    {/* Agent rows */}
-                    <div style={{ padding:"8px 6px" }}>
-                      {AGENT_META.map(({ name, Icon, color }) => {
-                        const state    = agentStates.find(a => a.name===name);
-                        const isActive = activeAgent === name;
-                        const files    = filesByAgent[name] || [];
-                        return (
-                          <div key={name} style={{
-                            display:"flex", alignItems:"center", gap:8, padding:"6px 8px",
-                            borderRadius:4, marginBottom:2,
-                            background: isActive ? "#2D2D2D" : "transparent",
-                            borderLeft:`2px solid ${isActive ? color : "transparent"}`,
-                            transition:"all 0.15s",
-                          }}>
+                      const isActive   = state.status === "working";
+                      const isDone     = state.status === "done";
+                      const isError    = state.status === "error";
+                      const steps      = AGENT_STEPS[name] || [];
+                      const visCount   = agentVisSteps[name] || 0;
+                      const elapsed    = agentElapsed[name] || 0;
+                      const isCollapsed = stepsCollapsed[name] !== false; // default collapsed
+
+                      return (
+                        <div key={name} style={{
+                          marginBottom:10, borderRadius:10,
+                          background:"rgba(255,255,255,0.03)",
+                          border:`1px solid ${isActive ? color+"35" : "rgba(255,255,255,0.07)"}`,
+                          overflow:"hidden", animation:"fadeIn 0.3s ease",
+                          boxShadow: isActive ? `0 0 0 1px ${color}15, 0 4px 20px rgba(0,0,0,0.25)` : "0 2px 8px rgba(0,0,0,0.15)",
+                          transition:"border-color 0.3s, box-shadow 0.3s",
+                        }}>
+                          {/* Card header */}
+                          <div style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 12px" }}>
+                            {/* Avatar */}
                             <div style={{
-                              width:28, height:28, borderRadius:6, flexShrink:0,
-                              background:`${color}15`,
+                              width:32, height:32, borderRadius:8, flexShrink:0,
+                              background:`${color}18`,
+                              border:`1px solid ${color}35`,
                               display:"flex", alignItems:"center", justifyContent:"center",
-                              border:`1px solid ${color}25`,
+                              animation: isActive ? "avatarPulse 2s ease-in-out infinite" : "none",
                             }}>
                               {isActive
-                                ? <Loader2 size={13} color={color} style={{ animation:"spin 1s linear infinite" }}/>
-                                : <Icon size={13} color={state.status==="idle" ? VS.textFaint : color}/>
+                                ? <Loader2 size={14} color={color} style={{ animation:"spin 1s linear infinite" }}/>
+                                : <Icon size={14} color={isDone ? color : isError ? VS.error : VS.textMuted}/>
                               }
                             </div>
+
+                            {/* Name + subtitle */}
                             <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                                <span style={{ fontSize:12, fontWeight:500, color: state.status==="idle" ? VS.textMuted : VS.text }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                <span style={{
+                                  fontSize:13, fontWeight:600,
+                                  color: isActive ? VS.textActive : isDone ? VS.text : VS.textMuted,
+                                }}>
                                   {name}
                                 </span>
-                                <AgentBadge status={state.status}/>
+                                {isDone && <CheckCircle2 size={13} color={VS.success}/>}
+                                {isError && <AlertTriangle size={13} color={VS.error}/>}
                               </div>
-                              <div style={{ fontSize:10, color:VS.textFaint, marginTop:1 }}>
-                                {files.length > 0 ? `${files.length} file${files.length!==1?"s":""}` : isActive ? "generating…" : "—"}
+                              <div style={{ fontSize:11, marginTop:1 }}>
+                                {isDone   && <span style={{ color:VS.textMuted }}>Worked for {elapsed}s</span>}
+                                {isActive && <ThinkingDots/>}
+                                {isError  && <span style={{ color:VS.error }}>Failed</span>}
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
 
-                    {/* Live terminal */}
-                    {activeAgent && (
-                      <div style={{ margin:"0 6px 8px", borderRadius:4, overflow:"hidden", border:`1px solid ${VS.border}` }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px", background:"#1A1A1A", borderBottom:`1px solid ${VS.border}` }}>
-                          <Terminal size={11} color={VS.accent}/>
-                          <span style={{ fontSize:11, color:VS.accent, fontFamily:FONT_MONO }}>{activeAgent}</span>
+                            {/* Collapse/expand chip */}
+                            {visCount > 0 && (
+                              <button
+                                onClick={() => setStepsCollapsed(prev => ({ ...prev, [name]: !isCollapsed }))}
+                                style={{
+                                  display:"flex", alignItems:"center", gap:4,
+                                  padding:"3px 8px", borderRadius:20,
+                                  background:"rgba(255,255,255,0.06)",
+                                  border:"1px solid rgba(255,255,255,0.1)",
+                                  color:VS.textMuted, fontSize:11, cursor:"pointer",
+                                  flexShrink:0, transition:"background 0.15s",
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.1)"}
+                                onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.06)"}
+                              >
+                                {visCount} action{visCount!==1?"s":""}
+                                {isCollapsed
+                                  ? <ChevronRight size={10}/>
+                                  : <ChevronDown  size={10}/>}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Sub-steps (hidden by default, expand on click) */}
+                          {!isCollapsed && visCount > 0 && (
+                            <div style={{
+                              borderTop:"1px solid rgba(255,255,255,0.06)",
+                              padding:"6px 12px 8px",
+                            }}>
+                              {steps.slice(0, visCount).map((step, i) => (
+                                <div key={i} style={{
+                                  display:"flex", alignItems:"center", gap:8,
+                                  padding:"3px 0", animation:"fadeIn 0.2s ease",
+                                }}>
+                                  <span style={{ fontSize:13, flexShrink:0, lineHeight:1 }}>{step.icon}</span>
+                                  <span style={{
+                                    fontSize:12, lineHeight:1.4,
+                                    color: i === visCount-1 && isActive ? VS.text : VS.textMuted,
+                                  }}>
+                                    {step.text}
+                                  </span>
+                                  {i === visCount-1 && isActive && (
+                                    <span style={{
+                                      width:4, height:4, borderRadius:"50%",
+                                      background:color, flexShrink:0,
+                                      animation:"pulse 0.9s ease-in-out infinite",
+                                    }}/>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div ref={terminalRef} style={{
-                          height:110, overflowY:"auto", padding:"6px 10px",
-                          background:"#0D0D0D", fontFamily:FONT_MONO, fontSize:11,
-                          color:"#9CDCFE", lineHeight:1.6, whiteSpace:"pre-wrap", wordBreak:"break-word",
-                        }}>
-                          {agentStates.find(a=>a.name===activeAgent)?.streaming||""}
-                          <span style={{ animation:"pulse 0.7s ease-in-out infinite", color:VS.accent }}>█</span>
-                        </div>
+                      );
+                    })}
+
+                    {/* Error banner */}
+                    {errorMsg && (
+                      <div style={{ marginTop:6, padding:"8px 12px", borderRadius:8, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.2)`, display:"flex", gap:7 }}>
+                        <AlertTriangle size={12} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
+                        <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{errorMsg}</span>
                       </div>
                     )}
 
-                    {errorMsg && (
-                      <div style={{ margin:"0 6px 8px", padding:"8px 10px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:7 }}>
-                        <AlertTriangle size={12} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
-                        <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{errorMsg}</span>
+                    {/* Build complete banner */}
+                    {phase === "complete" && (
+                      <div style={{ marginTop:6, padding:"10px 14px", borderRadius:10, background:"rgba(78,201,148,0.08)", border:`1px solid rgba(78,201,148,0.2)`, display:"flex", alignItems:"center", gap:8, animation:"fadeIn 0.3s ease" }}>
+                        <CheckCircle2 size={14} color={VS.success}/>
+                        <div>
+                          <div style={{ fontSize:12, fontWeight:600, color:VS.success }}>Build complete</div>
+                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>All {AGENT_META.length} agents finished — files are in the Explorer.</div>
+                        </div>
                       </div>
                     )}
                   </div>
