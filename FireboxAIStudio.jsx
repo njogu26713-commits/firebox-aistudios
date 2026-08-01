@@ -280,10 +280,15 @@ export default function FireboxAIStudio() {
   const [tabContents,    setTabContents]    = useState({});          // {path: currentContent}
 
   /* layout state */
-  const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"
+  const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"|"projects"
   const [sideOpen,    setSideOpen]    = useState(true);
   const [lineCol,     setLineCol]     = useState({ line:1, col:1 });
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  /* projects panel state */
+  const [expandedProjects, setExpandedProjects] = useState(new Set());
+  const [projectFilesMap,  setProjectFilesMap]  = useState({});   // { buildId: files[] }
+  const [loadingProjectId, setLoadingProjectId] = useState(null);
 
   const terminalRef  = useRef(null);
   const esRef        = useRef(null);
@@ -439,6 +444,24 @@ export default function FireboxAIStudio() {
       s.has(key) ? s.delete(key) : s.add(key);
       return s;
     }), []);
+
+  /* ── Load files for a past project ──────────────────────────────────────── */
+  const toggleProject = useCallback(async (buildId) => {
+    setExpandedProjects(prev => {
+      const s = new Set(prev);
+      s.has(buildId) ? s.delete(buildId) : s.add(buildId);
+      return s;
+    });
+    if (!projectFilesMap[buildId]) {
+      setLoadingProjectId(buildId);
+      try {
+        const res  = await fetch(`/api/build/${buildId}`);
+        const data = await res.json();
+        setProjectFilesMap(prev => ({ ...prev, [buildId]: data.files || [] }));
+      } catch {}
+      setLoadingProjectId(null);
+    }
+  }, [projectFilesMap]);
 
   /* ── Derived ──────────────────────────────────────────────────────────── */
   const doneCount   = agentStates.filter(a => a.status==="done").length;
@@ -598,6 +621,7 @@ export default function FireboxAIStudio() {
             const navItems = [
               { id:"explorer", Icon:Files,     title:"Explorer",    badge: allFiles.length || null },
               { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
+              { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
               { id:"search",   Icon:Search,    title:"Search"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
             ];
@@ -928,6 +952,110 @@ export default function FireboxAIStudio() {
                     {allFiles.length > 0 ? `${allFiles.length} generated files` : "No files yet."}
                   </div>
                 </div>
+              )}
+
+              {/* Panel: Projects */}
+              {activity === "projects" && (
+                <>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                    PROJECTS
+                  </div>
+                  <div style={{ flex:1, overflowY:"auto" }}>
+                    {recentBuilds.length === 0 ? (
+                      <div style={{ padding:"20px 16px", fontSize:12, color:VS.textFaint, lineHeight:1.6 }}>
+                        No builds yet. Start a build in the AI Agents panel.
+                      </div>
+                    ) : recentBuilds.map(build => {
+                      const isExpanded = expandedProjects.has(build._id);
+                      const isLoading  = loadingProjectId === build._id;
+                      const files      = projectFilesMap[build._id] || [];
+                      const statusColor = build.status === "complete" ? VS.success
+                        : build.status === "failed" ? VS.error : VS.textMuted;
+
+                      return (
+                        <React.Fragment key={build._id}>
+                          {/* Build row */}
+                          <div
+                            className="tree-item"
+                            onClick={() => toggleProject(build._id)}
+                            style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px 5px 10px", cursor:"pointer", userSelect:"none" }}
+                          >
+                            {isExpanded
+                              ? <ChevronDown  size={12} color={VS.textMuted}/>
+                              : <ChevronRight size={12} color={VS.textMuted}/>}
+                            {isExpanded
+                              ? <FolderOpen size={14} color="#DCB67A"/>
+                              : <Folder     size={14} color="#DCB67A"/>}
+                            <span style={{ fontSize:12, color:VS.text, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {build.description}
+                            </span>
+                            {isLoading
+                              ? <Loader2 size={11} color={VS.textMuted} style={{ animation:"spin 1s linear infinite", flexShrink:0 }}/>
+                              : <span style={{ fontSize:10, color:statusColor, flexShrink:0, fontWeight:500 }}>{build.status}</span>
+                            }
+                          </div>
+
+                          {/* File list */}
+                          {isExpanded && !isLoading && (
+                            files.length === 0
+                              ? <div style={{ paddingLeft:36, paddingBottom:4, fontSize:11, color:VS.textFaint }}>No files.</div>
+                              : (() => {
+                                  // Group files by agent
+                                  const byAgent = {};
+                                  files.forEach(f => {
+                                    if (!byAgent[f.agent]) byAgent[f.agent] = [];
+                                    byAgent[f.agent].push(f);
+                                  });
+                                  return Object.entries(byAgent).map(([agentName, agentFiles]) => {
+                                    const meta     = AGENT_META.find(a => a.name === agentName);
+                                    const AgIcon   = meta?.Icon || FileText;
+                                    const agColor  = meta?.color || VS.textMuted;
+                                    const groupKey = `proj:${build._id}:${agentName}`;
+                                    const open     = expandedDirs.has(groupKey);
+                                    return (
+                                      <React.Fragment key={agentName}>
+                                        {/* Agent group header */}
+                                        <div
+                                          className="tree-item"
+                                          onClick={() => toggleDir(groupKey)}
+                                          style={{ display:"flex", alignItems:"center", gap:5, paddingLeft:24, height:22, cursor:"pointer", userSelect:"none" }}
+                                        >
+                                          {open ? <ChevronDown size={11} color={VS.textMuted}/> : <ChevronRight size={11} color={VS.textMuted}/>}
+                                          <AgIcon size={12} color={agColor}/>
+                                          <span style={{ fontSize:11, color:VS.textMuted, fontWeight:500 }}>{agentName}</span>
+                                          <span style={{ fontSize:10, color:VS.textFaint, marginLeft:"auto", paddingRight:8 }}>{agentFiles.length}</span>
+                                        </div>
+                                        {/* Files */}
+                                        {open && agentFiles.map(f => (
+                                          <div
+                                            key={f.path}
+                                            className="tree-item"
+                                            onClick={() => openFile(f)}
+                                            style={{
+                                              display:"flex", alignItems:"center", gap:6,
+                                              paddingLeft:40, height:22, cursor:"pointer",
+                                              background: activeTabPath === f.path ? "#37373D" : "transparent",
+                                            }}
+                                          >
+                                            <FileIcon path={f.path} size={13}/>
+                                            <span style={{
+                                              fontSize:12, color: activeTabPath === f.path ? VS.textActive : VS.text,
+                                              whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                                            }}>
+                                              {f.path.split("/").pop()}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </React.Fragment>
+                                    );
+                                  });
+                                })()
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           )}
