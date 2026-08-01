@@ -1,0 +1,20 @@
+{
+  "name": "firebox-ai-studio",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5000 --host 0.0.0.0"
+  },
+  "dependencies": {
+    "lucide-react": "^0.400.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21"
+  }
+}
