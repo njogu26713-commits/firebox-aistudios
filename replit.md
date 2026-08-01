@@ -84,7 +84,8 @@ Single service — Express serves the built frontend + API:
 
 | Variable | Description |
 |---|---|
-| `GROQ_API_KEY` | From console.groq.com |
+| `GROQ_API_KEY` | Single Groq key — from console.groq.com |
+| `GROQ_API_KEYS` | **Preferred**: comma-separated list of Groq keys (`key1,key2,key3`). Round-robins across keys and auto-retries on rate limits. Takes precedence over `GROQ_API_KEY`. |
 | `MONGODB_URI` | MongoDB Atlas connection string |
 
 Copy `.env.example` to `.env` for local development.

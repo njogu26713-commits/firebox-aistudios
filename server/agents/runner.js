@@ -1,13 +1,7 @@
-import Groq from "groq-sdk";
 import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
-
-let groq;
-function getGroq() {
-  if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return groq;
-}
+import { callWithFallback } from "../groqPool.js";
 
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -35,16 +29,18 @@ export async function runAgentPipeline(build, res, signal) {
     }
 
     try {
-      const stream = await getGroq().chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: agentDef.systemPrompt },
-          { role: "user",   content: contextLines.join("\n\n") },
-        ],
-        stream: true,
-        max_tokens: 2000,
-        temperature: 0.3,
-      });
+      const stream = await callWithFallback(client =>
+        client.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: agentDef.systemPrompt },
+            { role: "user",   content: contextLines.join("\n\n") },
+          ],
+          stream: true,
+          max_tokens: 2000,
+          temperature: 0.3,
+        })
+      );
 
       let fullOutput = "";
       let buffer = "";

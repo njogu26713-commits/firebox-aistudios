@@ -1,7 +1,7 @@
 import express from "express";
-import Groq from "groq-sdk";
 import GithubToken from "../models/GithubToken.js";
 import { isDBConnected } from "../db.js";
+import { callWithFallback } from "../groqPool.js";
 
 const dbRequired = (req, res, next) => {
   if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
@@ -9,11 +9,6 @@ const dbRequired = (req, res, next) => {
 };
 
 const router = express.Router();
-let groq;
-function getGroq() {
-  if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return groq;
-}
 
 /* ── GitHub API helper ───────────────────────────────────────────────────── */
 async function ghFetch(path, token, options = {}) {
@@ -162,27 +157,29 @@ router.post("/ai-edit", async (req, res) => {
   const sse = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    const stream = await getGroq().chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert code editor. The user will give you a file and an instruction.\n" +
-            "Return ONLY the complete updated file content — no explanations, no markdown fences, " +
-            "no commentary. Just the raw file text, ready to be written directly to disk.",
-        },
-        {
-          role: "user",
-          content:
-            `File: ${path}\n\nCurrent content:\n${content}\n\nInstruction: ${instruction}\n\n` +
-            "Return the complete updated file:",
-        },
-      ],
-      stream:      true,
-      max_tokens:  4000,
-      temperature: 0.2,
-    });
+    const stream = await callWithFallback(client =>
+      client.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an expert code editor. The user will give you a file and an instruction.\n" +
+              "Return ONLY the complete updated file content — no explanations, no markdown fences, " +
+              "no commentary. Just the raw file text, ready to be written directly to disk.",
+          },
+          {
+            role: "user",
+            content:
+              `File: ${path}\n\nCurrent content:\n${content}\n\nInstruction: ${instruction}\n\n` +
+              "Return the complete updated file:",
+          },
+        ],
+        stream:      true,
+        max_tokens:  4000,
+        temperature: 0.2,
+      })
+    );
 
     let full = "";
     for await (const chunk of stream) {
