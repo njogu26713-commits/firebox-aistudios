@@ -49,7 +49,7 @@ src/
 vite.config.js          — Vite + /api proxy to port 3001
 ```
 
-## Running Locally
+## Running Locally (Replit)
 
 Two workflows run concurrently:
 
@@ -60,12 +60,26 @@ npm run server   # Express backend on :3001
 
 Vite proxies all `/api/*` requests to `http://localhost:3001`.
 
+## Deploying to Railway
+
+Single service — Express serves the built frontend + API:
+
+1. Push to GitHub
+2. Create a new Railway project → "Deploy from GitHub repo"
+3. Railway auto-detects `railway.toml` and runs:
+   - **Build**: `npm run build` (Vite → `dist/`)
+   - **Start**: `npm start` (`NODE_ENV=production node server/index.js`)
+4. Set environment variables in Railway dashboard (see Required Secrets)
+5. In production, Express serves `dist/index.html` for all non-`/api` routes
+
 ## Required Secrets
 
-| Secret | Description |
+| Variable | Description |
 |---|---|
 | `GROQ_API_KEY` | From console.groq.com |
-| `MONGODB_URI` | MongoDB 7 connection string |
+| `MONGODB_URI` | MongoDB Atlas connection string |
+
+Copy `.env.example` to `.env` for local development.
 
 ## The 7 Agents
 

@@ -1,10 +1,14 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { connectDB } from "./db.js";
 import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
@@ -93,7 +97,17 @@ app.get("/api/build/:id/file", async (req, res) => {
   }
 });
 
+/* ── Serve built frontend in production ──────────────────────────────────── */
+if (process.env.NODE_ENV === "production") {
+  const distPath = path.join(__dirname, "..", "dist");
+  app.use(express.static(distPath));
+  // SPA fallback — serve index.html for any non-API route
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
+
 const PORT = process.env.PORT || 3001;
 connectDB().then(() => {
-  app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Backend on port ${PORT}`));
+  app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server on port ${PORT}`));
 });
