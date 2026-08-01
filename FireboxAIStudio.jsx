@@ -432,7 +432,7 @@ export default function FireboxAIStudio() {
   }, [agentStates]);
 
   useEffect(() => {
-    fetch("/api/builds").then(r => r.json()).then(setRecentBuilds).catch(()=>{});
+    fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
   }, []);
 
   /* close new-project dropdown on outside click */
@@ -651,7 +651,7 @@ export default function FireboxAIStudio() {
       setPhase("complete");
       setActiveAgent(null);
       es.close();
-      fetch("/api/builds").then(r=>r.json()).then(setRecentBuilds).catch(()=>{});
+      fetch("/api/builds").then(r=>r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
     });
 
     es.addEventListener("build-error", e => {
@@ -690,6 +690,27 @@ export default function FireboxAIStudio() {
     });
     agentTimerRefs.current = {};
   };
+
+  /* ── Load a past project into the editor ──────────────────────────────── */
+  const loadProjectFiles = useCallback(async (build) => {
+    setLoadingProjectId(build._id);
+    try {
+      const res  = await fetch(`/api/build/${build._id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const files = data.files || [];
+      if (!files.length) return;
+      setAllFiles(files);
+      setOpenTabs([]); setActiveTabPath(null); setTabContents({});
+      const first = files[0];
+      setOpenTabs([first]); setActiveTabPath(first.path);
+      setTabContents({ [first.path]: first.content });
+      setActivity("explorer"); setSideOpen(true);
+      setDescription(build.description);
+      setPhase("complete");
+    } catch (err) { console.error(err); }
+    setLoadingProjectId(null);
+  }, []);
 
   /* ── Tab management ───────────────────────────────────────────────────── */
   const openFile = useCallback((file) => {
@@ -2308,77 +2329,270 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   }}
                 />
               ) : (
-                /* Welcome screen */
                 <div style={{
-                  height:"100%", display:"flex", flexDirection:"column",
-                  alignItems:"center", justifyContent:"center", gap:20,
-                  background:VS.editorBg, padding:40, userSelect:"none",
+                  height:"100%", overflowY:"auto",
+                  background:"#1a1a1a", fontFamily:FONT_UI,
                 }}>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
-                    <div style={{
-                      width:64, height:64, borderRadius:16, background:"#252526",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      border:`1px solid ${VS.border}`,
-                    }}>
-                      <Zap size={30} color={VS.accent}/>
-                    </div>
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:600, color:VS.textActive, marginBottom:6 }}>Firebox AI Studio</div>
-                      <div style={{ fontSize:13, color:VS.textMuted, maxWidth:380, lineHeight:1.7 }}>
-                        {phase === "idle"
-                          ? "Open the Agent Pipeline panel, describe your app, and click Build with AI."
-                          : allFiles.length > 0
-                            ? `${allFiles.length} files generated — select one from the Explorer to open it.`
-                            : "Agents are working. Files will appear in the Explorer as they complete."}
-                      </div>
-                    </div>
-                  </div>
+                  <div style={{ maxWidth:860, margin:"0 auto", padding:"40px 32px 60px" }}>
 
-                  {phase === "idle" && (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, maxWidth:380, width:"100%" }}>
-                      {[
-                        { label:"Open Pipeline",  sub:"Start building with AI",     action:()=>{ setActivity("agents"); setSideOpen(true); } },
-                        { label:"View Explorer",  sub:"Browse generated files",      action:()=>{ setActivity("explorer"); setSideOpen(true); } },
-                        { label:"Recent Builds",  sub:"See past AI projects",        action:()=>setHistoryOpen(true) },
-                        { label:"Toggle Sidebar", sub:"More / less screen space",    action:()=>setSideOpen(p=>!p) },
-                      ].map(({ label, sub, action }) => (
-                        <button key={label} onClick={action} style={{
-                          padding:"10px 12px", background:"#252526",
-                          border:`1px solid ${VS.border}`, borderRadius:6,
-                          color:VS.text, textAlign:"left", cursor:"pointer",
-                          transition:"border-color 0.15s, background 0.15s",
-                        }}
-                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.background="#2A2D2E"; }}
+                    {/* Header */}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:36 }}>
+                      <div>
+                        <div style={{ fontSize:22, fontWeight:700, color:VS.textActive, marginBottom:4 }}>
+                          My Projects
+                        </div>
+                        <div style={{ fontSize:13, color:VS.textMuted }}>
+                          Open a project, import from GitHub, or describe a new app below.
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:10, flexShrink:0 }}>
+                        <button
+                          onClick={() => { setActivity("git"); setSideOpen(true); }}
+                          style={{
+                            display:"flex", alignItems:"center", gap:7,
+                            padding:"8px 16px", borderRadius:8, border:`1px solid ${VS.border}`,
+                            background:"#252526", color:VS.text, fontSize:13,
+                            fontFamily:FONT_UI, cursor:"pointer", fontWeight:500,
+                            transition:"all 0.15s",
+                          }}
+                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.background="#2a2d2e"; }}
                           onMouseLeave={e=>{ e.currentTarget.style.borderColor=VS.border; e.currentTarget.style.background="#252526"; }}
                         >
-                          <div style={{ fontSize:12, fontWeight:600, color:VS.textActive, marginBottom:2 }}>{label}</div>
-                          <div style={{ fontSize:11, color:VS.textMuted }}>{sub}</div>
+                          <Github size={15}/> Import from GitHub
                         </button>
-                      ))}
+                        <button
+                          onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                          style={{
+                            display:"flex", alignItems:"center", gap:7,
+                            padding:"8px 16px", borderRadius:8, border:"none",
+                            background: VS.accent, color:"#fff", fontSize:13,
+                            fontFamily:FONT_UI, cursor:"pointer", fontWeight:600,
+                            boxShadow:"0 2px 8px rgba(0,120,212,0.35)",
+                            transition:"all 0.15s",
+                          }}
+                          onMouseEnter={e=>{ e.currentTarget.style.background=VS.accentHover; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.background=VS.accent; }}
+                        >
+                          <Sparkles size={15}/> New with AI
+                        </button>
+                      </div>
                     </div>
-                  )}
 
-                  {phase !== "idle" && (
-                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-                      {phase === "building" && <Loader2 size={24} color={VS.accent} style={{ animation:"spin 1s linear infinite" }}/>}
-                      {phase === "complete" && <CheckCircle2 size={24} color={VS.success}/>}
-                      {allFiles.length > 0 && (
-                        <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
-                          {allFiles.slice(0,6).map(f => (
-                            <button key={f.path} onClick={()=>openFile(f)} style={{
-                              display:"flex", alignItems:"center", gap:5, padding:"4px 10px",
-                              background:"#252526", border:`1px solid ${VS.border}`,
-                              borderRadius:4, color:VS.textMuted, fontSize:11,
-                              cursor:"pointer", fontFamily:FONT_MONO,
-                            }}>
-                              <FileIcon path={f.path} size={11}/>
-                              {f.path.split("/").pop()}
-                            </button>
-                          ))}
+                    {/* Project grid */}
+                    {recentBuilds.length > 0 ? (
+                      <>
+                        <div style={{ fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", marginBottom:14 }}>
+                          RECENT PROJECTS
                         </div>
-                      )}
-                    </div>
-                  )}
+                        <div style={{
+                          display:"grid",
+                          gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",
+                          gap:14,
+                        }}>
+                          {recentBuilds.map(build => {
+                            const isLoading = loadingProjectId === build._id;
+                            const isOk      = build.status === "complete";
+                            const isFail    = build.status === "failed";
+                            const date      = new Date(build.createdAt);
+                            const dateStr   = date.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+                            const fileCount = build.files?.length ?? 0;
+
+                            return (
+                              <div
+                                key={build._id}
+                                onClick={() => !isLoading && loadProjectFiles(build)}
+                                style={{
+                                  background:"#252526",
+                                  border:`1px solid ${VS.border}`,
+                                  borderRadius:12,
+                                  padding:"16px 16px 14px",
+                                  cursor: isLoading ? "wait" : "pointer",
+                                  transition:"border-color 0.15s, transform 0.12s, box-shadow 0.15s",
+                                  userSelect:"none",
+                                  position:"relative",
+                                  overflow:"hidden",
+                                }}
+                                onMouseEnter={e=>{
+                                  e.currentTarget.style.borderColor=VS.accent;
+                                  e.currentTarget.style.transform="translateY(-2px)";
+                                  e.currentTarget.style.boxShadow=`0 6px 20px rgba(0,0,0,0.35)`;
+                                }}
+                                onMouseLeave={e=>{
+                                  e.currentTarget.style.borderColor=VS.border;
+                                  e.currentTarget.style.transform="translateY(0)";
+                                  e.currentTarget.style.boxShadow="none";
+                                }}
+                              >
+                                {/* Project icon */}
+                                <div style={{
+                                  width:36, height:36, borderRadius:9,
+                                  background:`rgba(0,120,212,0.12)`,
+                                  border:`1px solid rgba(0,120,212,0.25)`,
+                                  display:"flex", alignItems:"center", justifyContent:"center",
+                                  marginBottom:12,
+                                }}>
+                                  {isLoading
+                                    ? <Loader2 size={16} color={VS.accent} style={{ animation:"spin 1s linear infinite" }}/>
+                                    : <Zap size={16} color={VS.accent}/>
+                                  }
+                                </div>
+
+                                {/* Name */}
+                                <div style={{
+                                  fontSize:13, fontWeight:600, color:VS.textActive,
+                                  lineHeight:1.4, marginBottom:6,
+                                  display:"-webkit-box", WebkitLineClamp:2,
+                                  WebkitBoxOrient:"vertical", overflow:"hidden",
+                                }}>
+                                  {build.description}
+                                </div>
+
+                                {/* Meta row */}
+                                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:"auto" }}>
+                                  <span style={{
+                                    fontSize:11, fontWeight:500,
+                                    color: isOk ? VS.success : isFail ? VS.error : VS.textMuted,
+                                    display:"flex", alignItems:"center", gap:3,
+                                  }}>
+                                    {isOk && <CheckCircle2 size={10}/>}
+                                    {isFail && <AlertTriangle size={10}/>}
+                                    {isOk ? "complete" : build.status}
+                                  </span>
+                                  {fileCount > 0 && (
+                                    <span style={{ fontSize:11, color:VS.textFaint }}>· {fileCount} files</span>
+                                  )}
+                                  <span style={{ fontSize:11, color:VS.textFaint, marginLeft:"auto" }}>{dateStr}</span>
+                                </div>
+
+                                {/* Agent color bar */}
+                                <div style={{
+                                  position:"absolute", bottom:0, left:0, right:0, height:3,
+                                  background:`linear-gradient(90deg,${VS.accent},#A78BFA,#F472B6)`,
+                                  opacity: isOk ? 0.6 : 0.15,
+                                }}/>
+                              </div>
+                            );
+                          })}
+
+                          {/* + New card */}
+                          <div
+                            onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                            style={{
+                              background:"transparent",
+                              border:`1.5px dashed rgba(255,255,255,0.1)`,
+                              borderRadius:12, padding:"16px",
+                              cursor:"pointer", transition:"border-color 0.15s, background 0.15s",
+                              display:"flex", flexDirection:"column",
+                              alignItems:"center", justifyContent:"center", gap:8, minHeight:130,
+                            }}
+                            onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.background="rgba(0,120,212,0.04)"; }}
+                            onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(255,255,255,0.1)"; e.currentTarget.style.background="transparent"; }}
+                          >
+                            <div style={{
+                              width:32, height:32, borderRadius:8,
+                              background:"rgba(255,255,255,0.05)",
+                              border:`1px solid rgba(255,255,255,0.1)`,
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                            }}>
+                              <Plus size={16} color={VS.textMuted}/>
+                            </div>
+                            <span style={{ fontSize:12, color:VS.textMuted, fontWeight:500 }}>New project</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* Empty state */
+                      <div style={{
+                        border:`1.5px dashed rgba(255,255,255,0.08)`,
+                        borderRadius:16, padding:"52px 32px",
+                        textAlign:"center",
+                      }}>
+                        <div style={{
+                          width:56, height:56, borderRadius:14, margin:"0 auto 16px",
+                          background:"rgba(0,120,212,0.1)",
+                          border:`1px solid rgba(0,120,212,0.2)`,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                        }}>
+                          <Zap size={26} color={VS.accent}/>
+                        </div>
+                        <div style={{ fontSize:16, fontWeight:600, color:VS.textActive, marginBottom:8 }}>
+                          No projects yet
+                        </div>
+                        <div style={{ fontSize:13, color:VS.textMuted, marginBottom:24, lineHeight:1.6 }}>
+                          Describe your app in the chat below and 7 AI agents will<br/>generate every file — live.
+                        </div>
+                        <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
+                          <button
+                            onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                            style={{
+                              padding:"9px 20px", borderRadius:8, border:"none",
+                              background:VS.accent, color:"#fff", fontSize:13,
+                              fontFamily:FONT_UI, cursor:"pointer", fontWeight:600,
+                            }}
+                          >
+                            <Sparkles size={13} style={{ marginRight:6, verticalAlign:"middle" }}/>
+                            Build with AI
+                          </button>
+                          <button
+                            onClick={() => { setActivity("git"); setSideOpen(true); }}
+                            style={{
+                              padding:"9px 20px", borderRadius:8,
+                              border:`1px solid ${VS.border}`,
+                              background:"#252526", color:VS.text, fontSize:13,
+                              fontFamily:FONT_UI, cursor:"pointer", fontWeight:500,
+                            }}
+                          >
+                            <Github size={13} style={{ marginRight:6, verticalAlign:"middle" }}/>
+                            Import from GitHub
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* GitHub import callout — only when projects exist */}
+                    {recentBuilds.length > 0 && (
+                      <div style={{
+                        marginTop:36,
+                        background:"#252526",
+                        border:`1px solid ${VS.border}`,
+                        borderRadius:12, padding:"18px 20px",
+                        display:"flex", alignItems:"center", justifyContent:"space-between", gap:16,
+                      }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                          <div style={{
+                            width:40, height:40, borderRadius:10, flexShrink:0,
+                            background:"rgba(255,255,255,0.05)",
+                            border:`1px solid ${VS.border}`,
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                          }}>
+                            <Github size={20} color={VS.text}/>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:600, color:VS.textActive, marginBottom:2 }}>
+                              Import from GitHub
+                            </div>
+                            <div style={{ fontSize:12, color:VS.textMuted }}>
+                              Connect a repo — AI agents can read, edit, and push changes back.
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { setActivity("git"); setSideOpen(true); }}
+                          style={{
+                            flexShrink:0, padding:"7px 16px", borderRadius:8,
+                            border:`1px solid ${VS.border}`,
+                            background:"#2d2d2d", color:VS.text,
+                            fontSize:12, fontFamily:FONT_UI,
+                            cursor:"pointer", fontWeight:500, whiteSpace:"nowrap",
+                          }}
+                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=VS.border; }}
+                        >
+                          Connect GitHub →
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               </div>{/* end Monaco pane */}
