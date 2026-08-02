@@ -419,6 +419,7 @@ export default function FireboxAIStudio() {
   const [gitChangePrompt,  setGitChangePrompt]  = useState("");      // "what changes?" after repo select
   const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
   const [gitAnalyzing,     setGitAnalyzing]     = useState(false);   // analyzing repo with agents
+  const [gitImporting,     setGitImporting]     = useState(false);   // importing repo as project
 
   const terminalRef    = useRef(null);
   const chatInputRef   = useRef(null);
@@ -1244,6 +1245,72 @@ export default function FireboxAIStudio() {
       es.close();
     };
   }, [gitRepo, gitToken, gitAnalyzing, updateAgent]);
+
+  /* ── Git: import repo as editable project ───────────────────────────────── */
+  const importRepoAsProject = useCallback(async () => {
+    if (!gitRepo || !gitToken || gitImporting) return;
+    setGitImporting(true);
+    setGitShowPromptStep(false);
+    setGitError("");
+
+    let buildId, filesCount;
+    try {
+      const res = await fetch("/api/git/import-as-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner:  gitRepo.owner,
+          repo:   gitRepo.repo,
+          branch: gitRepo.branch,
+          token:  gitToken,
+          files:  gitRepo.files,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      buildId    = data.buildId;
+      filesCount = data.filesCount;
+    } catch (err) {
+      setGitError(err.message);
+      setGitImporting(false);
+      return;
+    }
+
+    // Load imported files straight into the editor (same as loadProjectFiles)
+    try {
+      const res  = await fetch(`/api/build/${buildId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const files = data.files || [];
+      setAllFiles(files);
+      setOpenTabs([]); setActiveTabPath(null); setTabContents({});
+      if (files.length > 0) {
+        const first = files[0];
+        setOpenTabs([first]);
+        setActiveTabPath(first.path);
+        setTabContents({ [first.path]: first.content });
+        // Expand parent dirs
+        files.forEach(f => {
+          const parts = f.path.split("/");
+          for (let i = 0; i < parts.length - 1; i++) {
+            setExpandedDirs(prev => new Set([...prev, `${i}:${parts[i]}`]));
+          }
+        });
+      }
+      setDescription(`Imported from GitHub: ${gitRepo.owner}/${gitRepo.repo}`);
+      setCurrentBuildId(buildId);
+      setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
+      setPhase("complete");
+      setActivity("explorer");
+      setSideOpen(true);
+      // Refresh project history
+      fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(() => {});
+    } catch (err) {
+      setGitError(err.message);
+    }
+
+    setGitImporting(false);
+  }, [gitRepo, gitToken, gitImporting]);
 
   /* ── Delete a project ───────────────────────────────────────────────────── */
   const deleteProject = useCallback(async (buildId, e) => {
@@ -2212,7 +2279,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           {/* ── "What changes?" prompt step ── */}
                           {gitShowPromptStep && (
                             <div style={{ margin:"8px 8px 0", padding:"10px", borderRadius:6, background:"rgba(0,122,204,0.08)", border:`1px solid rgba(0,122,204,0.3)` }}>
-                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
                                 <Sparkles size={11} color={VS.accent}/>
                                 <span style={{ fontSize:11, fontWeight:700, color:VS.text }}>What would you like to do?</span>
                                 <button
@@ -2223,16 +2290,38 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 </button>
                               </div>
 
-                              {/* Analyze with AI Agents */}
+                              {/* Import as Project — primary action */}
                               <button
-                                onClick={startAnalyzeRepo}
-                                disabled={gitAnalyzing}
+                                onClick={importRepoAsProject}
+                                disabled={gitImporting || gitAnalyzing}
                                 style={{
                                   width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                                  padding:"8px", borderRadius:4, border:`1px solid rgba(0,122,204,0.5)`,
-                                  background:"rgba(0,122,204,0.15)", color: VS.accent,
-                                  fontSize:11, fontWeight:700, cursor: gitAnalyzing ? "not-allowed" : "pointer",
-                                  marginBottom:8, opacity: gitAnalyzing ? 0.6 : 1,
+                                  padding:"9px", borderRadius:4, border:"none",
+                                  background: VS.accent, color:"#fff",
+                                  fontSize:12, fontWeight:700,
+                                  cursor: (gitImporting || gitAnalyzing) ? "not-allowed" : "pointer",
+                                  marginBottom:4, opacity: (gitImporting || gitAnalyzing) ? 0.6 : 1,
+                                }}
+                              >
+                                {gitImporting
+                                  ? <><Loader2 size={12} style={{ animation:"spin 1s linear infinite" }}/> Importing…</>
+                                  : <><FolderOpen size={12}/> Import as Project</>}
+                              </button>
+                              <div style={{ fontSize:10, color:VS.textFaint, marginBottom:8, textAlign:"center" }}>
+                                Saves repo files as a project — edit anything with AI
+                              </div>
+
+                              {/* Analyze with AI Agents — secondary action */}
+                              <button
+                                onClick={startAnalyzeRepo}
+                                disabled={gitAnalyzing || gitImporting}
+                                style={{
+                                  width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                                  padding:"7px", borderRadius:4, border:`1px solid rgba(0,122,204,0.5)`,
+                                  background:"rgba(0,122,204,0.10)", color: VS.accent,
+                                  fontSize:11, fontWeight:600,
+                                  cursor: (gitAnalyzing || gitImporting) ? "not-allowed" : "pointer",
+                                  marginBottom:4, opacity: (gitAnalyzing || gitImporting) ? 0.6 : 1,
                                 }}
                               >
                                 {gitAnalyzing
@@ -2240,7 +2329,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   : <><Brain size={11}/> Analyze with AI Agents</>}
                               </button>
                               <div style={{ fontSize:10, color:VS.textFaint, marginBottom:8, textAlign:"center" }}>
-                                7 agents will review the repo and generate analysis reports
+                                7 agents generate a full code review report
                               </div>
 
                               <div style={{ borderTop:`1px solid ${VS.border}`, marginBottom:8 }}/>
@@ -2359,23 +2448,43 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               </div>
                             )}
 
-                            {/* Analyze with AI agents (persistent button) */}
+                            {/* Import / Analyze buttons (persistent, shown when AI edit panel is closed) */}
                             {!gitAiOpen && (
-                              <button
-                                onClick={startAnalyzeRepo}
-                                disabled={gitAnalyzing}
-                                style={{
-                                  width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                                  padding:"6px", borderRadius:4, border:`1px solid rgba(0,122,204,0.4)`,
-                                  background:"rgba(0,122,204,0.1)", color: VS.accent,
-                                  fontSize:11, fontWeight:700, cursor: gitAnalyzing ? "not-allowed" : "pointer",
-                                  marginBottom:6, opacity: gitAnalyzing ? 0.6 : 1,
-                                }}
-                              >
-                                {gitAnalyzing
-                                  ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Analyzing repo…</>
-                                  : <><Brain size={11}/> Analyze with AI Agents</>}
-                              </button>
+                              <div style={{ display:"flex", gap:5, marginBottom:6 }}>
+                                <button
+                                  onClick={importRepoAsProject}
+                                  disabled={gitImporting || gitAnalyzing}
+                                  style={{
+                                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                    padding:"6px", borderRadius:4, border:"none",
+                                    background: VS.accent, color:"#fff",
+                                    fontSize:11, fontWeight:700,
+                                    cursor: (gitImporting || gitAnalyzing) ? "not-allowed" : "pointer",
+                                    opacity: (gitImporting || gitAnalyzing) ? 0.6 : 1,
+                                  }}
+                                >
+                                  {gitImporting
+                                    ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Importing…</>
+                                    : <><FolderOpen size={11}/> Import as Project</>}
+                                </button>
+                                <button
+                                  onClick={startAnalyzeRepo}
+                                  disabled={gitAnalyzing || gitImporting}
+                                  title="Analyze with AI Agents"
+                                  style={{
+                                    display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                                    padding:"6px 8px", borderRadius:4, border:`1px solid rgba(0,122,204,0.4)`,
+                                    background:"rgba(0,122,204,0.1)", color: VS.accent,
+                                    fontSize:11, fontWeight:600,
+                                    cursor: (gitAnalyzing || gitImporting) ? "not-allowed" : "pointer",
+                                    opacity: (gitAnalyzing || gitImporting) ? 0.6 : 1,
+                                  }}
+                                >
+                                  {gitAnalyzing
+                                    ? <Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/>
+                                    : <Brain size={11}/>}
+                                </button>
+                              </div>
                             )}
 
                             {/* AI Edit section */}

@@ -231,6 +231,73 @@ router.post("/ai-edit", async (req, res) => {
   res.end();
 });
 
+/* ── POST /api/git/import-as-project — save repo files as an editable Build ── */
+router.post("/import-as-project", dbRequired, async (req, res) => {
+  const { owner, repo, branch, token, files: fileTree } = req.body;
+  if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
+    return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
+
+  const SKIP_EXT = new Set([
+    "png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot","otf",
+    "pdf","zip","gz","tar","mp4","webm","mp3","wav","ogg","exe","dll","so",
+    "lock","map","min.js","min.css",
+  ]);
+  const SKIP_DIR = new Set([
+    "node_modules",".git","dist","build",".next","coverage","vendor",
+    "__pycache__",".cache","out",".turbo",
+  ]);
+
+  const filteredFiles = fileTree.filter(f => {
+    const parts = f.path.split("/");
+    if (parts.some(p => SKIP_DIR.has(p))) return false;
+    const ext = f.path.split(".").pop().toLowerCase();
+    if (SKIP_EXT.has(ext)) return false;
+    if (f.size && f.size > 150_000) return false; // skip files > 150 KB
+    return true;
+  });
+
+  // Sort: smaller files first so we get maximum variety within the cap
+  filteredFiles.sort((a, b) => (a.size || 0) - (b.size || 0));
+
+  const MAX_FILES = 60;
+  const toFetch   = filteredFiles.slice(0, MAX_FILES);
+
+  // Fetch files in parallel (batches of 10 to avoid rate-limits)
+  const fetchedFiles = [];
+  for (let i = 0; i < toFetch.length; i += 10) {
+    const batch = toFetch.slice(i, i + 10);
+    const results = await Promise.all(batch.map(async f => {
+      try {
+        const data    = await ghFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(f.path)}?ref=${branch}`, token);
+        const content = Buffer.from(data.content, "base64").toString("utf8");
+        const ext     = f.path.split(".").pop().toLowerCase();
+        const LANG_MAP = {
+          js:"javascript", jsx:"javascript", ts:"typescript", tsx:"typescript",
+          py:"python", json:"json", yml:"yaml", yaml:"yaml", md:"markdown",
+          sh:"bash", html:"html", css:"css", scss:"css", go:"go",
+          rs:"rust", rb:"ruby", toml:"ini", env:"bash",
+        };
+        const base     = f.path.split("/").pop().toLowerCase();
+        const language = base === "dockerfile" ? "dockerfile" : (LANG_MAP[ext] || "plaintext");
+        return { agent: "GitHub Import", path: f.path, content, language };
+      } catch { return null; }
+    }));
+    fetchedFiles.push(...results.filter(Boolean));
+  }
+
+  if (!fetchedFiles.length)
+    return res.status(400).json({ error: "No readable files found in this repository" });
+
+  const build = await Build.create({
+    description: `Imported from GitHub: ${owner}/${repo} (branch: ${branch})`,
+    status: "complete",
+    agents: [],
+    files:  fetchedFiles,
+  });
+
+  res.json({ buildId: build._id, filesCount: fetchedFiles.length });
+});
+
 /* ── POST /api/git/analyze — fetch repo files + start analysis build ──────── */
 router.post("/analyze", dbRequired, async (req, res) => {
   const { owner, repo, branch, token, files: fileTree } = req.body;
