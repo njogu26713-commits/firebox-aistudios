@@ -359,8 +359,10 @@ export default function FireboxAIStudio() {
   const [editError,        setEditError]        = useState("");
 
   /* chat state */
-  const [chatHistory, setChatHistory] = useState([]);  // [{role:"user"|"system", text:string}]
-  const [chatInput,   setChatInput]   = useState("");
+  const [chatHistory,    setChatHistory]    = useState([]);  // [{role:"user"|"ai", text:string}]
+  const [chatInput,      setChatInput]      = useState("");
+  const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
+  const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
 
   /* editor state */
   const [openTabs,       setOpenTabs]       = useState([]);          // [{path,agent,content,language}]
@@ -767,24 +769,89 @@ export default function FireboxAIStudio() {
     setEditingFiles(false);
   }, [currentBuildId]);
 
-  /* ── Send chat message ─────────────────────────────────────────────────── */
-  const sendChatMessage = useCallback(() => {
+  /* ── Send chat message — AI replies first, then acts ──────────────────── */
+  const sendChatMessage = useCallback(async () => {
     const text = chatInput.trim();
     if (!text) return;
-    setChatHistory(prev => [...prev, { role: "user", text }]);
+    const userMsg = { role: "user", text };
+    setChatHistory(prev => [...prev, userMsg]);
     setChatInput("");
+    setAiThinking(true);
+    setAiStreamText("");
+    setActivity("agents");
+    setSideOpen(true);
     setTimeout(() => chatInputRef.current?.focus(), 0);
 
-    // If we already have a build with files, use targeted edit instead of rebuild
-    if (currentBuildId && allFiles.length > 0) {
-      startEditFiles(text);
-    } else {
-      setActivity("agents");
-      setSideOpen(true);
-      setDescription(text);
-      startBuild(text);
+    // Build conversation for the API (last 10 messages for context)
+    const historyForApi = [...chatHistory.slice(-9), userMsg];
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historyForApi,
+          hasFiles: allFiles.length > 0,
+          fileNames: allFiles.map(f => f.path),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Error ${res.status}`);
+      }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = "";
+      let   fullText = "";
+      let   action   = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop();
+
+        for (const part of parts) {
+          const line = part.replace(/^data:\s*/, "").trim();
+          if (!line) continue;
+          let evt;
+          try { evt = JSON.parse(line); } catch { continue; }
+
+          if (evt.token) {
+            fullText += evt.token;
+            setAiStreamText(fullText);
+          } else if (evt.done) {
+            fullText = evt.text || fullText;
+            action   = evt.action || null;
+          } else if (evt.error) {
+            fullText = `Sorry, I ran into an error: ${evt.error}`;
+          }
+        }
+      }
+
+      // Commit the AI reply to history
+      if (fullText) {
+        setChatHistory(prev => [...prev, { role: "ai", text: fullText }]);
+      }
+      setAiStreamText("");
+      setAiThinking(false);
+
+      // Perform the action the AI decided on
+      if (action === "build") {
+        setDescription(text);
+        startBuild(text);
+      } else if (action === "edit" && currentBuildId && allFiles.length > 0) {
+        startEditFiles(text);
+      }
+    } catch (err) {
+      setChatHistory(prev => [...prev, { role: "ai", text: `Sorry, something went wrong: ${err.message}` }]);
+      setAiStreamText("");
+      setAiThinking(false);
     }
-  }, [chatInput, startBuild, startEditFiles, currentBuildId, allFiles]);
+  }, [chatInput, chatHistory, startBuild, startEditFiles, currentBuildId, allFiles]);
 
   /* ── Reset ────────────────────────────────────────────────────────────── */
   const reset = () => {
@@ -798,6 +865,7 @@ export default function FireboxAIStudio() {
     setChatHistory([]); setChatInput("");
     setCurrentBuildId(null);
     setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
+    setAiThinking(false); setAiStreamText("");
     Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
       clearInterval(elapsed); steps.forEach(clearTimeout);
     });
@@ -1498,25 +1566,68 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       </div>
                     )}
 
-                    {/* Chat history — user bubbles */}
+                    {/* Chat history — user + AI bubbles */}
                     {chatHistory.map((msg, i) => (
-                      <div key={i} style={{
-                        display:"flex", flexDirection:"column", alignItems:"flex-end",
+                      msg.role === "user" ? (
+                        <div key={i} style={{
+                          display:"flex", flexDirection:"column", alignItems:"flex-end",
+                          marginBottom:10, animation:"fadeIn 0.2s ease",
+                        }}>
+                          <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingRight:2 }}>
+                            💬 You
+                          </div>
+                          <div style={{
+                            maxWidth:"90%", padding:"8px 12px", borderRadius:"10px 10px 2px 10px",
+                            background: VS.accent, color:"#fff",
+                            fontSize:12, lineHeight:1.5, fontFamily:FONT_MONO,
+                            wordBreak:"break-word",
+                          }}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={i} style={{
+                          display:"flex", flexDirection:"column", alignItems:"flex-start",
+                          marginBottom:10, animation:"fadeIn 0.2s ease",
+                        }}>
+                          <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingLeft:2 }}>
+                            ⚡ Firebox AI
+                          </div>
+                          <div style={{
+                            maxWidth:"92%", padding:"8px 12px", borderRadius:"10px 10px 10px 2px",
+                            background:"rgba(255,255,255,0.06)",
+                            border:"1px solid rgba(255,255,255,0.09)",
+                            color: VS.text,
+                            fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
+                            wordBreak:"break-word", whiteSpace:"pre-wrap",
+                          }}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      )
+                    ))}
+
+                    {/* Streaming AI reply bubble */}
+                    {(aiThinking || aiStreamText) && (
+                      <div style={{
+                        display:"flex", flexDirection:"column", alignItems:"flex-start",
                         marginBottom:10, animation:"fadeIn 0.2s ease",
                       }}>
-                        <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingRight:2 }}>
-                          💬 You
+                        <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingLeft:2 }}>
+                          ⚡ Firebox AI
                         </div>
                         <div style={{
-                          maxWidth:"90%", padding:"8px 12px", borderRadius:"10px 10px 2px 10px",
-                          background: VS.accent, color:"#fff",
-                          fontSize:12, lineHeight:1.5, fontFamily:FONT_MONO,
-                          wordBreak:"break-word",
+                          maxWidth:"92%", padding:"8px 12px", borderRadius:"10px 10px 10px 2px",
+                          background:"rgba(255,255,255,0.06)",
+                          border:"1px solid rgba(0,120,212,0.25)",
+                          color: VS.text,
+                          fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
+                          wordBreak:"break-word", whiteSpace:"pre-wrap",
                         }}>
-                          {msg.text}
+                          {aiStreamText || <ThinkingDots/>}
                         </div>
                       </div>
-                    ))}
+                    )}
 
                     {/* Activity feed — one card per started agent */}
                     {AGENT_META.map(({ name, Icon, color }) => {
@@ -1713,12 +1824,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     )}
 
                     {/* Build complete banner */}
-                    {phase === "complete" && (
+                    {phase === "complete" && !aiThinking && !editingFiles && (
                       <div style={{ marginTop:6, padding:"10px 14px", borderRadius:10, background:"rgba(78,201,148,0.08)", border:`1px solid rgba(78,201,148,0.2)`, display:"flex", alignItems:"center", gap:8, animation:"fadeIn 0.3s ease" }}>
                         <CheckCircle2 size={14} color={VS.success}/>
                         <div>
                           <div style={{ fontSize:12, fontWeight:600, color:VS.success }}>Build complete</div>
-                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>Type below to edit files — the AI makes targeted changes, not a full rebuild.</div>
+                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>Chat with AI below — ask questions, request changes, or click <strong style={{color:VS.text}}>New project</strong> to start fresh.</div>
                         </div>
                       </div>
                     )}
@@ -2311,11 +2422,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         ? "Agents are working…"
                         : editingFiles
                         ? "Editing files…"
-                        : phase === "complete"
-                        ? "Describe a change — AI will edit only what's needed…"
-                        : "What do you want to build?"
+                        : aiThinking
+                        ? "AI is thinking…"
+                        : "Ask anything, describe an app, or request a change…"
                     }
-                    disabled={phase === "building" || editingFiles}
+                    disabled={phase === "building" || editingFiles || aiThinking}
                     rows={2}
                     style={{
                       display:"block", width:"100%",
@@ -2329,27 +2440,46 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   />
                   {/* Bottom action row */}
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    {/* + attach button */}
-                    <button
-                      title="Attach context"
-                      style={{
-                        width:28, height:28, borderRadius:"50%",
-                        background:"transparent",
-                        border:"1.5px solid rgba(255,255,255,0.12)",
-                        color:VS.textMuted,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        cursor:"pointer", transition:"all 0.15s", flexShrink:0,
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.25)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; }}
-                    >
-                      <Plus size={14}/>
-                    </button>
+                    {/* New Project button (when files exist) or decorative + */}
+                    {allFiles.length > 0 ? (
+                      <button
+                        onClick={reset}
+                        title="Start a new project"
+                        style={{
+                          display:"flex", alignItems:"center", gap:5,
+                          padding:"3px 10px", borderRadius:20,
+                          background:"transparent",
+                          border:"1.5px solid rgba(255,255,255,0.12)",
+                          color:VS.textMuted, fontSize:11, fontFamily:FONT_UI,
+                          cursor:"pointer", transition:"all 0.15s", flexShrink:0,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.3)"; e.currentTarget.style.color=VS.text; }}
+                        onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; e.currentTarget.style.color=VS.textMuted; }}
+                      >
+                        <Plus size={11}/> New project
+                      </button>
+                    ) : (
+                      <button
+                        title="New project"
+                        style={{
+                          width:28, height:28, borderRadius:"50%",
+                          background:"transparent",
+                          border:"1.5px solid rgba(255,255,255,0.12)",
+                          color:VS.textMuted,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          cursor:"pointer", transition:"all 0.15s", flexShrink:0,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.25)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; }}
+                      >
+                        <Plus size={14}/>
+                      </button>
+                    )}
 
                     {/* Send button — round, filled */}
                     <button
                       onClick={sendChatMessage}
-                      disabled={!chatInput.trim() || phase === "building" || editingFiles}
+                      disabled={!chatInput.trim() || phase === "building" || editingFiles || aiThinking}
                       title="Send (Enter)"
                       style={{
                         width:30, height:30, borderRadius:"50%", border:"none",

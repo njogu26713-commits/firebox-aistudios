@@ -106,6 +106,72 @@ app.get("/api/build/:id/file", dbRequired, async (req, res) => {
   }
 });
 
+/* ── POST /api/chat — conversational AI with optional action trigger ─────── */
+app.post("/api/chat", async (req, res) => {
+  const { messages = [], hasFiles = false, fileNames = [] } = req.body;
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders();
+  const sse = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  const fileContext = hasFiles && fileNames.length > 0
+    ? `\nThe user currently has a project open with these files: ${fileNames.slice(0, 20).join(", ")}.`
+    : "\nThe user has no project files open yet.";
+
+  const systemPrompt =
+    `You are an AI coding assistant inside Firebox AI Studio, similar to Replit's AI assistant. ` +
+    `You can chat naturally, answer coding questions, suggest ideas, help plan apps, and take actions.` +
+    fileContext +
+    `\n\nAt the very end of your reply (after all your text), add ONE of these action tags if needed:` +
+    `\n[ACTION:build] — if the user wants to build/create a new project (start fresh with all 7 agents)` +
+    `\n[ACTION:edit] — if the user wants to change/update/fix the existing project files` +
+    `\nIf you're just answering a question or chatting, add nothing — no action tag.` +
+    `\n\nKeep replies concise and friendly. When you're about to build or edit, briefly explain what you'll do first, then put the action tag on its own last line.`;
+
+  const groqMessages = [
+    { role: "system", content: systemPrompt },
+    ...messages.map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text })),
+  ];
+
+  try {
+    const stream = await callWithFallback(client =>
+      client.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: groqMessages,
+        stream: true,
+        max_tokens: 800,
+        temperature: 0.5,
+      })
+    );
+
+    let full = "";
+    let buffer = "";
+    for await (const chunk of stream) {
+      const tok = chunk.choices[0]?.delta?.content || "";
+      if (!tok) continue;
+      full += tok;
+      buffer += tok;
+      if (buffer.length >= 15) { sse({ token: buffer }); buffer = ""; }
+    }
+    if (buffer) sse({ token: buffer });
+
+    // Parse action tag from end of response
+    const actionMatch = full.match(/\[ACTION:(build|edit)\]\s*$/);
+    const action = actionMatch ? actionMatch[1] : null;
+    const text = full.replace(/\[ACTION:(build|edit)\]\s*$/, "").trimEnd();
+
+    sse({ done: true, text, action });
+  } catch (err) {
+    sse({ error: err.message });
+  }
+  res.end();
+});
+
 /* ── POST /api/edit-files — targeted AI edit of existing build files ──────── */
 app.post("/api/edit-files", dbRequired, async (req, res) => {
   const { buildId, instruction } = req.body;
