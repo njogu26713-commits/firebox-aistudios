@@ -138,11 +138,11 @@ app.post("/api/chat", async (req, res) => {
     `You are an AI coding assistant inside Firebox AI Studio, similar to Replit's AI assistant. ` +
     `You can chat naturally, answer coding questions, suggest ideas, help plan apps, and take actions.` +
     fileContext +
-    `\n\nAt the very end of your reply (after all your text), add ONE of these action tags if needed:` +
-    `\n[ACTION:build] — if the user wants to build/create a new project (start fresh with all 7 agents)` +
-    `\n[ACTION:edit] — if the user wants to change/update/fix the existing project files` +
-    `\nIf you're just answering a question or chatting, add nothing — no action tag.` +
-    `\n\nKeep replies concise and friendly. When you're about to build or edit, briefly explain what you'll do first, then put the action tag on its own last line.`;
+    `\n\nIMPORTANT — action tags must ONLY be added when the user gives a direct, unambiguous command to act. Follow these rules strictly:` +
+    `\n\n[ACTION:build] — ONLY add this when the user gives an explicit command to build/create a project, such as "build me a...", "create a...", "make a...", "start building...", "generate a...". Do NOT add this for questions, ideas, brainstorming, planning discussions, or anything where the user is asking for advice or information — even if the topic is about an app they might want to build.` +
+    `\n[ACTION:edit] — ONLY add this when the user explicitly asks to change/update/fix/add to the existing project files, such as "change the color to...", "add a login page", "fix the bug in...".` +
+    `\n\nWhen in doubt, do NOT add any action tag. Questions, requests for advice, brainstorming, and anything that is not a direct build or edit command should NEVER trigger an action.` +
+    `\n\nKeep replies concise and friendly. When you're about to build or edit (and only when you're certain the user asked you to), briefly explain what you'll do first, then put the action tag on its own last line.`;
 
   const groqMessages = [
     { role: "system", content: systemPrompt },
