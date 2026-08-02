@@ -120,6 +120,50 @@ const AGENT_STEPS = {
   ],
 };
 
+/* ─── Prompt suggestions shown on the idle screen ───────────────────────── */
+const PROMPT_SUGGESTIONS = [
+  {
+    icon: "🛒",
+    label: "E-commerce store",
+    prompt: "Build a full-stack e-commerce store with product listings, shopping cart, user auth, and Stripe checkout integration",
+  },
+  {
+    icon: "💬",
+    label: "Real-time chat app",
+    prompt: "Build a real-time chat application with WebSocket support, multiple rooms, user presence indicators, and message history",
+  },
+  {
+    icon: "📋",
+    label: "Project management",
+    prompt: "Build a project management app with Kanban boards, task assignment, due dates, comments, and team collaboration features",
+  },
+  {
+    icon: "📊",
+    label: "Analytics dashboard",
+    prompt: "Build an analytics dashboard with interactive charts, KPI cards, date range filters, CSV export, and a REST API backend",
+  },
+  {
+    icon: "🤖",
+    label: "AI chatbot",
+    prompt: "Build an AI-powered chatbot app with streaming responses, conversation history, system prompt configuration, and a clean chat UI",
+  },
+  {
+    icon: "🔐",
+    label: "SaaS starter",
+    prompt: "Build a SaaS starter app with user authentication, subscription billing via Stripe, a settings page, and a protected dashboard",
+  },
+  {
+    icon: "📝",
+    label: "Blog platform",
+    prompt: "Build a full-stack blog platform with a markdown editor, post categories, comments, user auth, and SEO-friendly URLs",
+  },
+  {
+    icon: "🗓️",
+    label: "Booking system",
+    prompt: "Build a booking and scheduling app with calendar availability, appointment creation, email notifications, and an admin panel",
+  },
+];
+
 /* ─── File utilities ─────────────────────────────────────────────────────── */
 function getMonacoLang(path = "", lang = "") {
   const ext  = path.split(".").pop().toLowerCase();
@@ -1785,15 +1829,56 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   {/* ── Scrollable feed ──────────────────────────────────── */}
                   <div ref={terminalRef} style={{ flex:1, overflowY:"auto", padding:"8px 10px" }}>
 
-                    {/* Empty-state hint when no messages yet */}
+                    {/* Empty-state: prompt suggestion cards */}
                     {chatHistory.length === 0 && phase === "idle" && (
-                      <div style={{ padding:"24px 8px 12px", textAlign:"center" }}>
-                        <Sparkles size={22} color={VS.accent} style={{ marginBottom:8, opacity:0.7 }}/>
-                        <div style={{ fontSize:13, fontWeight:600, color:VS.textActive, marginBottom:4 }}>
-                          Describe your app below
+                      <div style={{ padding:"16px 2px 8px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14 }}>
+                          <Sparkles size={14} color={VS.accent} style={{ opacity:0.85 }}/>
+                          <span style={{ fontSize:12, fontWeight:700, color:VS.textActive }}>
+                            What would you like to build?
+                          </span>
                         </div>
-                        <div style={{ fontSize:11, color:VS.textMuted, lineHeight:1.6 }}>
-                          7 AI agents will generate every file — live.
+                        <div style={{
+                          display:"grid",
+                          gridTemplateColumns:"1fr 1fr",
+                          gap:7,
+                        }}>
+                          {PROMPT_SUGGESTIONS.map(({ icon, label, prompt }) => (
+                            <button
+                              key={label}
+                              onClick={() => {
+                                setChatInput(prompt);
+                                setTimeout(() => chatInputRef.current?.focus(), 0);
+                              }}
+                              style={{
+                                display:"flex", flexDirection:"column", alignItems:"flex-start",
+                                gap:4, padding:"10px 10px 9px",
+                                background:"rgba(255,255,255,0.04)",
+                                border:"1px solid rgba(255,255,255,0.09)",
+                                borderRadius:10, cursor:"pointer",
+                                textAlign:"left", transition:"all 0.15s",
+                                fontFamily:FONT_UI,
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.background = "rgba(0,120,212,0.12)";
+                                e.currentTarget.style.borderColor = "rgba(0,120,212,0.45)";
+                                e.currentTarget.style.transform = "translateY(-1px)";
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                                e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
+                                e.currentTarget.style.transform = "translateY(0)";
+                              }}
+                            >
+                              <span style={{ fontSize:16, lineHeight:1 }}>{icon}</span>
+                              <span style={{ fontSize:11, fontWeight:600, color:VS.textActive, lineHeight:1.3 }}>
+                                {label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize:10, color:VS.textFaint, marginTop:12, textAlign:"center", lineHeight:1.6 }}>
+                          Click a card to use it as your prompt, or type your own below
                         </div>
                       </div>
                     )}
