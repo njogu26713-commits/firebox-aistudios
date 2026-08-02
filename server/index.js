@@ -106,6 +106,17 @@ app.get("/api/build/:id/file", dbRequired, async (req, res) => {
   }
 });
 
+/* ── DELETE /api/build/:id — permanently delete a build ─────────────────── */
+app.delete("/api/build/:id", dbRequired, async (req, res) => {
+  try {
+    const result = await Build.findByIdAndDelete(req.params.id);
+    if (!result) return res.status(404).json({ error: "Build not found" });
+    res.json({ ok: true });
+  } catch {
+    res.status(400).json({ error: "Invalid build id" });
+  }
+});
+
 /* ── POST /api/chat — conversational AI with optional action trigger ─────── */
 app.post("/api/chat", async (req, res) => {
   const { messages = [], hasFiles = false, fileNames = [] } = req.body;

@@ -9,7 +9,7 @@ import {
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
-  Eye, EyeOff, Globe, Plus, Github,
+  Eye, EyeOff, Globe, Plus, Github, Trash2,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -1092,6 +1092,19 @@ export default function FireboxAIStudio() {
     setGitExpandedDirs(prev => {
       const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
     }), []);
+
+  /* ── Delete a project ───────────────────────────────────────────────────── */
+  const deleteProject = useCallback(async (buildId, e) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/build/${buildId}`, { method: "DELETE" });
+      setRecentBuilds(prev => prev.filter(b => b._id !== buildId));
+      setProjectFilesMap(prev => { const n = { ...prev }; delete n[buildId]; return n; });
+      setExpandedProjects(prev => { const s = new Set(prev); s.delete(buildId); return s; });
+      // If this was the open project, clear the editor
+      if (currentBuildId === buildId) reset();
+    } catch (err) { console.error("Delete failed", err); }
+  }, [currentBuildId, reset]);
 
   /* ── Load files for a past project ──────────────────────────────────────── */
   const toggleProject = useCallback(async (buildId) => {
@@ -2298,6 +2311,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             className="tree-item"
                             onClick={() => toggleProject(build._id)}
                             style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px 5px 10px", cursor:"pointer", userSelect:"none" }}
+                            onMouseEnter={e => e.currentTarget.querySelector(".del-btn")?.style && (e.currentTarget.querySelector(".del-btn").style.opacity="1")}
+                            onMouseLeave={e => e.currentTarget.querySelector(".del-btn")?.style && (e.currentTarget.querySelector(".del-btn").style.opacity="0")}
                           >
                             {isExpanded
                               ? <ChevronDown  size={12} color={VS.textMuted}/>
@@ -2312,6 +2327,23 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               ? <Loader2 size={11} color={VS.textMuted} style={{ animation:"spin 1s linear infinite", flexShrink:0 }}/>
                               : <span style={{ fontSize:10, color:statusColor, flexShrink:0, fontWeight:500 }}>{build.status}</span>
                             }
+                            <button
+                              className="del-btn"
+                              onClick={e => deleteProject(build._id, e)}
+                              title="Delete project"
+                              style={{
+                                opacity:0, transition:"opacity 0.15s",
+                                width:20, height:20, borderRadius:4,
+                                background:"transparent", border:"none",
+                                color:VS.error, cursor:"pointer", flexShrink:0,
+                                display:"flex", alignItems:"center", justifyContent:"center",
+                                padding:0,
+                              }}
+                              onMouseEnter={e => { e.stopPropagation(); e.currentTarget.style.background="rgba(244,135,113,0.15)"; }}
+                              onMouseLeave={e => { e.currentTarget.style.background="transparent"; }}
+                            >
+                              <Trash2 size={11}/>
+                            </button>
                           </div>
 
                           {/* File list */}
@@ -2736,13 +2768,38 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   e.currentTarget.style.borderColor=VS.accent;
                                   e.currentTarget.style.transform="translateY(-2px)";
                                   e.currentTarget.style.boxShadow=`0 6px 20px rgba(0,0,0,0.35)`;
+                                  const btn = e.currentTarget.querySelector(".grid-del-btn");
+                                  if (btn) btn.style.opacity="1";
                                 }}
                                 onMouseLeave={e=>{
                                   e.currentTarget.style.borderColor=VS.border;
                                   e.currentTarget.style.transform="translateY(0)";
                                   e.currentTarget.style.boxShadow="none";
+                                  const btn = e.currentTarget.querySelector(".grid-del-btn");
+                                  if (btn) btn.style.opacity="0";
                                 }}
                               >
+                                {/* Delete button — top-right corner */}
+                                <button
+                                  className="grid-del-btn"
+                                  onClick={e => deleteProject(build._id, e)}
+                                  title="Delete project"
+                                  style={{
+                                    position:"absolute", top:10, right:10,
+                                    opacity:0, transition:"opacity 0.15s, background 0.15s",
+                                    width:26, height:26, borderRadius:6,
+                                    background:"rgba(244,135,113,0.12)",
+                                    border:"1px solid rgba(244,135,113,0.25)",
+                                    color:VS.error, cursor:"pointer",
+                                    display:"flex", alignItems:"center", justifyContent:"center",
+                                    padding:0, zIndex:2,
+                                  }}
+                                  onMouseEnter={e => { e.stopPropagation(); e.currentTarget.style.background="rgba(244,135,113,0.25)"; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background="rgba(244,135,113,0.12)"; }}
+                                >
+                                  <Trash2 size={13}/>
+                                </button>
+
                                 {/* Project icon */}
                                 <div style={{
                                   width:36, height:36, borderRadius:9,
