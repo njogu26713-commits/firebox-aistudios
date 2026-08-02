@@ -1,8 +1,11 @@
 import express from "express";
 import GithubToken from "../models/GithubToken.js";
+import Build from "../models/Build.js";
 import { isDBConnected } from "../db.js";
 import { callWithFallback } from "../groqPool.js";
 import { parseEditOutput, applyEdits } from "../utils/editParser.js";
+import { ANALYZE_AGENT_DEFS } from "../agents/analyzeConfig.js";
+import { runAnalysisPipeline } from "../agents/analyzeRunner.js";
 
 const dbRequired = (req, res, next) => {
   if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
@@ -225,6 +228,94 @@ router.post("/ai-edit", async (req, res) => {
   } catch (err) {
     sse({ error: err.message });
   }
+  res.end();
+});
+
+/* ── POST /api/git/analyze — fetch repo files + start analysis build ──────── */
+router.post("/analyze", dbRequired, async (req, res) => {
+  const { owner, repo, branch, token, files: fileTree } = req.body;
+  if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
+    return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
+
+  // Decide which files to fetch (skip binaries, lock files, large assets)
+  const SKIP_EXT  = new Set(["png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot","pdf","zip","gz","mp4","webm","mp3","lock","map","min.js","min.css"]);
+  const SKIP_DIR  = new Set(["node_modules",".git","dist","build",".next","coverage","vendor","__pycache__"]);
+  const PRIORITY  = ["README.md","readme.md","package.json",".env.example","docker-compose.yml","Dockerfile","server/index.js","index.js","app.js","main.js","src/App.jsx","src/App.tsx","src/main.jsx","src/main.tsx"];
+
+  const filteredFiles = fileTree.filter(f => {
+    const parts = f.path.split("/");
+    if (parts.some(p => SKIP_DIR.has(p))) return false;
+    const ext = f.path.split(".").pop().toLowerCase();
+    if (SKIP_EXT.has(ext)) return false;
+    if (f.size && f.size > 80000) return false; // skip very large files
+    return true;
+  });
+
+  // Sort: priority files first, then by size ascending
+  filteredFiles.sort((a, b) => {
+    const pa = PRIORITY.indexOf(a.path);
+    const pb = PRIORITY.indexOf(b.path);
+    if (pa !== -1 && pb !== -1) return pa - pb;
+    if (pa !== -1) return -1;
+    if (pb !== -1) return 1;
+    return (a.size || 0) - (b.size || 0);
+  });
+
+  // Fetch up to 20 files, cap each at 3000 chars
+  const MAX_FILES = 20;
+  const MAX_CHARS = 3000;
+  const toFetch   = filteredFiles.slice(0, MAX_FILES);
+
+  const fetchedFiles = [];
+  await Promise.all(toFetch.map(async f => {
+    try {
+      const data    = await ghFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(f.path)}?ref=${branch}`, token);
+      const content = Buffer.from(data.content, "base64").toString("utf8").slice(0, MAX_CHARS);
+      fetchedFiles.push({ path: f.path, content });
+    } catch { /* skip files that fail */ }
+  }));
+
+  // Build the repo context string passed to all analysis agents
+  const repoContext = [
+    `Repository: ${owner}/${repo}  (branch: ${branch})`,
+    `Total files in repo: ${fileTree.length}  |  Files included below: ${fetchedFiles.length}`,
+    "",
+    ...fetchedFiles.map(f =>
+      `### ${f.path}\n\`\`\`\n${f.content}${f.content.length >= MAX_CHARS ? "\n… (truncated)" : ""}\n\`\`\``
+    ),
+  ].join("\n");
+
+  // Create a Build record using the analysis agent definitions
+  const build = await Build.create({
+    description: `GitHub Import Analysis: ${owner}/${repo}\n\n${repoContext}`,
+    status: "running",
+    agents: ANALYZE_AGENT_DEFS.map(a => ({ name: a.name, status: "idle" })),
+    files:  [],
+  });
+
+  res.json({ buildId: build._id });
+});
+
+/* ── GET /api/git/analyze/:buildId/events — SSE analysis stream ──────────── */
+router.get("/analyze/:buildId/events", dbRequired, async (req, res) => {
+  let build;
+  try { build = await Build.findById(req.params.buildId); } catch { /* fall through */ }
+  if (!build) return res.status(404).json({ error: "Build not found" });
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders();
+
+  const controller = new AbortController();
+  req.on("close", () => controller.abort());
+
+  // The repo context was stored as part of the description after the first newline pair
+  const repoContext = build.description.replace(/^GitHub Import Analysis: [^\n]+\n\n/, "");
+  await runAnalysisPipeline(build, repoContext, res, controller.signal);
   res.end();
 });
 

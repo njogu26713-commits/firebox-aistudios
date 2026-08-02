@@ -418,6 +418,7 @@ export default function FireboxAIStudio() {
   const [gitRepoFilter,    setGitRepoFilter]    = useState("");
   const [gitChangePrompt,  setGitChangePrompt]  = useState("");      // "what changes?" after repo select
   const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
+  const [gitAnalyzing,     setGitAnalyzing]     = useState(false);   // analyzing repo with agents
 
   const terminalRef    = useRef(null);
   const chatInputRef   = useRef(null);
@@ -1092,6 +1093,157 @@ export default function FireboxAIStudio() {
     setGitExpandedDirs(prev => {
       const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
     }), []);
+
+  /* ── Git: analyze repo with AI agents ───────────────────────────────────── */
+  const startAnalyzeRepo = useCallback(async () => {
+    if (!gitRepo || !gitToken || gitAnalyzing) return;
+    setGitAnalyzing(true);
+    setGitShowPromptStep(false);
+    setGitError("");
+
+    // Reset agent panel
+    setPhase("building");
+    setErrorMsg("");
+    streamingRef.current = {};
+    setAgentStates(AGENT_META.map(a => ({ name: a.name, status: "idle", streaming: "" })));
+    setAllFiles([]);
+    setOpenTabs([]);
+    setActiveTabPath(null);
+    setTabContents({});
+    setActiveAgent(null);
+    setActivity("agents");
+    setAgentStartTimes({});
+    setAgentElapsed({});
+    setAgentVisSteps({});
+    setStepsCollapsed({});
+    Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => {
+      clearInterval(elapsed); steps.forEach(clearTimeout);
+    });
+    agentTimerRefs.current = {};
+
+    let buildId;
+    try {
+      const res = await fetch("/api/git/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner:  gitRepo.owner,
+          repo:   gitRepo.repo,
+          branch: gitRepo.branch,
+          token:  gitToken,
+          files:  gitRepo.files,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start analysis");
+      buildId = data.buildId;
+      setCurrentBuildId(data.buildId);
+    } catch (err) {
+      setPhase("error");
+      setErrorMsg(err.message);
+      setGitAnalyzing(false);
+      return;
+    }
+
+    const es = new EventSource(`/api/git/analyze/${buildId}/events`);
+    esRef.current = es;
+
+    es.addEventListener("agent-start", e => {
+      const { agent } = JSON.parse(e.data);
+      setActiveAgent(agent);
+      updateAgent(agent, { status: "working", streaming: "" });
+      streamingRef.current[agent] = "";
+
+      const startTime = Date.now();
+      setAgentStartTimes(prev => ({ ...prev, [agent]: startTime }));
+      setAgentElapsed(prev => ({ ...prev, [agent]: 0 }));
+      setAgentVisSteps(prev => ({ ...prev, [agent]: 1 }));
+
+      const elapsedId = setInterval(() => {
+        setAgentElapsed(prev => ({ ...prev, [agent]: Math.round((Date.now() - startTime) / 1000) }));
+      }, 1000);
+
+      const steps = AGENT_STEPS[agent] || [];
+      const gap   = steps.length > 1 ? 17000 / (steps.length - 1) : 17000;
+      const stepIds = steps.slice(1).map((_, i) =>
+        setTimeout(() => {
+          setAgentVisSteps(prev => ({ ...prev, [agent]: i + 2 }));
+        }, gap * (i + 1))
+      );
+      agentTimerRefs.current[agent] = { elapsed: elapsedId, steps: stepIds };
+    });
+
+    es.addEventListener("agent-token", e => {
+      const { agent, token } = JSON.parse(e.data);
+      streamingRef.current[agent] = (streamingRef.current[agent] || "") + token;
+      updateAgent(agent, { streaming: streamingRef.current[agent] });
+    });
+
+    es.addEventListener("agent-complete", e => {
+      const { agent, files } = JSON.parse(e.data);
+      if (agentTimerRefs.current[agent]) {
+        clearInterval(agentTimerRefs.current[agent].elapsed);
+        agentTimerRefs.current[agent].steps.forEach(clearTimeout);
+        delete agentTimerRefs.current[agent];
+      }
+      setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent] || []).length }));
+      updateAgent(agent, { status: "done", streaming: "" });
+      if (files?.length) {
+        setAllFiles(prev => {
+          const next = [...prev, ...files];
+          if (prev.length === 0 && files.length > 0) {
+            const f = files[0];
+            setOpenTabs([f]);
+            setActiveTabPath(f.path);
+            setTabContents({ [f.path]: f.content });
+            setActivity("explorer");
+          }
+          return next;
+        });
+        files.forEach(f => {
+          const parts = f.path.split("/");
+          for (let i = 0; i < parts.length - 1; i++) {
+            setExpandedDirs(prev => new Set([...prev, `${i}:${parts[i]}`]));
+          }
+        });
+      }
+    });
+
+    es.addEventListener("agent-error", e => {
+      const { agent, message } = JSON.parse(e.data);
+      if (agentTimerRefs.current[agent]) {
+        clearInterval(agentTimerRefs.current[agent].elapsed);
+        agentTimerRefs.current[agent].steps.forEach(clearTimeout);
+        delete agentTimerRefs.current[agent];
+      }
+      setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent] || []).length }));
+      updateAgent(agent, { status: "error", streaming: "" });
+      setErrorMsg(`${agent}: ${message}`);
+    });
+
+    es.addEventListener("build-complete", () => {
+      setPhase("complete");
+      setActiveAgent(null);
+      setGitAnalyzing(false);
+      es.close();
+      fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(() => {});
+    });
+
+    es.addEventListener("build-error", e => {
+      const { message } = JSON.parse(e.data);
+      setPhase("error");
+      setErrorMsg(message);
+      setGitAnalyzing(false);
+      es.close();
+    });
+
+    es.onerror = () => {
+      setPhase("error");
+      setErrorMsg("Connection lost.");
+      setGitAnalyzing(false);
+      es.close();
+    };
+  }, [gitRepo, gitToken, gitAnalyzing, updateAgent]);
 
   /* ── Delete a project ───────────────────────────────────────────────────── */
   const deleteProject = useCallback(async (buildId, e) => {
@@ -2062,7 +2214,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             <div style={{ margin:"8px 8px 0", padding:"10px", borderRadius:6, background:"rgba(0,122,204,0.08)", border:`1px solid rgba(0,122,204,0.3)` }}>
                               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
                                 <Sparkles size={11} color={VS.accent}/>
-                                <span style={{ fontSize:11, fontWeight:700, color:VS.text }}>What would you like to change?</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:VS.text }}>What would you like to do?</span>
                                 <button
                                   onClick={() => setGitShowPromptStep(false)}
                                   style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}
@@ -2070,6 +2222,30 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   <X size={11}/>
                                 </button>
                               </div>
+
+                              {/* Analyze with AI Agents */}
+                              <button
+                                onClick={startAnalyzeRepo}
+                                disabled={gitAnalyzing}
+                                style={{
+                                  width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                                  padding:"8px", borderRadius:4, border:`1px solid rgba(0,122,204,0.5)`,
+                                  background:"rgba(0,122,204,0.15)", color: VS.accent,
+                                  fontSize:11, fontWeight:700, cursor: gitAnalyzing ? "not-allowed" : "pointer",
+                                  marginBottom:8, opacity: gitAnalyzing ? 0.6 : 1,
+                                }}
+                              >
+                                {gitAnalyzing
+                                  ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Analyzing…</>
+                                  : <><Brain size={11}/> Analyze with AI Agents</>}
+                              </button>
+                              <div style={{ fontSize:10, color:VS.textFaint, marginBottom:8, textAlign:"center" }}>
+                                7 agents will review the repo and generate analysis reports
+                              </div>
+
+                              <div style={{ borderTop:`1px solid ${VS.border}`, marginBottom:8 }}/>
+
+                              <div style={{ fontSize:11, color:VS.textMuted, marginBottom:5, fontWeight:600 }}>Or make targeted changes:</div>
                               <textarea
                                 value={gitChangePrompt}
                                 onChange={e => setGitChangePrompt(e.target.value)}
@@ -2090,7 +2266,6 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 }}
                                 onFocus={e => (e.target.style.borderColor=VS.accent)}
                                 onBlur={e  => (e.target.style.borderColor=VS.border)}
-                                autoFocus
                               />
                               <div style={{ display:"flex", gap:5, marginTop:6 }}>
                                 <button
@@ -2182,6 +2357,25 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   <X size={10}/>
                                 </button>
                               </div>
+                            )}
+
+                            {/* Analyze with AI agents (persistent button) */}
+                            {!gitAiOpen && (
+                              <button
+                                onClick={startAnalyzeRepo}
+                                disabled={gitAnalyzing}
+                                style={{
+                                  width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                                  padding:"6px", borderRadius:4, border:`1px solid rgba(0,122,204,0.4)`,
+                                  background:"rgba(0,122,204,0.1)", color: VS.accent,
+                                  fontSize:11, fontWeight:700, cursor: gitAnalyzing ? "not-allowed" : "pointer",
+                                  marginBottom:6, opacity: gitAnalyzing ? 0.6 : 1,
+                                }}
+                              >
+                                {gitAnalyzing
+                                  ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Analyzing repo…</>
+                                  : <><Brain size={11}/> Analyze with AI Agents</>}
+                              </button>
                             )}
 
                             {/* AI Edit section */}

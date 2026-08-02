@@ -30,13 +30,25 @@ The `POST /api/git/ai-edit` endpoint (used for GitHub repo files) also uses the 
 
 ## Key files
 
-- `FireboxAIStudio.jsx` — entire React UI (single component, ~2900 lines)
+- `FireboxAIStudio.jsx` — entire React UI (single component, ~3300 lines)
 - `server/index.js` — Express routes including `/api/build` and `/api/edit-files`
-- `server/agents/config.js` — 7 agent definitions and system prompts
-- `server/agents/runner.js` — SSE-streaming agent pipeline
-- `server/routes/git.js` — GitHub connect/file/AI-edit/push routes
+- `server/agents/config.js` — 7 build agent definitions and system prompts
+- `server/agents/runner.js` — SSE-streaming build agent pipeline
+- `server/agents/analyzeConfig.js` — 7 analysis agent definitions for GitHub repo review
+- `server/agents/analyzeRunner.js` — SSE-streaming analysis pipeline (repo context as input)
+- `server/routes/git.js` — GitHub connect/file/AI-edit/push/analyze routes
 - `server/utils/editParser.js` — search/replace diff parser and applicator
-- `server/utils/fileParser.js` — `### FILE:` block extractor for build output
+- `server/utils/fileParser.js` — `### FILE:` block extractor for build/analysis output
+
+## GitHub repo analysis feature
+
+When a user connects a GitHub repo in the Source Control panel, two options appear:
+1. **Analyze with AI Agents** — fetches up to 20 key files from the repo, creates a Build record, and streams 7 analysis agents (Overview, Backend, Frontend, Database, Security, QA, Deployment review) generating markdown report files.
+2. **Apply with AI** — targeted search/replace edits on individual files (existing feature).
+
+Backend endpoints for analysis:
+- `POST /api/git/analyze` — fetches repo files, creates a Build, returns `{ buildId }`
+- `GET /api/git/analyze/:buildId/events` — SSE stream running the analysis pipeline
 
 ## User preferences
 
