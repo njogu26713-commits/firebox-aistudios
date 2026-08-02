@@ -37,8 +37,8 @@ export async function runAgentPipeline(build, res, signal) {
             { role: "user",   content: contextLines.join("\n\n") },
           ],
           stream: true,
-          max_tokens: 2000,
-          temperature: 0.3,
+          max_tokens: 4000,
+          temperature: 0.2,
         })
       );
 
