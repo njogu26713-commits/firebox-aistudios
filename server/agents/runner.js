@@ -1,7 +1,7 @@
 import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
-import { callWithFallback } from "../groqPool.js";
+import { getCompletionStream, normalizeAiConfig } from "../aiProvider.js";
 
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -9,6 +9,10 @@ function sse(res, event, data) {
 
 export async function runAgentPipeline(build, res, signal) {
   const agentOutputs = {};
+  const aiConfig = normalizeAiConfig({
+    provider: build.provider || "cloud",
+    ...(build.localAi?.toObject?.() || build.localAi || {}),
+  });
 
   for (let i = 0; i < AGENT_DEFS.length; i++) {
     if (signal?.aborted) break;
@@ -29,25 +33,25 @@ export async function runAgentPipeline(build, res, signal) {
     }
 
     try {
-      const stream = await callWithFallback(client =>
-        client.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: agentDef.systemPrompt },
-            { role: "user",   content: contextLines.join("\n\n") },
-          ],
-          stream: true,
-          max_tokens: 4000,
-          temperature: 0.2,
-        })
-      );
+      const stream = await getCompletionStream({
+        config: aiConfig,
+        messages: [
+          { role: "system", content: agentDef.systemPrompt },
+          { role: "user",   content: contextLines.join("\n\n") },
+        ],
+        maxTokens: 4000,
+        temperature: 0.2,
+        signal,
+      });
 
       let fullOutput = "";
       let buffer = "";
 
       for await (const chunk of stream) {
         if (signal?.aborted) break;
-        const token = chunk.choices[0]?.delta?.content || "";
+        const token = typeof chunk === "string"
+          ? chunk
+          : chunk.choices?.[0]?.delta?.content || "";
         if (!token) continue;
         fullOutput += token;
         buffer    += token;

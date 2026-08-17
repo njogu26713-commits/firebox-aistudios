@@ -432,6 +432,27 @@ export default function FireboxAIStudio() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  /* AI provider settings — Cloud remains the default and unchanged */
+  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
+  const [localAiEndpoint, setLocalAiEndpoint] = useState(() => localStorage.getItem("firebox-local-ai-endpoint") || "http://127.0.0.1:11434/v1");
+  const [localAiModel, setLocalAiModel] = useState(() => localStorage.getItem("firebox-local-ai-model") || "");
+  const [localAiApiKey, setLocalAiApiKey] = useState(() => localStorage.getItem("firebox-local-ai-api-key") || "");
+  const [localAiTestState, setLocalAiTestState] = useState("idle");
+  const [localAiTestMessage, setLocalAiTestMessage] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("firebox-ai-provider", aiProvider);
+    localStorage.setItem("firebox-local-ai-endpoint", localAiEndpoint);
+    localStorage.setItem("firebox-local-ai-model", localAiModel);
+    localStorage.setItem("firebox-local-ai-api-key", localAiApiKey);
+  }, [aiProvider, localAiEndpoint, localAiModel, localAiApiKey]);
+
+  const localAiConfig = useMemo(() => ({
+    endpoint: localAiEndpoint.trim(),
+    model: localAiModel.trim(),
+    apiKey: localAiApiKey.trim(),
+  }), [localAiEndpoint, localAiModel, localAiApiKey]);
+
   /* projects panel state */
   const [expandedProjects, setExpandedProjects] = useState(new Set());
   const [projectFilesMap,  setProjectFilesMap]  = useState({});   // { buildId: files[] }
@@ -588,6 +609,25 @@ export default function FireboxAIStudio() {
     setSideOpen(true);
   }, []);
 
+  const testLocalAi = useCallback(async () => {
+    setLocalAiTestState("testing");
+    setLocalAiTestMessage("");
+    try {
+      const res = await fetch("/api/test-local-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(localAiConfig),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `Error ${res.status}`);
+      setLocalAiTestState("success");
+      setLocalAiTestMessage(data.reply || "Connection works.");
+    } catch (err) {
+      setLocalAiTestState("error");
+      setLocalAiTestMessage(err.message);
+    }
+  }, [localAiConfig]);
+
   /* ── Start build ──────────────────────────────────────────────────────── */
   const startBuild = useCallback(async (desc) => {
     const buildDesc = (desc ?? description).trim();
@@ -615,7 +655,11 @@ export default function FireboxAIStudio() {
     try {
       const res  = await fetch("/api/build", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ description: buildDesc }),
+        body: JSON.stringify({
+          description: buildDesc,
+          provider: aiProvider,
+          localAi: aiProvider === "local" ? localAiConfig : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
@@ -718,7 +762,7 @@ export default function FireboxAIStudio() {
     });
 
     es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
-  }, [updateAgent]);
+  }, [updateAgent, aiProvider, localAiConfig]);
 
   /* ── Edit existing build files with targeted search/replace ───────────── */
   const startEditFiles = useCallback(async (instruction) => {
@@ -734,7 +778,12 @@ export default function FireboxAIStudio() {
       const res = await fetch("/api/edit-files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buildId: currentBuildId, instruction }),
+        body: JSON.stringify({
+          buildId: currentBuildId,
+          instruction,
+          provider: aiProvider,
+          localAi: aiProvider === "local" ? localAiConfig : undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -813,7 +862,7 @@ export default function FireboxAIStudio() {
       setEditError(err.message);
     }
     setEditingFiles(false);
-  }, [currentBuildId]);
+  }, [currentBuildId, aiProvider, localAiConfig]);
 
   /* ── Send chat message — AI replies first, then acts ──────────────────── */
   const sendChatMessage = useCallback(async () => {
@@ -839,6 +888,8 @@ export default function FireboxAIStudio() {
           messages: historyForApi,
           hasFiles: allFiles.length > 0,
           fileNames: allFiles.map(f => f.path),
+          provider: aiProvider,
+          localAi: aiProvider === "local" ? localAiConfig : undefined,
         }),
       });
 
@@ -897,7 +948,7 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
     }
-  }, [chatInput, chatHistory, startBuild, startEditFiles, currentBuildId, allFiles]);
+  }, [chatInput, chatHistory, startBuild, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig]);
 
   /* ── Reset ────────────────────────────────────────────────────────────── */
   const reset = () => {
@@ -1686,10 +1737,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       )}
                     </button>
                   ))}
-                  <button className="act-btn" title="Settings" style={{
+                  <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
                     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                     flex:1, height:52, background:"transparent", border:"none",
-                    borderTop:"2px solid transparent", color:VS.textMuted, cursor:"pointer", gap:3,
+                    borderTop:`2px solid ${activity === "settings" && sideOpen ? VS.accent : "transparent"}`, color: activity === "settings" && sideOpen ? VS.textActive : VS.textMuted, cursor:"pointer", gap:3,
                   }}>
                     <Settings size={18}/>
                     <span style={{ fontSize:9, fontWeight:500 }}>Settings</span>
@@ -1731,10 +1782,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 ))}
                 {/* Spacer + settings */}
                 <div style={{ flex:1 }}/>
-                <button className="act-btn" title="Settings" style={{
+                <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
                   display:"flex", alignItems:"center", justifyContent:"center",
                   width:48, height:48, background:"transparent", border:"none",
-                  borderLeft:"2px solid transparent", color:VS.textMuted, cursor:"pointer", marginBottom:4,
+                  borderLeft:`2px solid ${activity === "settings" && sideOpen ? VS.accent : "transparent"}`, color: activity === "settings" && sideOpen ? VS.textActive : VS.textMuted, cursor:"pointer", marginBottom:4,
                 }}>
                   <Settings size={22}/>
                 </button>
@@ -1748,6 +1799,93 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             /* side panel inner content — shared by mobile overlay & desktop Panel */
             const sideContent = (
               <React.Fragment>
+
+              {/* Panel: Provider settings */}
+              {activity === "settings" && (
+                <>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                    PROVIDER SETTINGS
+                  </div>
+                  <div style={{ flex:1, overflowY:"auto", padding:"4px 12px 18px" }}>
+                    <div style={{ fontSize:12, color:VS.text, lineHeight:1.5, marginBottom:14 }}>
+                      Choose which model responds to Firebox requests. Cloud AI stays available as the default provider.
+                    </div>
+
+                    <div style={{ fontSize:10, color:VS.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:6 }}>AI PROVIDER</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
+                      {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }].map(({ id, label }) => (
+                        <button
+                          key={id}
+                          onClick={() => { setAiProvider(id); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
+                          style={{
+                            padding:"9px 8px", borderRadius:5, cursor:"pointer", fontFamily:FONT_UI,
+                            border:`1px solid ${aiProvider === id ? VS.accent : VS.border}`,
+                            background: aiProvider === id ? "rgba(0,120,212,0.18)" : "transparent",
+                            color: aiProvider === id ? VS.textActive : VS.textMuted,
+                            fontSize:11, fontWeight:600,
+                          }}
+                        >{label}</button>
+                      ))}
+                    </div>
+
+                    {aiProvider === "local" && (
+                      <>
+                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                          OLLAMA / OPENAI-COMPATIBLE ENDPOINT
+                        </label>
+                        <input
+                          value={localAiEndpoint}
+                          onChange={e => setLocalAiEndpoint(e.target.value)}
+                          placeholder="http://127.0.0.1:11434/v1"
+                          spellCheck="false"
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                        />
+
+                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                          MODEL IDENTIFIER
+                        </label>
+                        <input
+                          value={localAiModel}
+                          onChange={e => setLocalAiModel(e.target.value)}
+                          placeholder="Enter any compatible local model"
+                          spellCheck="false"
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                        />
+
+                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                          OPTIONAL API KEY
+                        </label>
+                        <input
+                          type="password"
+                          value={localAiApiKey}
+                          onChange={e => setLocalAiApiKey(e.target.value)}
+                          placeholder="Leave blank if not required"
+                          autoComplete="off"
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                        />
+
+                        <button
+                          onClick={testLocalAi}
+                          disabled={localAiTestState === "testing"}
+                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", borderRadius:4, border:`1px solid ${VS.borderLight}`, background:localAiTestState === "testing" ? "rgba(255,255,255,0.05)" : VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
+                        >
+                          {localAiTestState === "testing" ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Zap size={13}/>} Test Local AI
+                        </button>
+
+                        {localAiTestState !== "idle" && (
+                          <div style={{ marginTop:9, padding:"8px 9px", borderRadius:4, fontSize:10, lineHeight:1.45, color:localAiTestState === "success" ? VS.success : localAiTestState === "error" ? VS.error : VS.textMuted, background:"rgba(255,255,255,0.04)", border:`1px solid ${localAiTestState === "success" ? "rgba(78,201,148,0.35)" : localAiTestState === "error" ? "rgba(244,135,113,0.35)" : VS.border}` }}>
+                            {localAiTestState === "success" ? "Connection works: " : localAiTestState === "error" ? "Connection failed: " : "Testing…"}{localAiTestMessage}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop:14, fontSize:10, color:VS.textFaint, lineHeight:1.5 }}>
+                          Local requests run from the computer hosting the Firebox agent. A deployed Firebox backend cannot reach a personal Ollama instance through its own 127.0.0.1.
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* Panel: Explorer */}
               {activity === "explorer" && (

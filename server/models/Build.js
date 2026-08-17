@@ -17,6 +17,16 @@ const agentSchema = new mongoose.Schema({
 
 const buildSchema = new mongoose.Schema({
   description: { type: String, required: true },
+  provider: {
+    type: String,
+    enum: ["cloud", "local"],
+    default: "cloud",
+  },
+  localAi: {
+    endpoint: { type: String, default: "" },
+    model:    { type: String, default: "" },
+    apiKey:   { type: String, default: "", select: false },
+  },
   status:      { type: String, enum: ["running","complete","failed"], default: "running" },
   agents:      [agentSchema],
   files:       [fileSchema],

@@ -13,7 +13,7 @@ import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
 import gitRouter from "./routes/git.js";
-import { callWithFallback } from "./groqPool.js";
+import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,12 +25,21 @@ app.use("/api/git", gitRouter);
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", dbRequired, async (req, res) => {
-  const { description } = req.body;
+  const { description, provider = "cloud", localAi = {} } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
 
+  let aiConfig;
+  try {
+    aiConfig = normalizeAiConfig({ provider, ...localAi });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
   const build = await Build.create({
     description: description.trim(),
+    provider: aiConfig.provider,
+    localAi: aiConfig.provider === "local" ? aiConfig : undefined,
     status: "running",
     agents: AGENT_DEFS.map((a) => ({ name: a.name, status: "idle" })),
     files: [],
@@ -41,7 +50,7 @@ app.post("/api/build", dbRequired, async (req, res) => {
 /* ── GET /api/build/:id/events — SSE stream ─────────────────────────────── */
 app.get("/api/build/:id/events", dbRequired, async (req, res) => {
   let build;
-  try { build = await Build.findById(req.params.id); } catch { /* fall through */ }
+  try { build = await Build.findById(req.params.id).select("+localAi.apiKey"); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
 
   res.writeHead(200, {
@@ -119,7 +128,13 @@ app.delete("/api/build/:id", dbRequired, async (req, res) => {
 
 /* ── POST /api/chat — conversational AI with optional action trigger ─────── */
 app.post("/api/chat", async (req, res) => {
-  const { messages = [], hasFiles = false, fileNames = [] } = req.body;
+  const { messages = [], hasFiles = false, fileNames = [], provider = "cloud", localAi = {} } = req.body;
+  let aiConfig;
+  try {
+    aiConfig = normalizeAiConfig({ provider, ...localAi });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -150,20 +165,19 @@ app.post("/api/chat", async (req, res) => {
   ];
 
   try {
-    const stream = await callWithFallback(client =>
-      client.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: groqMessages,
-        stream: true,
-        max_tokens: 800,
-        temperature: 0.5,
-      })
-    );
+    const stream = await getCompletionStream({
+      config: aiConfig,
+      messages: groqMessages,
+      maxTokens: 800,
+      temperature: 0.5,
+    });
 
     let full = "";
     let buffer = "";
     for await (const chunk of stream) {
-      const tok = chunk.choices[0]?.delta?.content || "";
+      const tok = typeof chunk === "string"
+        ? chunk
+        : chunk.choices?.[0]?.delta?.content || "";
       if (!tok) continue;
       full += tok;
       buffer += tok;
@@ -185,12 +199,18 @@ app.post("/api/chat", async (req, res) => {
 
 /* ── POST /api/edit-files — targeted AI edit of existing build files ──────── */
 app.post("/api/edit-files", dbRequired, async (req, res) => {
-  const { buildId, instruction } = req.body;
+  const { buildId, instruction, provider = "cloud", localAi = {} } = req.body;
+  let aiConfig;
+  try {
+    aiConfig = normalizeAiConfig({ provider, ...localAi });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
   if (!buildId?.trim() || !instruction?.trim())
     return res.status(400).json({ error: "buildId and instruction are required" });
 
   let build;
-  try { build = await Build.findById(buildId); } catch { /* fall through */ }
+  try { build = await Build.findById(buildId).select("+localAi.apiKey"); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
   if (!build.files?.length)
     return res.status(400).json({ error: "Build has no files to edit" });
@@ -233,23 +253,22 @@ Rules:
 - If a new file must be created, use ### FILE: with a fenced code block instead.`;
 
   try {
-    const stream = await callWithFallback(client =>
-      client.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user",   content: `Current project files:\n\n${fileSummary}\n\nEdit instruction: ${instruction}\n\nApply the minimal changes:` },
-        ],
-        stream: true,
-        max_tokens: 4000,
-        temperature: 0.2,
-      })
-    );
+    const stream = await getCompletionStream({
+      config: aiConfig,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: `Current project files:\n\n${fileSummary}\n\nEdit instruction: ${instruction}\n\nApply the minimal changes:` },
+      ],
+      maxTokens: 4000,
+      temperature: 0.2,
+    });
 
     let fullOutput = "";
     let buffer = "";
     for await (const chunk of stream) {
-      const token = chunk.choices[0]?.delta?.content || "";
+      const token = typeof chunk === "string"
+        ? chunk
+        : chunk.choices?.[0]?.delta?.content || "";
       if (!token) continue;
       fullOutput += token;
       buffer += token;
@@ -305,6 +324,16 @@ Rules:
     sse("edit-error", { message: err.message });
   }
   res.end();
+});
+
+/* ── Test a user-configured Local AI endpoint/model ──────────────────────── */
+app.post("/api/test-local-ai", async (req, res) => {
+  try {
+    const result = await testLocalAi(req.body || {});
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
 });
 
 /* ── Serve built frontend in production ──────────────────────────────────── */
