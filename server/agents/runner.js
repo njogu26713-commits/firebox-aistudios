@@ -30,7 +30,7 @@ async function waitForResume(buildId, res, signal) {
   return null;
 }
 
-async function runCloudToolMode(build, res, aiConfig, signal) {
+async function runProviderToolMode(build, res, aiConfig, signal) {
   const emit = (event, data) => sse(res, event, { ...data, agent: "Firebox Agent" });
   const tools = createCloudProjectTools({ build, emit });
   emit("workflow-stage-start", { stage: "autonomous", label: "Firebox Agent", activity: "Choosing the next controlled project action" });
@@ -77,7 +77,7 @@ export async function runAgentPipeline(build, res, signal) {
 
   if (build.toolMode) {
     try {
-      await runCloudToolMode(build, res, aiConfig, signal);
+      await runProviderToolMode(build, res, aiConfig, signal);
     } catch (error) {
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
       sse(res, "agent-error", { agent: "Firebox Agent", message: error.message });

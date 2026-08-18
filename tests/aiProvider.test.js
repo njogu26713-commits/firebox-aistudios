@@ -66,3 +66,27 @@ test("OpenAI-compatible provider preserves Firebox tool calls", async () => {
     global.fetch = originalFetch;
   }
 });
+
+
+test("GPT-5-compatible providers use max_completion_tokens for tool calls", async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.max_completion_tokens, 900);
+      assert.equal(body.max_tokens, undefined);
+      assert.equal(body.tools[0].function.name, "inspect_project");
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }] }), { status: 200 });
+    };
+    const result = await getStructuredCompletion({
+      config: { provider: "openai", endpoint: "https://example.test/v1", model: "gpt-5", apiKey: "key" },
+      messages: [{ role: "user", content: "Inspect" }],
+      tools: [{ type: "function", function: { name: "inspect_project", description: "Inspect", parameters: { type: "object", properties: {} } } }],
+      maxTokens: 900,
+      temperature: 0,
+    });
+    assert.equal(result.choices[0].message.content, "done");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

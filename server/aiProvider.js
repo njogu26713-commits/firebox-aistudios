@@ -74,7 +74,15 @@ function openAiHeaders(config) {
 }
 
 function toAnthropicMessages(messages) {
-  return messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content || "" }));
+  return messages.filter((message) => message.role !== "system").map((message) => {
+    if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      return { role: "assistant", content: message.tool_calls.map((call) => ({ type: "tool_use", id: call.id, name: call.function?.name, input: JSON.parse(call.function?.arguments || "{}") })) };
+    }
+    if (message.role === "tool") {
+      return { role: "user", content: [{ type: "tool_result", tool_use_id: message.tool_call_id, content: String(message.content || "") }] };
+    }
+    return { role: message.role === "assistant" ? "assistant" : "user", content: message.content || "" };
+  });
 }
 
 function fromAnthropic(data) {
@@ -84,7 +92,17 @@ function fromAnthropic(data) {
 }
 
 function toGeminiContents(messages) {
-  return messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: String(message.content || "") }] }));
+  const contents = [];
+  for (const message of messages.filter((item) => item.role !== "system")) {
+    if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      contents.push({ role: "model", parts: message.tool_calls.map((call) => ({ functionCall: { name: call.function?.name, args: JSON.parse(call.function?.arguments || "{}") } })) });
+    } else if (message.role === "tool") {
+      contents.push({ role: "user", parts: [{ functionResponse: { name: message.name || "firebox_tool", response: { content: String(message.content || "") } } }] });
+    } else {
+      contents.push({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: String(message.content || "") }] });
+    }
+  }
+  return contents;
 }
 
 function fromGemini(data) {
@@ -95,8 +113,9 @@ function fromGemini(data) {
 }
 
 async function providerCompletion({ config, messages, tools = [], maxTokens, temperature, signal }) {
+  const tokenField = /^gpt-5(?:[.-]|$)/i.test(config.model || "") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
   if (config.provider === "openai" || config.provider === "openrouter") {
-    const response = await fetch(`${config.endpoint}/chat/completions`, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? "auto" : "none", stream: false, max_tokens: maxTokens, temperature }) });
+    const response = await fetch(`${config.endpoint}/chat/completions`, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? "auto" : "none", stream: false, ...tokenField, temperature }) });
     return readJson(response, config.provider);
   }
   if (config.provider === "anthropic") {
