@@ -69,6 +69,13 @@ const BUILD_LAUNCHER_TYPES = [
   { Icon: Sparkles, label: "Landing Page", description: "Create a marketing website.", prompt: "Create a marketing website" },
 ];
 
+const BUILD_TYPEWRITER_PROMPTS = [
+  "Build a school management platform with students, teachers, payments, and reports.",
+  "Create an e-commerce marketplace with seller dashboards and checkout.",
+  "Design a modern analytics dashboard for a growing business.",
+  "Build an AI-powered customer support application with team workspaces.",
+];
+
 const BUILD_IDEA_EXAMPLES = [
   { Icon: ShoppingCart, label: "E-commerce", prompt: "Build an e-commerce platform where customers can browse products, add items to a cart, and complete purchases." },
   { Icon: GraduationCap, label: "School Management", prompt: "Build a school management platform with students, teachers, payments, attendance, and reports." },
@@ -599,6 +606,8 @@ export default function FireboxAIStudio() {
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
+  const [typewriterText, setTypewriterText] = useState("");
+  const [typewriterStopped, setTypewriterStopped] = useState(false);
   const [launcherFramework, setLauncherFramework] = useState("auto");
   const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
   const [launcherDatabase, setLauncherDatabase] = useState("auto");
@@ -630,6 +639,46 @@ export default function FireboxAIStudio() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+
+  useEffect(() => {
+    if (activity !== "home" || chatInput.trim() || typewriterStopped) {
+      setTypewriterText("");
+      return undefined;
+    }
+    let cancelled = false;
+    let phraseIndex = 0;
+    let characterIndex = 0;
+    let deleting = false;
+    let pauseUntil = 0;
+    let timer;
+    const tick = () => {
+      if (cancelled) return;
+      const phrase = BUILD_TYPEWRITER_PROMPTS[phraseIndex];
+      if (Date.now() < pauseUntil) {
+        timer = setTimeout(tick, 80);
+        return;
+      }
+      if (!deleting) {
+        characterIndex = Math.min(characterIndex + 1, phrase.length);
+        setTypewriterText(phrase.slice(0, characterIndex));
+        if (characterIndex === phrase.length) {
+          deleting = true;
+          pauseUntil = Date.now() + 1400;
+        }
+      } else {
+        characterIndex = Math.max(characterIndex - 1, 0);
+        setTypewriterText(phrase.slice(0, characterIndex));
+        if (characterIndex === 0) {
+          deleting = false;
+          phraseIndex = (phraseIndex + 1) % BUILD_TYPEWRITER_PROMPTS.length;
+          pauseUntil = Date.now() + 350;
+        }
+      }
+      timer = setTimeout(tick, deleting ? 28 : 48);
+    };
+    timer = setTimeout(tick, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [activity, chatInput, typewriterStopped]);
 
   /* AI provider settings — Cloud remains the default and unchanged */
   const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
@@ -1384,7 +1433,7 @@ export default function FireboxAIStudio() {
     setActiveAgent(null); setErrorMsg(""); streamingRef.current = {};
     setActivity("workspace");
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
-    setChatHistory([]); setChatInput("");
+    setChatHistory([]); setChatInput(""); setTypewriterStopped(false); setTypewriterText("");
     setCurrentBuildId(null);
     setCurrentProjectName("firebox-project");
     setCurrentProjectMeta({ fileCount: 0, framework: null, packageManager: null });
@@ -3563,9 +3612,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <textarea
                       ref={chatInputRef}
                       value={chatInput}
-                      onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,130)+"px"; }}
+                      onChange={e => { setTypewriterStopped(true); setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,130)+"px"; }}
+                      onFocus={() => setTypewriterStopped(true)}
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }}
-                      placeholder="Describe what you want to create..."
+                      placeholder={typewriterText || "Describe what you want to create..."}
                       rows={2}
                       style={{ width:"100%", minHeight:46, maxHeight:130, resize:"none", display:"block", background:"transparent", border:"none", outline:"none", color:palette.textActive, fontFamily:FONT_UI, fontSize:14, lineHeight:1.55 }}
                     />
