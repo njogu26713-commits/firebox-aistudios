@@ -1939,7 +1939,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       key={id}
                       className="act-btn"
                       title={title}
-                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(true); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                       style={{
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
@@ -3323,17 +3323,6 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             const editorContent = activity === "home" ? (
               <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
                 <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:isMobile ? "28px 16px 44px" : "52px 28px 70px", boxSizing:"border-box" }}>
-                  <div style={{ height:isMobile ? 142 : 164, border:`1px solid ${VS.border}`, borderRadius:18, overflow:"hidden", position:"relative", background:"linear-gradient(115deg,#242528 0%,#202124 55%,#292227 100%)", marginBottom:isMobile ? 34 : 42 }}>
-                    <div style={{ position:"absolute", inset:0, opacity:0.5, background:"radial-gradient(circle at 78% 20%, rgba(0,120,212,0.35), transparent 35%), radial-gradient(circle at 25% 100%, rgba(155,89,182,0.22), transparent 42%)" }}/>
-                    <div style={{ position:"absolute", right:isMobile ? 18 : 56, top:18, width:isMobile ? 82 : 114, height:isMobile ? 104 : 134, borderRadius:"10px 10px 4px 4px", border:"1px solid rgba(255,255,255,0.2)", background:"linear-gradient(145deg,#174e73,#0d1d2b 60%,#9c6b48)", transform:"rotate(5deg)", boxShadow:"0 15px 28px rgba(0,0,0,0.32)" }}/>
-                    <div style={{ position:"absolute", right:isMobile ? 44 : 88, top:35, width:isMobile ? 58 : 80, height:isMobile ? 76 : 100, borderRadius:"7px 7px 2px 2px", border:"1px solid rgba(255,255,255,0.32)", background:"linear-gradient(160deg,#d59b6b,#f1c29b 45%,#65514f 46%,#2d2e36)", transform:"rotate(-2deg)", boxShadow:"0 9px 18px rgba(0,0,0,0.3)" }}/>
-                    <div style={{ position:"relative", zIndex:1, padding:isMobile ? "22px 18px" : "27px 28px", maxWidth:isMobile ? "68%" : 470 }}>
-                      <div style={{ color:VS.textActive, fontWeight:700, fontSize:isMobile ? 15 : 18, marginBottom:7 }}>Build with Firebox</div>
-                      <div style={{ color:VS.textMuted, fontSize:isMobile ? 11 : 12, lineHeight:1.55 }}>Turn a rough idea into a working product with AI agents, tools, and a live preview.</div>
-                      <button onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 100); }} style={{ marginTop:13, padding:"7px 12px", borderRadius:6, border:"none", background:VS.accent, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Explore the studio <ChevronRight size={12} style={{ verticalAlign:"-2px" }}/></button>
-                    </div>
-                  </div>
-
                   <div style={{ textAlign:"center", marginBottom:24 }}>
                     <div style={{ color:VS.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
                     <div style={{ color:VS.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
@@ -3368,12 +3357,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     ))}
                   </div>
 
-                  <div style={{ textAlign:"center", color:VS.textFaint, fontSize:11, marginBottom:10 }}>Try an example prompt <RefreshCw size={12} style={{ verticalAlign:"-2px", marginLeft:4 }}/></div>
-                  <div style={{ display:"flex", justifyContent:"center", gap:8, flexWrap:"wrap" }}>
-                    {["Sales pipeline tracker","B2B project management app","Student budget tracker"].map(prompt => (
-                      <button key={prompt} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:6, background:"#252526", color:VS.textMuted, fontSize:11, cursor:"pointer", fontFamily:FONT_UI }}>{prompt}</button>
-                    ))}
-                  </div>
+
                 </div>
               </div>
             ) : (
