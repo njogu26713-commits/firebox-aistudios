@@ -18,6 +18,7 @@ const agentSchema = new mongoose.Schema({
 });
 
 const buildSchema = new mongoose.Schema({
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
   description: { type: String, required: true },
   projectName: { type: String, default: "firebox-project" },
   provider: {

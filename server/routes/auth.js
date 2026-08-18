@@ -58,7 +58,7 @@ async function createSession(res, userId) {
   setSessionCookie(res, rawToken, SESSION_DAYS * 24 * 60 * 60);
 }
 
-async function currentUser(req) {
+export async function getCurrentUser(req) {
   const rawToken = readCookie(req, SESSION_COOKIE);
   if (!rawToken) return null;
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -107,10 +107,19 @@ router.post("/login", dbRequired, async (req, res) => {
 
 router.get("/me", dbRequired, async (req, res) => {
   try {
-    const user = await currentUser(req);
+    const user = await getCurrentUser(req);
     res.json({ user: user ? publicUser(user) : null });
   } catch { res.status(500).json({ error: "Unable to read the current session" }); }
 });
+
+export async function requireAuth(req, res, next) {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) return res.status(401).json({ error: "Authentication required" });
+    req.user = user;
+    next();
+  } catch { res.status(401).json({ error: "Authentication required" }); }
+}
 
 router.post("/logout", dbRequired, async (req, res) => {
   const rawToken = readCookie(req, SESSION_COOKIE);

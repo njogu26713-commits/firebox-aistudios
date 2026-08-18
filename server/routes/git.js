@@ -1,5 +1,6 @@
 import express from "express";
 import GithubToken from "../models/GithubToken.js";
+import { requireAuth } from "./auth.js";
 import Build from "../models/Build.js";
 import { isDBConnected } from "../db.js";
 import { callWithFallback } from "../groqPool.js";
@@ -242,7 +243,7 @@ router.post("/ai-edit", async (req, res) => {
 });
 
 /* ── POST /api/git/import-as-project — save repo files as an editable Build ── */
-router.post("/import-as-project", dbRequired, async (req, res) => {
+router.post("/import-as-project", dbRequired, requireAuth, async (req, res) => {
   const { owner, repo, branch, token, files: fileTree } = req.body;
   if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
     return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
@@ -296,6 +297,7 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
     return res.status(400).json({ error: "No readable files found in this repository" });
 
   const build = await Build.create({
+    ownerId: req.user._id,
     description: `Imported from GitHub: ${owner}/${repo} (branch: ${branch})`,
     projectName: repo,
     status: "complete",
@@ -309,7 +311,7 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
 });
 
 /* ── POST /api/git/analyze — fetch repo files + start analysis build ──────── */
-router.post("/analyze", dbRequired, async (req, res) => {
+router.post("/analyze", dbRequired, requireAuth, async (req, res) => {
   const { owner, repo, branch, token, files: fileTree } = req.body;
   if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
     return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
@@ -364,6 +366,7 @@ router.post("/analyze", dbRequired, async (req, res) => {
 
   // Create a Build record using the analysis agent definitions
   const build = await Build.create({
+    ownerId: req.user._id,
     description: `GitHub Import Analysis: ${owner}/${repo}\n\n${repoContext}`,
     projectName: `${repo} analysis`,
     status: "running",
@@ -375,9 +378,9 @@ router.post("/analyze", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/git/analyze/:buildId/events — SSE analysis stream ──────────── */
-router.get("/analyze/:buildId/events", dbRequired, async (req, res) => {
+router.get("/analyze/:buildId/events", dbRequired, requireAuth, async (req, res) => {
   let build;
-  try { build = await Build.findById(req.params.buildId); } catch { /* fall through */ }
+  try { build = await Build.findOne({ _id: req.params.buildId, ownerId: req.user._id }); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
 
   res.writeHead(200, {

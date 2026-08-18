@@ -13,7 +13,7 @@ import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
 import gitRouter from "./routes/git.js";
-import authRouter from "./routes/auth.js";
+import authRouter, { requireAuth } from "./routes/auth.js";
 import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
@@ -27,7 +27,7 @@ app.use("/api/git", gitRouter);
 app.use("/api/auth", authRouter);
 
 /* ── POST /api/import/project — persist files from an external project source ── */
-app.post("/api/import/project", dbRequired, async (req, res) => {
+app.post("/api/import/project", dbRequired, requireAuth, async (req, res) => {
   const { projectName = "firebox-project", description = "Imported project", source = "upload", sourceMeta = {}, files } = req.body;
   if (!Array.isArray(files) || files.length === 0)
     return res.status(400).json({ error: "At least one project file is required" });
@@ -48,6 +48,7 @@ app.post("/api/import/project", dbRequired, async (req, res) => {
   if (estimatedBytes > 14 * 1024 * 1024)
     return res.status(413).json({ error: "This project is too large to store as one Firebox project. Remove generated dependencies or build output and try again." });
   const build = await Build.create({
+    ownerId: req.user._id,
     description: String(description || "Imported project").trim().slice(0, 500),
     projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",
     status: "complete",
@@ -60,7 +61,7 @@ app.post("/api/import/project", dbRequired, async (req, res) => {
 });
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
-app.post("/api/build", dbRequired, async (req, res) => {
+app.post("/api/build", dbRequired, requireAuth, async (req, res) => {
   const { description, projectName = "firebox-project", provider = "cloud", localAi = {}, toolMode = false } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
@@ -73,6 +74,7 @@ app.post("/api/build", dbRequired, async (req, res) => {
   }
 
   const build = await Build.create({
+    ownerId: req.user._id,
     description: description.trim(),
     projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",
     provider: aiConfig.provider,
@@ -86,9 +88,9 @@ app.post("/api/build", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/build/:id/events — SSE stream ─────────────────────────────── */
-app.get("/api/build/:id/events", dbRequired, async (req, res) => {
+app.get("/api/build/:id/events", dbRequired, requireAuth, async (req, res) => {
   let build;
-  try { build = await Build.findById(req.params.id).select("+localAi.apiKey"); } catch { /* fall through */ }
+  try { build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("+localAi.apiKey"); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
 
   res.writeHead(200, {
@@ -107,9 +109,9 @@ app.get("/api/build/:id/events", dbRequired, async (req, res) => {
 });
 
 /* ── POST /api/build/:id/pause — pause at the next safe checkpoint ─────────── */
-app.post("/api/build/:id/pause", dbRequired, async (req, res) => {
+app.post("/api/build/:id/pause", dbRequired, requireAuth, async (req, res) => {
   try {
-    const build = await Build.findByIdAndUpdate(req.params.id, { $set: { executionState: "paused" } }, { new: true }).select("executionState status");
+    const build = await Build.findOneAndUpdate({ _id: req.params.id, ownerId: req.user._id }, { $set: { executionState: "paused" } }, { new: true }).select("executionState status");
     if (!build) return res.status(404).json({ error: "Build not found" });
     if (build.status !== "running") return res.status(409).json({ error: "Build is not running", executionState: build.executionState });
     res.json({ ok: true, executionState: build.executionState });
@@ -117,9 +119,9 @@ app.post("/api/build/:id/pause", dbRequired, async (req, res) => {
 });
 
 /* ── POST /api/build/:id/resume — resume a paused build ──────────────────── */
-app.post("/api/build/:id/resume", dbRequired, async (req, res) => {
+app.post("/api/build/:id/resume", dbRequired, requireAuth, async (req, res) => {
   try {
-    const build = await Build.findByIdAndUpdate(req.params.id, { $set: { executionState: "running" } }, { new: true }).select("executionState status");
+    const build = await Build.findOneAndUpdate({ _id: req.params.id, ownerId: req.user._id }, { $set: { executionState: "running" } }, { new: true }).select("executionState status");
     if (!build) return res.status(404).json({ error: "Build not found" });
     if (build.status !== "running") return res.status(409).json({ error: "Build is not running", executionState: build.executionState });
     res.json({ ok: true, executionState: build.executionState });
@@ -127,8 +129,8 @@ app.post("/api/build/:id/resume", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/builds — recent builds (no file content) ──────────────────── */
-app.get("/api/builds", dbRequired, async (req, res) => {
-  const builds = await Build.find()
+app.get("/api/builds", dbRequired, requireAuth, async (req, res) => {
+  const builds = await Build.find({ ownerId: req.user._id })
     .sort({ createdAt: -1 })
     .limit(20)
     .select("-agents.output -files.content")
@@ -137,9 +139,9 @@ app.get("/api/builds", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/build/:id — full build ────────────────────────────────────── */
-app.get("/api/build/:id", dbRequired, async (req, res) => {
+app.get("/api/build/:id", dbRequired, requireAuth, async (req, res) => {
   try {
-    const build = await Build.findById(req.params.id).lean();
+    const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).lean();
     if (!build) return res.status(404).json({ error: "Not found" });
     res.json(build);
   } catch {
@@ -148,9 +150,9 @@ app.get("/api/build/:id", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/build/:id/files — list files (no content) ─────────────────── */
-app.get("/api/build/:id/files", dbRequired, async (req, res) => {
+app.get("/api/build/:id/files", dbRequired, requireAuth, async (req, res) => {
   try {
-    const build = await Build.findById(req.params.id).select("files.agent files.path files.language").lean();
+    const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("files.agent files.path files.language").lean();
     if (!build) return res.status(404).json({ error: "Not found" });
     res.json(build.files || []);
   } catch {
@@ -159,11 +161,11 @@ app.get("/api/build/:id/files", dbRequired, async (req, res) => {
 });
 
 /* ── GET /api/build/:id/file?path=... — single file content ─────────────── */
-app.get("/api/build/:id/file", dbRequired, async (req, res) => {
+app.get("/api/build/:id/file", dbRequired, requireAuth, async (req, res) => {
   const { path } = req.query;
   if (!path) return res.status(400).json({ error: "path query param required" });
   try {
-    const build = await Build.findById(req.params.id).select("files").lean();
+    const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("files").lean();
     if (!build) return res.status(404).json({ error: "Not found" });
     const file = build.files.find((f) => f.path === path);
     if (!file) return res.status(404).json({ error: "File not found" });
@@ -174,9 +176,9 @@ app.get("/api/build/:id/file", dbRequired, async (req, res) => {
 });
 
 /* ── DELETE /api/build/:id — permanently delete a build ─────────────────── */
-app.delete("/api/build/:id", dbRequired, async (req, res) => {
+app.delete("/api/build/:id", dbRequired, requireAuth, async (req, res) => {
   try {
-    const result = await Build.findByIdAndDelete(req.params.id);
+    const result = await Build.findOneAndDelete({ _id: req.params.id, ownerId: req.user._id });
     if (!result) return res.status(404).json({ error: "Build not found" });
     res.json({ ok: true });
   } catch {
@@ -212,7 +214,7 @@ app.post("/api/plan", async (req, res) => {
 });
 
 /* ── POST /api/chat — conversational AI with optional action trigger ─────── */
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", requireAuth, async (req, res) => {
   const { messages = [], hasFiles = false, fileNames = [], provider = "cloud", localAi = {} } = req.body;
   let aiConfig;
   try {
@@ -295,7 +297,7 @@ app.post("/api/edit-files", dbRequired, async (req, res) => {
     return res.status(400).json({ error: "buildId and instruction are required" });
 
   let build;
-  try { build = await Build.findById(buildId).select("+localAi.apiKey"); } catch { /* fall through */ }
+  try { build = await Build.findOne({ _id: buildId, ownerId: req.user._id }).select("+localAi.apiKey"); } catch { /* fall through */ }
   if (!build) return res.status(404).json({ error: "Build not found" });
   if (!build.files?.length)
     return res.status(400).json({ error: "Build has no files to edit" });

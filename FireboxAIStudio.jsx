@@ -869,8 +869,9 @@ export default function FireboxAIStudio() {
   }, [agentStates]);
 
   useEffect(() => {
-    fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
-  }, []);
+    if (!authUser) { setRecentBuilds([]); return; }
+    fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{ setRecentBuilds([]); });
+  }, [authUser]);
 
   /* close new-project dropdown on outside click */
   useEffect(() => {
