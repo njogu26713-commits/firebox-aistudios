@@ -71,6 +71,26 @@ function logLocalAiDebug(...args) {
   if (import.meta.env.DEV) console.debug("[Local AI]", ...args);
 }
 
+function readLocalAiText(value) {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value.map(part => {
+      if (typeof part === "string") return part;
+      return part?.text || part?.content || "";
+    }).join("").trim();
+  }
+  return "";
+}
+
+function extractLocalAiReply(data) {
+  const choice = data?.choices?.[0] || {};
+  const message = choice.message || {};
+  return {
+    content: readLocalAiText(message.content) || readLocalAiText(choice.text),
+    reasoning: readLocalAiText(message.reasoning_content) || readLocalAiText(message.reasoning),
+  };
+}
+
 async function fetchLocalAi(url, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -690,11 +710,13 @@ export default function FireboxAIStudio() {
         throw new Error(`POST ${chatUrl} failed with HTTP ${chatRes.status}`);
       }
 
-      const reply = chatData.choices?.[0]?.message?.content || chatData.choices?.[0]?.text || "";
-      if (!reply) throw new Error("Local AI returned no assistant content");
+      const { content, reasoning } = extractLocalAiReply(chatData);
+      const reply = content || reasoning;
+      logLocalAiDebug("response keys", Object.keys(chatData || {}), "choice keys", Object.keys(chatData.choices?.[0] || {}), "message keys", Object.keys(chatData.choices?.[0]?.message || {}));
+      if (!reply) throw new Error("Local AI returned no assistant content or reasoning");
 
       setLocalAiTestState("success");
-      setLocalAiTestMessage(`Connection works. ${reply.trim()}`);
+      setLocalAiTestMessage(`Connection works${content ? "" : " (reasoning response received)"}. ${reply}`);
     } catch (err) {
       if (import.meta.env.DEV) console.error("[Local AI] request failed", { modelsUrl, chatUrl, error: err });
       setLocalAiTestState("error");
