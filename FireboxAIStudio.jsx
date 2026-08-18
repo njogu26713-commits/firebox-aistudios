@@ -91,6 +91,16 @@ function extractLocalAiReply(data) {
   };
 }
 
+function cleanLocalAiChatReply(text) {
+  const source = String(text || "").trim();
+  const finalAction = source.match(/\[ACTION:(build|edit)\]\s*$/i)?.[1]?.toLowerCase() || null;
+  const cleaned = source
+    .replace(/\s*\[ACTION:(build|edit)\]\s*/gi, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { text: cleaned, action: finalAction };
+}
+
 async function fetchLocalAi(url, options = {}) {
   return fetch(url, options);
 }
@@ -103,9 +113,9 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
     ? `\nThe user currently has a project open with these files: ${fileNames.slice(0, 20).join(", ")}.`
     : "\nThe user has no project files open yet.";
   const systemPrompt =
-    "You are an AI coding assistant inside Firebox AI Studio. Answer naturally, help with coding questions, and take actions only on explicit commands." +
+    "You are an AI coding assistant inside Firebox AI Studio. Return only the final answer, never hidden reasoning or analysis. Answer naturally and take actions only on explicit commands." +
     fileContext +
-    "\n\nOnly append [ACTION:build] for an explicit request to build/create a project. Only append [ACTION:edit] for an explicit request to change/fix/add to existing project files. Never add an action tag for questions or brainstorming. When used, put the action tag on the final line.";
+    "\n\nOnly append one [ACTION:build] tag for an explicit request to build/create a project, or one [ACTION:edit] tag for an explicit request to change/fix/add existing files. Never repeat action tags. Never add an action tag for questions or brainstorming. Put the single action tag on the final line. Do not output internal reasoning.";
 
   logLocalAiDebug("POST", chatUrl, "model", config.model, "direct browser chat");
   const response = await fetchLocalAi(chatUrl, {
@@ -115,11 +125,14 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
       model: config.model,
       messages: [
         { role: "system", content: systemPrompt },
-        ...messages.map(message => ({
+        ...messages.map((message, index) => ({
           role: message.role === "ai" ? "assistant" : "user",
-          content: message.text,
+          content: index === messages.length - 1 && message.role === "user"
+            ? `${message.text}\n/no_think`
+            : message.text,
         })),
       ],
+      think: false,
       stream: false,
       max_tokens: 256,
       temperature: 0.5,
@@ -129,14 +142,9 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
 
-  const { content, reasoning } = extractLocalAiReply(data);
-  const full = content || reasoning;
-  if (!full) throw new Error("Local AI returned no assistant content");
-  const actionMatch = full.match(/\[ACTION:(build|edit)\]\s*$/);
-  return {
-    text: full.replace(/\[ACTION:(build|edit)\]\s*$/, "").trimEnd(),
-    action: actionMatch ? actionMatch[1] : null,
-  };
+  const { content } = extractLocalAiReply(data);
+  if (!content) throw new Error("Local AI returned no final assistant content; thinking output was suppressed");
+  return cleanLocalAiChatReply(content);
 }
 
 /* ─── Agent metadata ─────────────────────────────────────────────────────── */
