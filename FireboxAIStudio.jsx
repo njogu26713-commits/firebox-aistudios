@@ -228,7 +228,7 @@ const AI_PROVIDER_CARDS = [
   { id:"anthropic", Icon:Sparkles, title:"Anthropic", subtitle:"Claude models", description:"Advanced reasoning, large context understanding, and safe-by-design models.", color:"#F3A65B", action:"Configure", enabled:true },
   { id:"google", Icon:Globe, title:"Google", subtitle:"Gemini models", description:"Multimodal capabilities with long context and strong performance.", color:"#60A5FA", action:"Configure", enabled:true },
   { id:"openrouter", Icon:GitBranch, title:"OpenRouter", subtitle:"Multiple providers", description:"Access multiple model providers through one unified interface.", color:"#A78BFA", action:"Configure", enabled:true },
-  { id:"custom", Icon:Settings, title:"Custom OpenAI-compatible", subtitle:"Your endpoint", description:"Use your own compatible provider endpoint and API key.", color:"#94A3B8", action:"Configure", enabled:false },
+  { id:"custom", Icon:Settings, title:"Custom OpenAI-compatible", subtitle:"Your endpoint", description:"Use any compatible chat-completions endpoint with your own model and optional API key.", color:"#94A3B8", action:"Configure", enabled:true },
 ];
 
 /* ─── Agent sub-steps (shown as collapsible actions) ─────────────────────── */
@@ -2574,7 +2574,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                     <div style={{ fontSize:10, color:palette.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:6 }}>AI PROVIDER</div>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
-                      {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }, { id:"openai", label:"OpenAI" }, { id:"anthropic", label:"Anthropic" }, { id:"google", label:"Gemini" }, { id:"openrouter", label:"OpenRouter" }].map(({ id, label }) => (
+                      {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }, { id:"openai", label:"OpenAI" }, { id:"anthropic", label:"Anthropic" }, { id:"google", label:"Gemini" }, { id:"openrouter", label:"OpenRouter" }, { id:"custom", label:"Custom" }].map(({ id, label }) => (
                         <button
                           key={id}
                           onClick={() => { setAiProvider(id); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}

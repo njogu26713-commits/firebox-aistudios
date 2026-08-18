@@ -90,3 +90,55 @@ test("GPT-5-compatible providers use max_completion_tokens for tool calls", asyn
     global.fetch = originalFetch;
   }
 });
+
+
+test("normalizes provider endpoints without duplicate operation paths", () => {
+  assert.equal(normalizeAiConfig({ provider: "openrouter", endpoint: "https://router.test/v1/chat/completions", model: "test", apiKey: "key" }).endpoint, "https://router.test/v1");
+  assert.equal(normalizeAiConfig({ provider: "anthropic", endpoint: "https://anthropic.test/v1/messages", model: "test", apiKey: "key" }).endpoint, "https://anthropic.test/v1");
+  assert.equal(normalizeAiConfig({ provider: "custom", endpoint: "https://custom.test/v1/chat/completions", model: "test" }).endpoint, "https://custom.test/v1");
+});
+
+test("OpenRouter and Custom providers use the OpenAI-compatible tool route", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  try {
+    global.fetch = async (url, options) => {
+      calls.push({ url: String(url), body: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }] }), { status: 200 });
+    };
+    for (const provider of ["openrouter", "custom"]) {
+      await getStructuredCompletion({
+        config: { provider, endpoint: `https://${provider}.test/v1`, model: "test-model", apiKey: provider === "openrouter" ? "key" : "" },
+        messages: [{ role: "user", content: "Build" }],
+        tools: [{ type: "function", function: { name: "inspect_project", description: "Inspect", parameters: { type: "object", properties: {} } } }],
+        toolChoice: "required",
+        maxTokens: 300,
+        temperature: 0,
+      });
+    }
+    assert.deepEqual(calls.map((call) => call.url), ["https://openrouter.test/v1/chat/completions", "https://custom.test/v1/chat/completions"]);
+    assert.equal(calls[0].body.tool_choice, "required");
+    assert.equal(calls[1].body.tool_choice, "required");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("Anthropic and Gemini responses normalize into Firebox tool calls", async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      if (String(url).includes("anthropic")) {
+        return new Response(JSON.stringify({ content: [{ type: "tool_use", id: "a1", name: "inspect_project", input: {} }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "inspect_project", args: {} } }] } }] }), { status: 200 });
+    };
+    const tools = [{ type: "function", function: { name: "inspect_project", description: "Inspect", parameters: { type: "object", properties: {} } } }];
+    const anthropic = await getStructuredCompletion({ config: { provider: "anthropic", endpoint: "https://anthropic.test/v1", model: "claude-test", apiKey: "key" }, messages: [{ role: "user", content: "Inspect" }], tools, toolChoice: "required", maxTokens: 300, temperature: 0 });
+    const gemini = await getStructuredCompletion({ config: { provider: "google", endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-test", apiKey: "key" }, messages: [{ role: "user", content: "Inspect" }], tools, toolChoice: "required", maxTokens: 300, temperature: 0 });
+    assert.equal(anthropic.choices[0].message.tool_calls[0].function.name, "inspect_project");
+    assert.equal(gemini.choices[0].message.tool_calls[0].function.name, "inspect_project");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

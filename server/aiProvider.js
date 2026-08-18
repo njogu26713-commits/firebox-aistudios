@@ -6,6 +6,7 @@ const PROVIDER_DEFAULTS = {
   anthropic: { endpoint: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
   google: { endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.0-flash" },
   openrouter: { endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
+  custom: { endpoint: "", model: "" },
 };
 const SUPPORTED_EXTERNAL = new Set(Object.keys(PROVIDER_DEFAULTS));
 
@@ -14,7 +15,9 @@ export function normalizeAiConfig(input = {}) {
   if (provider === "cloud") return { provider: "cloud" };
   if (provider === "local" || SUPPORTED_EXTERNAL.has(provider)) {
     const defaults = provider === "local" ? {} : PROVIDER_DEFAULTS[provider];
-    const endpoint = String(input.endpoint || defaults.endpoint || "").trim().replace(/\/+$/, "");
+    let endpoint = String(input.endpoint || defaults.endpoint || "").trim().replace(/\/+$/, "");
+    if (provider === "openai" || provider === "openrouter" || provider === "custom") endpoint = endpoint.replace(/\/chat\/completions$/i, "");
+    if (provider === "anthropic") endpoint = endpoint.replace(/\/messages$/i, "");
     const model = String(input.model || defaults.model || "").trim();
     const apiKey = String(input.apiKey || "").trim();
     if (!endpoint) throw new Error(`${provider === "local" ? "Local AI" : provider} endpoint is required`);
@@ -22,7 +25,7 @@ export function normalizeAiConfig(input = {}) {
     let parsed;
     try { parsed = new URL(endpoint); } catch { throw new Error("AI endpoint must be a valid http(s) URL"); }
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("AI endpoint must use http or https");
-    if (provider !== "local" && !apiKey) throw new Error(`${provider} API key is required`);
+    if (!['local', 'custom'].includes(provider) && !apiKey) throw new Error(`${provider} API key is required`);
     return { provider, endpoint, model, apiKey };
   }
   throw new Error(`Unsupported AI provider: ${provider}`);
@@ -114,7 +117,7 @@ function fromGemini(data) {
 
 async function providerCompletion({ config, messages, tools = [], toolChoice = "auto", maxTokens, temperature, signal }) {
   const tokenField = /^gpt-5(?:[.-]|$)/i.test(config.model || "") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
-  if (config.provider === "openai" || config.provider === "openrouter") {
+  if (config.provider === "openai" || config.provider === "openrouter" || config.provider === "custom") {
     const response = await fetch(`${config.endpoint}/chat/completions`, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, ...tokenField, temperature }) });
     return readJson(response, config.provider);
   }
