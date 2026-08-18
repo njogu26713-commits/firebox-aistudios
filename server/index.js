@@ -102,10 +102,17 @@ app.get("/api/build/:id/events", dbRequired, requireAuth, async (req, res) => {
   res.flushHeaders();
 
   const controller = new AbortController();
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded) res.write(": firebox-heartbeat\\n\\n");
+  }, 15000);
   req.on("close", () => controller.abort());
 
-  await runAgentPipeline(build, res, controller.signal);
-  res.end();
+  try {
+    await runAgentPipeline(build, res, controller.signal);
+  } finally {
+    clearInterval(heartbeat);
+    if (!res.writableEnded) res.end();
+  }
 });
 
 /* ── POST /api/build/:id/pause — pause at the next safe checkpoint ─────────── */

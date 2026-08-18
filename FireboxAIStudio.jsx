@@ -848,8 +848,9 @@ export default function FireboxAIStudio() {
 
   const terminalRef    = useRef(null);
   const chatInputRef   = useRef(null);
-  const esRef          = useRef(null);
-  const streamingRef   = useRef({});
+    const esRef            = useRef(null);
+  const streamTerminalRef = useRef(false);
+  const streamingRef     = useRef({});
   const editorRef      = useRef(null);
   const agentTimerRefs = useRef({});  // { name: { elapsed: intervalId, steps: timeoutIds[] } }
   const loadProjectFilesRef = useRef(null);
@@ -1138,6 +1139,7 @@ export default function FireboxAIStudio() {
     const eventUrl = useLocalEngine
       ? `${engineBase}/api/build/${buildId}/events?token=${encodeURIComponent(localEngineToken.trim())}`
       : `/api/build/${buildId}/events`;
+    streamTerminalRef.current = false;
     const es = new EventSource(eventUrl);
     esRef.current = es;
 
@@ -1240,6 +1242,7 @@ export default function FireboxAIStudio() {
     });
 
     es.addEventListener("agent-error", e => {
+      streamTerminalRef.current = true;
       const { agent, message } = JSON.parse(e.data);
       if (agentTimerRefs.current[agent]) {
         clearInterval(agentTimerRefs.current[agent].elapsed);
@@ -1252,6 +1255,7 @@ export default function FireboxAIStudio() {
     });
 
     es.addEventListener("build-complete", e => {
+      streamTerminalRef.current = true;
       let completion = {};
       try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
       setPreviewUrl(completion.preview?.url || null);
@@ -1264,11 +1268,17 @@ export default function FireboxAIStudio() {
     });
 
     es.addEventListener("build-error", e => {
+      streamTerminalRef.current = true;
       const { message } = JSON.parse(e.data);
       setPhase("error"); setErrorMsg(message); es.close();
     });
 
-    es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
+    es.onerror = () => {
+      if (streamTerminalRef.current) return;
+      setPhase("error");
+      setErrorMsg("Connection lost before the Agent returned a result. Check the provider response and Railway logs.");
+      es.close();
+    };
   }, [updateAgent, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
 
   const setBuildExecutionState = useCallback(async (nextState) => {
