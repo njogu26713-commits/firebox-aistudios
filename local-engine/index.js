@@ -20,9 +20,33 @@ const OLLAMA_ENDPOINT = String(process.env.OLLAMA_ENDPOINT || "http://127.0.0.1:
 const OLLAMA_MODEL = String(process.env.OLLAMA_MODEL || "").trim();
 const OLLAMA_API_KEY = String(process.env.OLLAMA_API_KEY || "").trim();
 const jobs = new Map();
-const previews = new Map();
 const PREVIEW_PORT = Number(process.env.FIREBOX_PREVIEW_PORT || 5173);
+const previews = new Map();
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function detectProject(projectDir) {
+  let packageJson = null;
+  try { packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8")); } catch {}
+  const has = async (name) => { try { await fs.access(path.join(projectDir, name)); return true; } catch { return false; } };
+  const packageManager = await has("pnpm-lock.yaml") ? "pnpm" : await has("yarn.lock") ? "yarn" : await has("package-lock.json") ? "npm" : "npm";
+  const deps = { ...(packageJson?.dependencies || {}), ...(packageJson?.devDependencies || {}) };
+  const framework = deps.next ? "next" : deps.nuxt ? "nuxt" : deps.vue ? "vue" : deps.angular || deps["@angular/core"] ? "angular" : deps.react ? "react" : packageJson ? "node" : "static";
+  const script = packageJson?.scripts?.dev ? "dev" : packageJson?.scripts?.start ? "start" : packageJson?.scripts?.preview ? "preview" : null;
+  return { packageJson, packageManager, framework, script, scripts: packageJson?.scripts || {} };
+}
+
+function packageManagerCommand(packageManager) {
+  if (packageManager === "pnpm") return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  if (packageManager === "yarn") return process.platform === "win32" ? "yarn.cmd" : "yarn";
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function allocatePreviewPort(projectName, requestedPort = PREVIEW_PORT) {
+  const used = new Set([...previews.values()].filter((item) => item.projectName !== projectName).map((item) => item.port));
+  let port = Number(requestedPort) || PREVIEW_PORT;
+  while (used.has(port)) port += 1;
+  return port;
+}
 
 if (TOKEN.length < 24) {
   console.error("FIREBOX_ENGINE_TOKEN must be set to a random value of at least 24 characters.");
@@ -87,16 +111,25 @@ async function waitForPreviewReady(url, child, maxWaitMs = 15000) {
   throw new Error(`Preview did not become healthy within ${maxWaitMs}ms`);
 }
 
-async function startPreviewProcess(projectDir, projectName, script = "dev", port = PREVIEW_PORT) {
+async function startPreviewProcess(projectDir, projectName, script = null, port = PREVIEW_PORT) {
+  const detected = await detectProject(projectDir);
+  const selectedScript = script || detected.script;
+  if (!selectedScript) throw new Error("Project has no supported dev, start, or preview script");
+  const packageManager = detected.packageManager;
+  const framework = detected.framework;
+  const allocatedPort = allocatePreviewPort(projectName, port);
   const existing = previews.get(projectName);
   if (existing && existing.child.exitCode === null && !existing.child.killed) {
     const url = `http://127.0.0.1:${existing.port}`;
-    if (await probePreview(url)) return { projectName, port: existing.port, url, healthy: true };
+    if (await probePreview(url)) return { projectName, port: existing.port, url, healthy: true, status:"running", framework:existing.framework, packageManager:existing.packageManager, script:existing.script, startedAt:existing.startedAt };
     stopPreviewProcess(projectName);
   }
-  const command = process.platform === "win32" ? "npm.cmd" : "npm";
-  const child = spawn(command, ["run", script, "--", "--host", "0.0.0.0", "--port", String(port)], { cwd: projectDir, shell: false, windowsHide: true });
-  const preview = { child, port, script, startedAt: new Date().toISOString(), lastOutput: "" };
+  const command = packageManagerCommand(packageManager);
+  const args = ["run", selectedScript];
+  if (framework === "next") args.push("--", "-H", "0.0.0.0", "-p", String(allocatedPort));
+  else args.push("--", "--host", "0.0.0.0", "--port", String(allocatedPort));
+  const child = spawn(command, args, { cwd: projectDir, shell: false, windowsHide: true });
+  const preview = { child, projectName, port:allocatedPort, script:selectedScript, framework, packageManager, startedAt: new Date().toISOString(), status:"starting", healthy:false, lastOutput: "" };
   child.stdout?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
   child.stderr?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
   child.on("error", (error) => { preview.error = error.message; });
@@ -106,9 +139,12 @@ async function startPreviewProcess(projectDir, projectName, script = "dev", port
     if (previews.get(projectName)?.child === child) previews.delete(projectName);
   });
   previews.set(projectName, preview);
-  const url = `http://127.0.0.1:${port}`;
+  const url = `http://127.0.0.1:${allocatedPort}`;
+  preview.status = "checking";
   await waitForPreviewReady(url, child);
-  return { projectName, port, url, healthy: true };
+  preview.status = "running";
+  preview.healthy = true;
+  return { projectName, port:allocatedPort, url, healthy: true, status:"running", framework, packageManager, script:selectedScript, startedAt:preview.startedAt };
 }
 
 function stopPreviewProcess(projectName) {
@@ -133,12 +169,33 @@ function runCommand(command, args, cwd, onOutput) {
   });
 }
 
+async function ensureDependencies(projectDir, emit = () => {}) {
+  const detected = await detectProject(projectDir);
+  if (!detected.packageJson) return detected;
+  const nodeModulesDir = path.join(projectDir, "node_modules");
+  let installed = true;
+  try { await fs.access(nodeModulesDir); } catch { installed = false; }
+  if (!installed) {
+    const manager = packageManagerCommand(detected.packageManager);
+    const args = detected.packageManager === "npm" ? ["install", "--no-audit", "--no-fund"] : ["install"];
+    emit("runtime-state", { status:"installing", projectName:path.basename(projectDir), packageManager:detected.packageManager });
+    await runCommand(manager, args, projectDir, (output) => emit("runtime-output", { output:String(output).slice(-4000) }));
+    emit("runtime-state", { status:"installed", projectName:path.basename(projectDir), packageManager:detected.packageManager });
+  }
+  return detected;
+}
+
 async function runProjectChecks(projectDir, emit) {
   const packageFile = path.join(projectDir, "package.json");
   try { await fs.access(packageFile); } catch { return; }
-  emit("tool-start", { tool: "install_dependencies" });
-  await runCommand(process.platform === "win32" ? "npm.cmd" : "npm", ["install", "--no-audit", "--no-fund"], projectDir, (output) => emit("tool-output", { tool: "install_dependencies", output: output.slice(-4000) }));
-  emit("tool-complete", { tool: "install_dependencies" });
+  const detected = await detectProject(projectDir);
+  const manager = packageManagerCommand(detected.packageManager);
+  emit("workflow-stage-start", { stage:"dependencies", label:"Dependencies", activity:`Installing dependencies with ${detected.packageManager}` });
+  emit("tool-start", { tool: "install_dependencies", packageManager:detected.packageManager });
+  const installArgs = detected.packageManager === "npm" ? ["install", "--no-audit", "--no-fund"] : ["install"];
+  await runCommand(manager, installArgs, projectDir, (output) => emit("tool-output", { tool: "install_dependencies", output: output.slice(-4000) }));
+  emit("tool-complete", { tool: "install_dependencies", packageManager:detected.packageManager });
+  emit("workflow-stage-complete", { stage:"dependencies", label:"Dependencies" });
   const packageJson = JSON.parse(await fs.readFile(packageFile, "utf8"));
   if (packageJson.scripts?.test) {
     emit("tool-start", { tool: "run_tests" });
@@ -343,11 +400,10 @@ app.post("/api/preview/start", auth, async (req, res) => {
     const projectName = String(req.body?.projectName || "").trim();
     if (!projectName) return res.status(400).json({ error: "Project name is required" });
     const projectDir = safeWorkspacePath(projectName);
-    const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
-    const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
-    if (!script) return res.status(400).json({ error: "Project has no dev or start script" });
-    const preview = await startPreviewProcess(projectDir, projectName, script, Number(req.body?.port || PREVIEW_PORT));
-    res.json({ ok: true, preview });
+    const detected = await ensureDependencies(projectDir);
+    if (!detected.script) return res.status(400).json({ error: "Project has no supported dev, start, or preview script", detected });
+    const preview = await startPreviewProcess(projectDir, projectName, detected.script, Number(req.body?.port || PREVIEW_PORT));
+    res.json({ ok: true, detected: { framework:detected.framework, packageManager:detected.packageManager, script:detected.script }, preview });
   } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
 });
 
@@ -364,7 +420,7 @@ app.get("/api/preview/status", auth, async (req, res) => {
   }
   const url = `http://127.0.0.1:${preview.port}`;
   const healthy = await probePreview(url);
-  res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url } : null, lastOutput: preview.lastOutput || null });
+  res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url, framework:preview.framework, packageManager:preview.packageManager, script:preview.script, status:preview.status, healthy } : null, status:healthy ? "running" : (preview.status || "starting"), lastOutput: preview.lastOutput || null, error:preview.error || null });
 });
 
 app.post("/api/build", auth, async (req, res) => {
