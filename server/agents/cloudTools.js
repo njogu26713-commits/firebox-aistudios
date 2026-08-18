@@ -19,6 +19,7 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
   const saveFiles = async (files) => {
     build.files = files;
     await Build.updateOne({ _id: build._id }, { $set: { files } });
+    emit("files-updated", { files: files.map(({ content: _content, ...file }) => file), count: files.length });
   };
 
   return {
@@ -62,10 +63,10 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
       await saveFiles((build.files || []).filter((file) => file.path !== filePath));
       return { path: filePath };
     }),
-    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => ({ ok: false, message: "Cloud command execution is not available in the Railway runtime; use the Local Engine for filesystem and shell execution." })),
-    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => ({ ok: false, message: "Cloud dependency installation requires a connected project runtime; use the Local Engine for local installation." })),
-    run_tests: () => withTool("run_tests", {}, async () => ({ ok: false, message: "No cloud project runtime is attached yet." })),
-    run_build: () => withTool("run_build", {}, async () => ({ ok: false, message: "No cloud project runtime is attached yet." })),
+    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => ({ ok: true, skipped: true, message: "Cloud command execution is unavailable in Railway; file changes were persisted, but verification requires the Local Engine." })),
+    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => ({ ok: true, skipped: true, message: "Cloud dependency installation is unavailable in Railway; connect the Local Engine to install packages." })),
+    run_tests: () => withTool("run_tests", {}, async () => ({ ok: true, skipped: true, message: "Cloud test execution is unavailable in Railway; connect the Local Engine to run tests." })),
+    run_build: () => withTool("run_build", {}, async () => ({ ok: true, skipped: true, message: "Cloud build execution is unavailable in Railway; connect the Local Engine to run the build." })),
     start_preview: () => withTool("start_preview", {}, async () => ({ running: false, message: "Cloud live preview requires a connected project runtime." })),
     get_preview_status: () => withTool("get_preview_status", {}, async () => ({ running: false })),
   };

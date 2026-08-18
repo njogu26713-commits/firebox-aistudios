@@ -1208,6 +1208,23 @@ export default function FireboxAIStudio() {
       updateAgent(agent, { streaming: streamingRef.current[agent] });
     });
 
+    es.addEventListener("files-updated", async e => {
+      try {
+        const { files = [] } = JSON.parse(e.data);
+        if (!files.length) return;
+        const response = await fetch(`/api/build/${buildId}`);
+        const project = await response.json();
+        if (!response.ok || !Array.isArray(project.files)) return;
+        setAllFiles(project.files);
+        const first = project.files[0];
+        if (first && !activeTabPath) {
+          setOpenTabs([first]);
+          setActiveTabPath(first.path);
+          setTabContents({ [first.path]: first.content });
+        }
+      } catch { /* keep the stream alive; the next update can retry */ }
+    });
+
     es.addEventListener("agent-complete", e => {
       const { agent, files } = JSON.parse(e.data);
       // Stop timers and show all steps
