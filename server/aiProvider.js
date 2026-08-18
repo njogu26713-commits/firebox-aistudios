@@ -44,6 +44,7 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
     body: JSON.stringify({
       model: config.model,
       messages,
+      think: false,
       stream: true,
       max_tokens: maxTokens,
       temperature,

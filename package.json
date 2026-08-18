@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite --port 5000 --host 0.0.0.0",
     "server": "node server/index.js",
+    "local-engine": "node local-engine/index.js",
     "build": "vite build",
     "start": "NODE_ENV=production node server/index.js",
     "test": "node --test tests/*.test.js"

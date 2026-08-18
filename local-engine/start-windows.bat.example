@@ -1,0 +1,13 @@
+@echo off
+setlocal
+
+rem Edit these values before starting Firebox Local Engine.
+set "FIREBOX_WORKSPACE=C:\Users\YourName\FireboxProjects"
+set "FIREBOX_ENGINE_TOKEN=replace-with-a-long-random-token-at-least-24-characters"
+set "FIREBOX_ENGINE_PORT=8787"
+set "OLLAMA_ENDPOINT=http://127.0.0.1:11434/v1"
+set "OLLAMA_MODEL=qwen3:0.6b"
+set "OLLAMA_API_KEY="
+
+cd /d "%~dp0.."
+npm run local-engine

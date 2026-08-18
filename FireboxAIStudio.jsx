@@ -543,6 +543,8 @@ export default function FireboxAIStudio() {
   const [localAiEndpoint, setLocalAiEndpoint] = useState(() => localStorage.getItem("firebox-local-ai-endpoint") || "http://127.0.0.1:11434/v1");
   const [localAiModel, setLocalAiModel] = useState(() => localStorage.getItem("firebox-local-ai-model") || "");
   const [localAiApiKey, setLocalAiApiKey] = useState(() => localStorage.getItem("firebox-local-ai-api-key") || "");
+  const [localEngineUrl, setLocalEngineUrl] = useState(() => localStorage.getItem("firebox-local-engine-url") || "http://127.0.0.1:8787");
+  const [localEngineToken, setLocalEngineToken] = useState(() => localStorage.getItem("firebox-local-engine-token") || "");
   const [localAiTestState, setLocalAiTestState] = useState("idle");
   const [localAiTestMessage, setLocalAiTestMessage] = useState("");
 
@@ -551,7 +553,9 @@ export default function FireboxAIStudio() {
     localStorage.setItem("firebox-local-ai-endpoint", localAiEndpoint);
     localStorage.setItem("firebox-local-ai-model", localAiModel);
     localStorage.setItem("firebox-local-ai-api-key", localAiApiKey);
-  }, [aiProvider, localAiEndpoint, localAiModel, localAiApiKey]);
+    localStorage.setItem("firebox-local-engine-url", localEngineUrl);
+    localStorage.setItem("firebox-local-engine-token", localEngineToken);
+  }, [aiProvider, localAiEndpoint, localAiModel, localAiApiKey, localEngineUrl, localEngineToken]);
 
   const localAiConfig = useMemo(() => ({
     endpoint: localAiEndpoint.trim(),
@@ -775,6 +779,23 @@ export default function FireboxAIStudio() {
     }
   }, [localAiConfig]);
 
+  const testLocalEngine = useCallback(async () => {
+    setLocalAiTestState("testing");
+    setLocalAiTestMessage("");
+    const base = localEngineUrl.trim().replace(/\/+$/, "");
+    try {
+      if (!base || !localEngineToken.trim()) throw new Error("Enter the Local Engine URL and pairing token first");
+      const response = await fetch(`${base}/health`, { headers: { Authorization: `Bearer ${localEngineToken.trim()}` } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Local Engine returned HTTP ${response.status}`);
+      setLocalAiTestState("success");
+      setLocalAiTestMessage(`Local Engine works. Workspace: ${data.workspace}`);
+    } catch (error) {
+      setLocalAiTestState("error");
+      setLocalAiTestMessage(error.message || "Local Engine request failed");
+    }
+  }, [localEngineUrl, localEngineToken]);
+
   /* ── Start build ──────────────────────────────────────────────────────── */
   const startBuild = useCallback(async (desc) => {
     const buildDesc = (desc ?? description).trim();
@@ -799,10 +820,25 @@ export default function FireboxAIStudio() {
     agentTimerRefs.current = {};
 
     let buildId;
+    const useLocalEngine = aiProvider === "local";
+    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
+    if (useLocalEngine && (!engineBase || !localEngineToken.trim())) {
+      setPhase("error");
+      setErrorMsg("Local AI builds require the Local Firebox Engine URL and pairing token. Start the engine on Windows and enter both values in Settings.");
+      return;
+    }
     try {
-      const res  = await fetch("/api/build", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
+      const requestUrl = useLocalEngine ? `${engineBase}/api/build` : "/api/build";
+      const headers = { "Content-Type": "application/json" };
+      if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
+      const res = await fetch(requestUrl, {
+        method:"POST", headers,
+        body: JSON.stringify(useLocalEngine ? {
+          description: buildDesc,
+          endpoint: localAiConfig.endpoint,
+          model: localAiConfig.model,
+          apiKey: localAiConfig.apiKey,
+        } : {
           description: buildDesc,
           provider: aiProvider,
           localAi: aiProvider === "local" ? localAiConfig : undefined,
@@ -810,11 +846,14 @@ export default function FireboxAIStudio() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
-      buildId = data.buildId;
-      setCurrentBuildId(data.buildId);
+      buildId = useLocalEngine ? data.jobId : data.buildId;
+      if (!useLocalEngine) setCurrentBuildId(data.buildId);
     } catch (err) { setPhase("error"); setErrorMsg(err.message); return; }
 
-    const es = new EventSource(`/api/build/${buildId}/events`);
+    const eventUrl = useLocalEngine
+      ? `${engineBase}/api/build/${buildId}/events?token=${encodeURIComponent(localEngineToken.trim())}`
+      : `/api/build/${buildId}/events`;
+    const es = new EventSource(eventUrl);
     esRef.current = es;
 
     es.addEventListener("agent-start", e => {
@@ -909,7 +948,7 @@ export default function FireboxAIStudio() {
     });
 
     es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
-  }, [updateAgent, aiProvider, localAiConfig]);
+  }, [updateAgent, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
 
   /* ── Edit existing build files with targeted search/replace ───────────── */
   const startEditFiles = useCallback(async (instruction) => {
@@ -2024,12 +2063,43 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
+                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                          LOCAL FIREBOX ENGINE URL
+                        </label>
+                        <input
+                          value={localEngineUrl}
+                          onChange={e => setLocalEngineUrl(e.target.value)}
+                          placeholder="http://127.0.0.1:8787"
+                          spellCheck="false"
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                        />
+
+                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                          LOCAL ENGINE PAIRING TOKEN
+                        </label>
+                        <input
+                          type="password"
+                          value={localEngineToken}
+                          onChange={e => setLocalEngineToken(e.target.value)}
+                          placeholder="Token from the Windows Local Engine"
+                          autoComplete="off"
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                        />
+
                         <button
                           onClick={testLocalAi}
                           disabled={localAiTestState === "testing"}
                           style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", borderRadius:4, border:`1px solid ${VS.borderLight}`, background:localAiTestState === "testing" ? "rgba(255,255,255,0.05)" : VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
                         >
                           {localAiTestState === "testing" ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Zap size={13}/>} Test Local AI
+                        </button>
+
+                        <button
+                          onClick={testLocalEngine}
+                          disabled={localAiTestState === "testing"}
+                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", marginTop:7, borderRadius:4, border:`1px solid ${VS.borderLight}`, background:VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
+                        >
+                          <Server size={13}/> Test Local Engine
                         </button>
 
                         {localAiTestState !== "idle" && (
@@ -2039,7 +2109,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         )}
 
                         <div style={{ marginTop:14, fontSize:10, color:VS.textFaint, lineHeight:1.5 }}>
-                          Local requests run from the computer hosting the Firebox agent. A deployed Firebox backend cannot reach a personal Ollama instance through its own 127.0.0.1.
+                          Local chat contacts Ollama directly. Full Local AI builds use the Windows Local Firebox Engine at the URL above; Cloud AI continues using Railway normally. Never expose the engine port publicly.
                         </div>
                       </>
                     )}
