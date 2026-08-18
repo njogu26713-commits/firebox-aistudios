@@ -423,6 +423,11 @@ app.post("/api/test-local-ai", async (req, res) => {
   }
 });
 
+/* ── Deployment health diagnostics ───────────────────────────────────────── */
+app.get("/health", (_req, res) => {
+  res.status(200).json({ ok: true, service: "firebox-ai-studio", database: isDBConnected() ? "connected" : "unavailable" });
+});
+
 /* ── Serve built frontend in production ──────────────────────────────────── */
 if (process.env.NODE_ENV === "production") {
   const distPath = path.join(__dirname, "..", "dist");
@@ -434,6 +439,14 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const PORT = process.env.PORT || 3001;
-connectDB().then(() => {
-  app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server on port ${PORT}`));
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server on port ${PORT}`);
+  console.log(`[startup] health endpoint: /health | db configured: ${Boolean(process.env.MONGODB_URI)}`);
 });
+connectDB().then(() => {
+  console.log(`[startup] database status: ${isDBConnected() ? "connected" : "unavailable"}`);
+}).catch((error) => {
+  console.error(`[startup] database initialization failed: ${error.message}`);
+});
+
+export { app, server };
