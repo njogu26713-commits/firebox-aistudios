@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { AGENT_DEFS } from "../server/agents/config.js";
 import { extractFiles } from "../server/utils/fileParser.js";
 import { getCompletionStream, normalizeAiConfig } from "../server/aiProvider.js";
+import { FIREBOX_TOOL_DEFINITIONS } from "../server/agents/toolContract.js";
+import { runFireboxToolLoop } from "../server/agents/toolLoop.js";
 import { buildPlanningPrompt, normalizePlan, AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "../server/agents/workflow.js";
 import { createProjectTools } from "./tools.js";
 
@@ -117,6 +119,26 @@ async function waitForResume(job, res, signal) {
   return !signal?.aborted;
 }
 
+async function runAutonomousToolLoop(job, res, tools, config, signal) {
+  const messages = [
+    { role: "system", content: "You are the Firebox Agent. Use Firebox tools to inspect, edit, test, repair, and preview the current project. Never assume direct filesystem or shell access. Inspect before major changes, keep changes compatible with the existing architecture, and verify your work before preview." },
+    { role: "user", content: job.description },
+  ];
+  return runFireboxToolLoop({
+    config,
+    messages,
+    toolDefinitions: FIREBOX_TOOL_DEFINITIONS,
+    signal,
+    emit: (event, data) => send(res, event, data),
+    executeTool: (name, args) => {
+      if (!tools[name]) throw new Error(`Firebox tool is not available: ${name}`);
+      if (name === "run_command") return tools[name](args.command, args.args || [], (output) => send(res, "tool-output", { tool: name, output: String(output).slice(-4000) }));
+      if (["read_file", "search_project", "create_file", "write_file", "delete_file", "edit_file", "install_package"].includes(name)) return tools[name](...(name === "edit_file" ? [args.path, args.search, args.replacement] : name === "create_file" || name === "write_file" ? [args.path, args.content] : name === "install_package" ? [args.package] : name === "read_file" || name === "delete_file" ? [args.path] : [args.term]));
+      return tools[name]();
+    },
+  });
+}
+
 async function runBuild(job, res, signal) {
   const projectDir = safeWorkspacePath(job.projectName);
   await fs.mkdir(projectDir, { recursive: true });
@@ -139,6 +161,14 @@ async function runBuild(job, res, signal) {
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
   const inspectedProject = await tools.inspect_project();
   send(res, "project-inspected", { files: inspectedProject.files, packageJson: inspectedProject.packageJson ? { name: inspectedProject.packageJson.name, scripts: inspectedProject.packageJson.scripts || {}, dependencies: Object.keys(inspectedProject.packageJson.dependencies || {}) } : null });
+
+  if (job.toolMode) {
+    await waitForResume(job, res, signal);
+    const result = await runAutonomousToolLoop(job, res, tools, config, signal);
+    send(res, "agent-complete", { agent: "Firebox Agent", capability: { id: "autonomous", label: "Firebox Agent", activity: "Completed controlled tool workflow" }, output: result.content });
+    send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview: previews.get(job.projectName) ? { projectName: job.projectName, port: previews.get(job.projectName).port, url: `http://127.0.0.1:${previews.get(job.projectName).port}` } : null });
+    return;
+  }
 
   for (const agent of AGENT_DEFS) {
     if (signal?.aborted) throw new Error("Build stopped by user");
@@ -280,12 +310,12 @@ app.get("/api/preview/status", auth, (req, res) => {
 });
 
 app.post("/api/build", auth, async (req, res) => {
-  const { description, endpoint = OLLAMA_ENDPOINT, model = OLLAMA_MODEL, apiKey = OLLAMA_API_KEY, projectName } = req.body || {};
+  const { description, endpoint = OLLAMA_ENDPOINT, model = OLLAMA_MODEL, apiKey = OLLAMA_API_KEY, projectName, toolMode = false } = req.body || {};
   if (!description?.trim()) return res.status(400).json({ error: "Description is required" });
   if (!model?.trim()) return res.status(400).json({ error: "Local AI model is required" });
   const safeName = String(projectName || `firebox-project-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
   const jobId = crypto.randomUUID();
-  jobs.set(jobId, { id: jobId, description: description.trim(), endpoint, model, apiKey, projectName: safeName, paused: false });
+  jobs.set(jobId, { id: jobId, description: description.trim(), endpoint, model, apiKey, projectName: safeName, toolMode: Boolean(toolMode), paused: false });
   res.json({ jobId, projectName: safeName });
 });
 

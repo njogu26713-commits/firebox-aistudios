@@ -883,6 +883,7 @@ export default function FireboxAIStudio() {
           endpoint: localAiConfig.endpoint,
           model: localAiConfig.model,
           apiKey: localAiConfig.apiKey,
+          toolMode: true,
         } : {
           description: buildDesc,
           provider: aiProvider,
