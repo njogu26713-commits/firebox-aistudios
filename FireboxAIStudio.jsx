@@ -106,6 +106,50 @@ async function fetchLocalAi(url, options = {}) {
   }
 }
 
+async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
+  const { chatUrl } = getLocalAiUrls(config.endpoint);
+  const headers = { "Content-Type": "application/json" };
+  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  const fileContext = hasFiles && fileNames.length
+    ? `\nThe user currently has a project open with these files: ${fileNames.slice(0, 20).join(", ")}.`
+    : "\nThe user has no project files open yet.";
+  const systemPrompt =
+    "You are an AI coding assistant inside Firebox AI Studio. Answer naturally, help with coding questions, and take actions only on explicit commands." +
+    fileContext +
+    "\n\nOnly append [ACTION:build] for an explicit request to build/create a project. Only append [ACTION:edit] for an explicit request to change/fix/add to existing project files. Never add an action tag for questions or brainstorming. When used, put the action tag on the final line.";
+
+  logLocalAiDebug("POST", chatUrl, "model", config.model, "direct browser chat");
+  const response = await fetchLocalAi(chatUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: config.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages.map(message => ({
+          role: message.role === "ai" ? "assistant" : "user",
+          content: message.text,
+        })),
+      ],
+      stream: false,
+      max_tokens: 800,
+      temperature: 0.5,
+    }),
+  });
+  logLocalAiDebug("POST", chatUrl, "HTTP", response.status, "direct browser chat");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
+
+  const { content, reasoning } = extractLocalAiReply(data);
+  const full = content || reasoning;
+  if (!full) throw new Error("Local AI returned no assistant content");
+  const actionMatch = full.match(/\[ACTION:(build|edit)\]\s*$/);
+  return {
+    text: full.replace(/\[ACTION:(build|edit)\]\s*$/, "").trimEnd(),
+    action: actionMatch ? actionMatch[1] : null,
+  };
+}
+
 /* ─── Agent metadata ─────────────────────────────────────────────────────── */
 const AGENT_META = [
   { name: "Architect",  Icon: Brain,        color: VS.agentColors.Architect },
@@ -977,50 +1021,60 @@ export default function FireboxAIStudio() {
     const historyForApi = [...chatHistory.slice(-9), userMsg];
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let fullText = "";
+      let action = null;
+
+      if (aiProvider === "local") {
+        const result = await requestLocalChat({
+          config: localAiConfig,
           messages: historyForApi,
           hasFiles: allFiles.length > 0,
           fileNames: allFiles.map(f => f.path),
-          provider: aiProvider,
-          localAi: aiProvider === "local" ? localAiConfig : undefined,
-        }),
-      });
+        });
+        fullText = result.text;
+        action = result.action;
+        setAiStreamText(fullText);
+      } else {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: historyForApi,
+            hasFiles: allFiles.length > 0,
+            fileNames: allFiles.map(f => f.path),
+          }),
+        });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Error ${res.status}`);
-      }
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Error ${res.status}`);
+        }
 
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let   buf     = "";
-      let   fullText = "";
-      let   action   = null;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop();
+          for (const part of parts) {
+            const line = part.replace(/^data:\s*/, "").trim();
+            if (!line) continue;
+            let evt;
+            try { evt = JSON.parse(line); } catch { continue; }
 
-        for (const part of parts) {
-          const line = part.replace(/^data:\s*/, "").trim();
-          if (!line) continue;
-          let evt;
-          try { evt = JSON.parse(line); } catch { continue; }
-
-          if (evt.token) {
-            fullText += evt.token;
-            setAiStreamText(fullText);
-          } else if (evt.done) {
-            fullText = evt.text || fullText;
-            action   = evt.action || null;
-          } else if (evt.error) {
-            fullText = `Sorry, I ran into an error: ${evt.error}`;
+            if (evt.token) {
+              fullText += evt.token;
+              setAiStreamText(fullText);
+            } else if (evt.done) {
+              fullText = evt.text || fullText;
+              action = evt.action || null;
+            } else if (evt.error) {
+              throw new Error(evt.error);
+            }
           }
         }
       }
