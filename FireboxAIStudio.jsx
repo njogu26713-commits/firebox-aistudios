@@ -9,7 +9,7 @@ import {
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
-  Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen, Workflow, Flame,
+  Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen, Workflow, Flame, Sun, Moon,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -46,6 +46,15 @@ const VS = {
     Database:   "#34D399", Security:  "#FBBF24", QA:        "#FB923C",
     Deployment: "#38BDF8",
   },
+};
+
+const LIGHT_VS = {
+  ...VS,
+  titleBar: "#F8FAFC", activityBar: "#EEF2F7", sideBar: "#F4F6F8", sideHead: "#F4F6F8",
+  editorBg: "#FFFFFF", tabBar: "#F1F3F5", activeTab: "#FFFFFF", inactiveTab: "#E7EBEF", statusBar: "#0067B8",
+  panelBg: "#FFFFFF", terminalBg: "#F8FAFC", border: "#D7DDE3", borderLight: "#C3CBD4",
+  text: "#334155", textMuted: "#64748B", textFaint: "#94A3B8", textActive: "#0F172A",
+  accent: "#0067B8", accentHover: "#005A9E", success: "#16835B", error: "#C2412D", warning: "#9A6700",
 };
 
 const FONT_UI   = "'Inter', 'Segoe UI', system-ui, sans-serif";
@@ -529,6 +538,16 @@ function defineFireboxTheme(monaco) {
 /*  Main component                                                           */
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function FireboxAIStudio() {
+  const [isLightMode, setIsLightMode] = useState(() => {
+    try { return localStorage.getItem("firebox-theme") === "light"; } catch { return false; }
+  });
+  const palette = isLightMode ? LIGHT_VS : VS;
+
+  useEffect(() => {
+    try { localStorage.setItem("firebox-theme", isLightMode ? "light" : "dark"); } catch {}
+    document.body.style.background = palette.editorBg;
+  }, [isLightMode, palette.editorBg]);
+
   /* build state */
   const [phase,          setPhase]          = useState("idle");
   const [description,    setDescription]    = useState("");
@@ -1857,7 +1876,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
   /* ── Monaco callbacks ─────────────────────────────────────────────────── */
   function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
-    monaco.editor.setTheme("firebox-dark");
+    monaco.editor.setTheme(isLightMode ? "vs" : "firebox-dark");
     editor.onDidChangeCursorPosition(e => {
       setLineCol({ line: e.position.lineNumber, col: e.position.column });
     });
@@ -1908,14 +1927,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
         }
       `}</style>
 
-      <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:VS.editorBg, fontFamily:FONT_UI, color:VS.text, overflow:"hidden" }}>
+      <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:palette.editorBg, fontFamily:FONT_UI, color:palette.text, overflow:"hidden" }}>
 
         {/* ══ Title bar ═══════════════════════════════════════════════════ */}
         <div style={{
-          height: isMobile ? 44 : 30, flexShrink:0, background:VS.titleBar,
+          height: isMobile ? 44 : 30, flexShrink:0, background:palette.titleBar,
           display:"flex", alignItems:"center", justifyContent:"space-between",
           padding: isMobile ? "0 10px" : "0 12px",
-          borderBottom:`1px solid ${VS.border}`, WebkitAppRegion:"drag",
+          borderBottom:`1px solid ${palette.border}`, WebkitAppRegion:"drag",
           userSelect:"none",
         }}>
           {/* macOS-style traffic lights — hidden on mobile */}
@@ -1933,22 +1952,22 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               style={{
                 display:"flex", alignItems:"center", justifyContent:"center",
                 width:32, height:32, background: sideOpen ? "#3D3D3D" : "transparent",
-                border:`1px solid ${sideOpen ? VS.accent : VS.border}`,
+                border:`1px solid ${sideOpen ? palette.accent : palette.border}`,
                 borderRadius:6, cursor:"pointer", WebkitAppRegion:"no-drag", flexShrink:0,
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sideOpen ? VS.accent : VS.textMuted} strokeWidth="2" strokeLinecap="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sideOpen ? palette.accent : palette.textMuted} strokeWidth="2" strokeLinecap="round">
                 <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
               </svg>
             </button>
           )}
           {/* Title */}
-          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:VS.textMuted, flex: isMobile ? 1 : "unset", justifyContent: isMobile ? "center" : "unset", marginLeft: isMobile ? 0 : 0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:palette.textMuted, flex: isMobile ? 1 : "unset", justifyContent: isMobile ? "center" : "unset", marginLeft: isMobile ? 0 : 0 }}>
             <FireboxAgentMark size={16}/>
-            <span style={{ color:VS.text, fontWeight:500, fontSize: isMobile ? 13 : 12 }}>Firebox AI Studio</span>
+            <span style={{ color:palette.text, fontWeight:500, fontSize: isMobile ? 13 : 12 }}>Firebox AI Studio</span>
             {!isMobile && activeFile && (
               <>
-                <span style={{ color:VS.textFaint }}>—</span>
+                <span style={{ color:palette.textFaint }}>—</span>
                 <span>{activeFile.path.split("/").pop()}</span>
               </>
             )}
@@ -1957,8 +1976,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             {phase !== "idle" && (
               <button onClick={reset} style={{
                 display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
-                background:"transparent", border:`1px solid ${VS.border}`,
-                color:VS.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
+                background:"transparent", border:`1px solid ${palette.border}`,
+                color:palette.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
               }}>
                 <RotateCcw size={11}/>{!isMobile && " New"}
               </button>
@@ -1972,9 +1991,9 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 style={{
                   display:"flex", alignItems:"center", gap:5,
                   padding: isMobile ? "4px 8px" : "3px 10px",
-                  background: newProjOpen ? VS.accent : "rgba(0,120,212,0.15)",
-                  border:`1px solid ${newProjOpen ? VS.accent : "rgba(0,120,212,0.4)"}`,
-                  color: newProjOpen ? "#fff" : VS.accent,
+                  background: newProjOpen ? palette.accent : "rgba(0,120,212,0.15)",
+                  border:`1px solid ${newProjOpen ? palette.accent : "rgba(0,120,212,0.4)"}`,
+                  color: newProjOpen ? "#fff" : palette.accent,
                   fontSize:11, borderRadius:5, cursor:"pointer",
                   fontWeight:500, transition:"all 0.15s",
                   opacity: importing ? 0.6 : 1,
@@ -1989,13 +2008,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {newProjOpen && (
                 <div style={{
                   position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
-                  width:200, background:"#252526",
-                  border:`1px solid ${VS.border}`, borderRadius:8,
+                  width:200, background:palette.sideBar,
+                  border:`1px solid ${palette.border}`, borderRadius:8,
                   boxShadow:"0 8px 32px rgba(0,0,0,0.5)",
                   overflow:"hidden", animation:"fadeIn 0.12s ease",
                 }}>
                   {/* Header */}
-                  <div style={{ padding:"8px 12px 6px", fontSize:10, fontWeight:700, color:VS.textMuted, letterSpacing:"0.08em", borderBottom:`1px solid ${VS.border}` }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:10, fontWeight:700, color:palette.textMuted, letterSpacing:"0.08em", borderBottom:`1px solid ${palette.border}` }}>
                     NEW PROJECT
                   </div>
 
@@ -2020,14 +2039,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       <div style={{
                         width:28, height:28, borderRadius:6, flexShrink:0,
                         background:"rgba(255,255,255,0.05)",
-                        border:`1px solid ${VS.border}`,
+                        border:`1px solid ${palette.border}`,
                         display:"flex", alignItems:"center", justifyContent:"center",
                       }}>
-                        <Icon size={13} color={VS.textMuted}/>
+                        <Icon size={13} color={palette.textMuted}/>
                       </div>
                       <div>
-                        <div style={{ fontSize:12, color:VS.text, fontWeight:500 }}>{label}</div>
-                        <div style={{ fontSize:10, color:VS.textFaint, marginTop:1 }}>{sub}</div>
+                        <div style={{ fontSize:12, color:palette.text, fontWeight:500 }}>{label}</div>
+                        <div style={{ fontSize:10, color:palette.textFaint, marginTop:1 }}>{sub}</div>
                       </div>
                     </button>
                   ))}
@@ -2038,8 +2057,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             <button onClick={() => setHistoryOpen(p=>!p)} style={{
               display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
               background: historyOpen ? "#3D3D3D" : "transparent",
-              border:`1px solid ${VS.border}`,
-              color:VS.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
+              border:`1px solid ${palette.border}`,
+              color:palette.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
             }}>
               <History size={11}/>{!isMobile && " History"}
             </button>
@@ -2048,18 +2067,18 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
         {/* History dropdown */}
         {historyOpen && (
-          <div style={{ background:"#252526", borderBottom:`1px solid ${VS.border}`, padding:"10px 14px", animation:"fadeIn 0.15s", zIndex:50 }}>
-            <div style={{ fontSize:10, color:VS.textMuted, marginBottom:6, fontWeight:700, letterSpacing:"0.1em" }}>RECENT BUILDS</div>
+          <div style={{ background:palette.sideBar, borderBottom:`1px solid ${palette.border}`, padding:"10px 14px", animation:"fadeIn 0.15s", zIndex:50 }}>
+            <div style={{ fontSize:10, color:palette.textMuted, marginBottom:6, fontWeight:700, letterSpacing:"0.1em" }}>RECENT BUILDS</div>
             {recentBuilds.length === 0
-              ? <div style={{ fontSize:12, color:VS.textFaint }}>No builds yet.</div>
+              ? <div style={{ fontSize:12, color:palette.textFaint }}>No builds yet.</div>
               : recentBuilds.map(b => (
                 <div key={b._id} className="hist-row" style={{
                   display:"flex", alignItems:"center", justifyContent:"space-between",
                   padding:"5px 8px", borderRadius:4, animation:"fadeIn 0.15s", cursor:"default",
                 }}>
-                  <span style={{ fontSize:12, color:VS.text, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.description}</span>
-                  <span style={{ fontSize:11, color: b.status==="complete"?VS.success:b.status==="failed"?VS.error:VS.textMuted, marginLeft:10, flexShrink:0 }}>{b.status}</span>
-                  <span style={{ fontSize:11, color:VS.textFaint, marginLeft:10, flexShrink:0 }}>{new Date(b.createdAt).toLocaleDateString()}</span>
+                  <span style={{ fontSize:12, color:palette.text, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.description}</span>
+                  <span style={{ fontSize:11, color: b.status==="complete"?palette.success:b.status==="failed"?palette.error:palette.textMuted, marginLeft:10, flexShrink:0 }}>{b.status}</span>
+                  <span style={{ fontSize:11, color:palette.textFaint, marginLeft:10, flexShrink:0 }}>{new Date(b.createdAt).toLocaleDateString()}</span>
                 </div>
               ))
             }
@@ -2084,8 +2103,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               return (
                 <div style={{
                   position:"absolute", bottom:0, left:0, right:0, zIndex:200,
-                  height:52, flexShrink:0, background:VS.activityBar,
-                  borderTop:`1px solid ${VS.border}`,
+                  height:52, flexShrink:0, background:palette.activityBar,
+                  borderTop:`1px solid ${palette.border}`,
                   display:"flex", flexDirection:"row", alignItems:"center",
                   justifyContent:"space-around",
                 }}>
@@ -2099,8 +2118,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
                         flex:1, height:52, background:"transparent", border:"none",
-                        borderTop:`2px solid ${activity===id && sideOpen ? VS.accent : "transparent"}`,
-                        color: activity===id && sideOpen ? VS.textActive : VS.textMuted,
+                        borderTop:`2px solid ${activity===id && sideOpen ? palette.accent : "transparent"}`,
+                        color: activity===id && sideOpen ? palette.textActive : palette.textMuted,
                         cursor:"pointer", transition:"color 0.15s", gap:3,
                       }}
                     >
@@ -2109,7 +2128,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       {badge && (
                         <span style={{
                           position:"absolute", top:4, right:"calc(50% - 16px)", minWidth:14, height:14, borderRadius:7,
-                          background: badgeColor || VS.accent, color:"#fff",
+                          background: badgeColor || palette.accent, color:"#fff",
                           fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
                           padding:"0 3px",
                         }}>{typeof badge==="number" ? badge : null}</span>
@@ -2119,7 +2138,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
                     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                     flex:1, height:52, background:"transparent", border:"none",
-                    borderTop:`2px solid ${activity === "settings" && sideOpen ? VS.accent : "transparent"}`, color: activity === "settings" && sideOpen ? VS.textActive : VS.textMuted, cursor:"pointer", gap:3,
+                    borderTop:`2px solid ${activity === "settings" && sideOpen ? palette.accent : "transparent"}`, color: activity === "settings" && sideOpen ? palette.textActive : palette.textMuted, cursor:"pointer", gap:3,
                   }}>
                     <Settings size={18}/>
                     <span style={{ fontSize:9, fontWeight:500 }}>Settings</span>
@@ -2129,8 +2148,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             }
             return (
               <div style={{
-                width:navExpanded ? 176 : 48, flexShrink:0, background:VS.activityBar,
-                borderRight:`1px solid ${VS.border}`,
+                width:navExpanded ? 176 : 48, flexShrink:0, background:palette.activityBar,
+                borderRight:`1px solid ${palette.border}`,
                 display:"flex", flexDirection:"column", alignItems:"stretch",
                 paddingTop:8, gap:0, transition:"width 0.2s ease",
               }}>
@@ -2141,7 +2160,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   style={{
                     display:"flex", alignItems:"center", justifyContent:navExpanded ? "flex-end" : "center",
                     width:"100%", height:34, padding:navExpanded ? "0 14px" : 0,
-                    background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer",
+                    background:"transparent", border:"none", color:palette.textMuted, cursor:"pointer",
                   }}
                 >
                   {navExpanded ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}
@@ -2156,8 +2175,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       position:"relative", display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center",
                       gap:navExpanded ? 11 : 0, width:"100%", height:44, padding:navExpanded ? "0 14px" : 0,
                       background:activity===id ? "rgba(0,120,212,0.08)" : "transparent", border:"none",
-                      borderLeft:`2px solid ${activity===id ? VS.accent : "transparent"}`,
-                      color: activity===id ? VS.textActive : VS.textMuted,
+                      borderLeft:`2px solid ${activity===id ? palette.accent : "transparent"}`,
+                      color: activity===id ? palette.textActive : palette.textMuted,
                       cursor:"pointer", transition:"color 0.15s, background 0.15s",
                     }}
                   >
@@ -2167,7 +2186,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       <span style={{
                         position:navExpanded ? "static" : "absolute", top:6, right:6, minWidth:14, height:14, borderRadius:7,
                         marginLeft:navExpanded ? "auto" : 0,
-                        background: badgeColor || VS.accent, color:"#fff",
+                        background: badgeColor || palette.accent, color:"#fff",
                         fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
                         padding:"0 3px",
                       }}>{typeof badge==="number" ? badge : null}</span>
@@ -2178,7 +2197,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
                   display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center", gap:navExpanded ? 11 : 0,
                   width:"100%", height:44, padding:navExpanded ? "0 14px" : 0, background:activity === "settings" ? "rgba(0,120,212,0.08)" : "transparent", border:"none",
-                  borderLeft:`2px solid ${activity === "settings" ? VS.accent : "transparent"}`, color: activity === "settings" ? VS.textActive : VS.textMuted, cursor:"pointer", marginBottom:4,
+                  borderLeft:`2px solid ${activity === "settings" ? palette.accent : "transparent"}`, color: activity === "settings" ? palette.textActive : palette.textMuted, cursor:"pointer", marginBottom:4,
                 }}>
                   <Settings size={20}/>{navExpanded && <span style={{ fontSize:12, fontWeight:activity === "settings" ? 600 : 500 }}>Settings</span>}
                 </button>
@@ -2196,15 +2215,26 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* Panel: Provider settings */}
               {activity === "settings" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                    APPEARANCE
+                  </div>
+                  <div style={{ padding:"4px 12px 14px", borderBottom:`1px solid ${palette.border}` }}>
+                    <button onClick={() => setIsLightMode(prev => !prev)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"10px 11px", border:`1px solid ${palette.border}`, borderRadius:7, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
+                      <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        {isLightMode ? <Sun size={15} color={palette.accent}/> : <Moon size={15} color={palette.accent}/>}<span style={{ fontSize:11, fontWeight:650 }}>{isLightMode ? "Light Mode" : "Dark Mode"}</span>
+                      </span>
+                      <span style={{ fontSize:10, color:palette.textMuted }}>Switch to {isLightMode ? "dark" : "light"}</span>
+                    </button>
+                  </div>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
                     PROVIDER SETTINGS
                   </div>
                   <div style={{ flex:1, overflowY:"auto", padding:"4px 12px 18px" }}>
-                    <div style={{ fontSize:12, color:VS.text, lineHeight:1.5, marginBottom:14 }}>
+                    <div style={{ fontSize:12, color:palette.text, lineHeight:1.5, marginBottom:14 }}>
                       Choose which model responds to Firebox requests. Cloud AI stays available as the default provider.
                     </div>
 
-                    <div style={{ fontSize:10, color:VS.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:6 }}>AI PROVIDER</div>
+                    <div style={{ fontSize:10, color:palette.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:6 }}>AI PROVIDER</div>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
                       {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }, { id:"openai", label:"OpenAI" }, { id:"anthropic", label:"Anthropic" }, { id:"google", label:"Gemini" }, { id:"openrouter", label:"OpenRouter" }].map(({ id, label }) => (
                         <button
@@ -2212,9 +2242,9 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onClick={() => { setAiProvider(id); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           style={{
                             padding:"9px 8px", borderRadius:5, cursor:"pointer", fontFamily:FONT_UI,
-                            border:`1px solid ${aiProvider === id ? VS.accent : VS.border}`,
+                            border:`1px solid ${aiProvider === id ? palette.accent : palette.border}`,
                             background: aiProvider === id ? "rgba(0,120,212,0.18)" : "transparent",
-                            color: aiProvider === id ? VS.textActive : VS.textMuted,
+                            color: aiProvider === id ? palette.textActive : palette.textMuted,
                             fontSize:11, fontWeight:600,
                           }}
                         >{label}</button>
@@ -2223,7 +2253,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                     {aiProvider !== "cloud" && (
                       <>
-                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                        <label style={{ display:"block", fontSize:10, color:palette.textMuted, fontWeight:700, marginBottom:5 }}>
                           {aiProvider === "local" ? "OLLAMA / OPENAI-COMPATIBLE ENDPOINT" : `${aiProvider.toUpperCase()} API ENDPOINT`}
                         </label>
                         <input
@@ -2231,10 +2261,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onChange={e => { setLocalAiEndpoint(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder={aiProvider === "local" ? "http://127.0.0.1:11434/v1" : "Provider default endpoint"}
                           spellCheck="false"
-                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:4, color:palette.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
-                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                        <label style={{ display:"block", fontSize:10, color:palette.textMuted, fontWeight:700, marginBottom:5 }}>
                           MODEL IDENTIFIER
                         </label>
                         <input
@@ -2242,10 +2272,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onChange={e => { setLocalAiModel(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder={aiProvider === "local" ? "Enter any compatible local model" : "Enter provider model identifier"}
                           spellCheck="false"
-                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:4, color:palette.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
-                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                        <label style={{ display:"block", fontSize:10, color:palette.textMuted, fontWeight:700, marginBottom:5 }}>
                           OPTIONAL API KEY
                         </label>
                         <input
@@ -2254,11 +2284,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onChange={e => { setLocalAiApiKey(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder="Leave blank if not required"
                           autoComplete="off"
-                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:4, color:palette.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
                         {aiProvider === "local" && <>
-                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                        <label style={{ display:"block", fontSize:10, color:palette.textMuted, fontWeight:700, marginBottom:5 }}>
                           LOCAL FIREBOX ENGINE URL
                         </label>
                         <input
@@ -2266,10 +2296,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onChange={e => setLocalEngineUrl(e.target.value)}
                           placeholder="http://127.0.0.1:8787"
                           spellCheck="false"
-                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:4, color:palette.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
-                        <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
+                        <label style={{ display:"block", fontSize:10, color:palette.textMuted, fontWeight:700, marginBottom:5 }}>
                           LOCAL ENGINE PAIRING TOKEN
                         </label>
                         <input
@@ -2278,7 +2308,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onChange={e => setLocalEngineToken(e.target.value)}
                           placeholder="Token from the Windows Local Engine"
                           autoComplete="off"
-                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
+                          style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:4, color:palette.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
                         </>}
@@ -2286,7 +2316,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <button
                           onClick={testLocalAi}
                           disabled={localAiTestState === "testing"}
-                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", borderRadius:4, border:`1px solid ${VS.borderLight}`, background:localAiTestState === "testing" ? "rgba(255,255,255,0.05)" : VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
+                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", borderRadius:4, border:`1px solid ${palette.borderLight}`, background:localAiTestState === "testing" ? "rgba(255,255,255,0.05)" : palette.activityBar, color:palette.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
                         >
                           {localAiTestState === "testing" ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Zap size={13}/>} Test {aiProvider === "local" ? "Local AI" : aiProvider}
                         </button>
@@ -2294,19 +2324,19 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         {aiProvider === "local" && <button
                           onClick={testLocalEngine}
                           disabled={localAiTestState === "testing"}
-                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", marginTop:7, borderRadius:4, border:`1px solid ${VS.borderLight}`, background:VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
+                          style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", marginTop:7, borderRadius:4, border:`1px solid ${palette.borderLight}`, background:palette.activityBar, color:palette.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
                         >
                           <Server size={13}/> Test Local Engine
                         </button>}
 
 
                         {localAiTestState !== "idle" && (
-                          <div style={{ marginTop:9, padding:"8px 9px", borderRadius:4, fontSize:10, lineHeight:1.45, color:localAiTestState === "success" ? VS.success : localAiTestState === "error" ? VS.error : VS.textMuted, background:"rgba(255,255,255,0.04)", border:`1px solid ${localAiTestState === "success" ? "rgba(78,201,148,0.35)" : localAiTestState === "error" ? "rgba(244,135,113,0.35)" : VS.border}` }}>
+                          <div style={{ marginTop:9, padding:"8px 9px", borderRadius:4, fontSize:10, lineHeight:1.45, color:localAiTestState === "success" ? palette.success : localAiTestState === "error" ? palette.error : palette.textMuted, background:"rgba(255,255,255,0.04)", border:`1px solid ${localAiTestState === "success" ? "rgba(78,201,148,0.35)" : localAiTestState === "error" ? "rgba(244,135,113,0.35)" : palette.border}` }}>
                             {localAiTestState === "success" ? "Connection works: " : localAiTestState === "error" ? "Connection failed: " : "Testing…"}{localAiTestMessage}
                           </div>
                         )}
 
-                        <div style={{ marginTop:14, fontSize:10, color:VS.textFaint, lineHeight:1.5 }}>
+                        <div style={{ marginTop:14, fontSize:10, color:palette.textFaint, lineHeight:1.5 }}>
                           Local chat contacts Ollama directly. Full Local AI builds use the Windows Local Firebox Engine at the URL above; Cloud AI continues using Railway normally. Never expose the engine port publicly.
                         </div>
                       </>
@@ -2318,20 +2348,20 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* Panel: Explorer */}
               {activity === "explorer" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
                     EXPLORER
                   </div>
                   <div style={{ flex:1, overflowY:"auto" }}>
                     {allFiles.length === 0 ? (
-                      <div style={{ padding:"20px 16px", fontSize:12, color:VS.textFaint, lineHeight:1.6 }}>
+                      <div style={{ padding:"20px 16px", fontSize:12, color:palette.textFaint, lineHeight:1.6 }}>
                         Files will appear here as agents complete their work.
                       </div>
                     ) : (
                       <>
                         {/* Project root */}
-                        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", fontSize:12, color:VS.text, fontWeight:600 }}>
-                          <ChevronDown size={13} color={VS.textMuted}/>
-                          <Zap size={13} color={VS.accent}/>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", fontSize:12, color:palette.text, fontWeight:600 }}>
+                          <ChevronDown size={13} color={palette.textMuted}/>
+                          <Zap size={13} color={palette.accent}/>
                           <span>firebox-project</span>
                         </div>
                         {/* Per-agent groups */}
@@ -2348,10 +2378,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 className="tree-item"
                                 style={{ display:"flex", alignItems:"center", gap:6, paddingLeft:14, height:24, cursor:"pointer", userSelect:"none" }}
                               >
-                                {isOpen ? <ChevronDown size={12} color={VS.textMuted}/> : <ChevronRight size={12} color={VS.textMuted}/>}
+                                {isOpen ? <ChevronDown size={12} color={palette.textMuted}/> : <ChevronRight size={12} color={palette.textMuted}/>}
                                 <Icon size={13} color={color}/>
-                                <span style={{ fontSize:12, color:VS.textMuted, fontWeight:500 }}>{agentName}</span>
-                                <span style={{ fontSize:11, color:VS.textFaint, marginLeft:"auto", paddingRight:8 }}>{agentFiles.length}</span>
+                                <span style={{ fontSize:12, color:palette.textMuted, fontWeight:500 }}>{agentName}</span>
+                                <span style={{ fontSize:11, color:palette.textFaint, marginLeft:"auto", paddingRight:8 }}>{agentFiles.length}</span>
                               </div>
                               {isOpen && (
                                 <TreeNode
@@ -2372,10 +2402,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* Panel: Agent pipeline — conversational activity feed */}
               {activity === "agents" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <span>AGENT PIPELINE</span>
                     {phase !== "idle" && (
-                      <span style={{ fontSize:10, color: phase==="complete" ? VS.success : VS.textMuted, fontWeight:500, letterSpacing:0 }}>
+                      <span style={{ fontSize:10, color: phase==="complete" ? palette.success : palette.textMuted, fontWeight:500, letterSpacing:0 }}>
                         {phase==="complete" ? `✓ ${doneCount}/${AGENT_META.length} done` : `${doneCount}/${AGENT_META.length}`}
                       </span>
                     )}
@@ -2386,7 +2416,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{ height:2, background:"rgba(255,255,255,0.06)", flexShrink:0, margin:"0 12px 2px" }}>
                       <div style={{
                         height:"100%", borderRadius:1, transition:"width 0.5s ease",
-                        background: phase==="complete" ? VS.success : VS.accent,
+                        background: phase==="complete" ? palette.success : palette.accent,
                         width:`${progress}%`,
                       }}/>
                     </div>
@@ -2399,8 +2429,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {chatHistory.length === 0 && phase === "idle" && (
                       <div style={{ padding:"16px 2px 8px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14 }}>
-                          <Sparkles size={14} color={VS.accent} style={{ opacity:0.85 }}/>
-                          <span style={{ fontSize:12, fontWeight:700, color:VS.textActive }}>
+                          <Sparkles size={14} color={palette.accent} style={{ opacity:0.85 }}/>
+                          <span style={{ fontSize:12, fontWeight:700, color:palette.textActive }}>
                             What would you like to build?
                           </span>
                         </div>
@@ -2437,13 +2467,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               }}
                             >
                               <span style={{ fontSize:16, lineHeight:1 }}>{icon}</span>
-                              <span style={{ fontSize:11, fontWeight:600, color:VS.textActive, lineHeight:1.3 }}>
+                              <span style={{ fontSize:11, fontWeight:600, color:palette.textActive, lineHeight:1.3 }}>
                                 {label}
                               </span>
                             </button>
                           ))}
                         </div>
-                        <div style={{ fontSize:10, color:VS.textFaint, marginTop:12, textAlign:"center", lineHeight:1.6 }}>
+                        <div style={{ fontSize:10, color:palette.textFaint, marginTop:12, textAlign:"center", lineHeight:1.6 }}>
                           Click a card to use it as your prompt, or type your own below
                         </div>
                       </div>
@@ -2456,12 +2486,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           display:"flex", flexDirection:"column", alignItems:"flex-end",
                           marginBottom:10, animation:"fadeIn 0.2s ease",
                         }}>
-                          <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingRight:2 }}>
+                          <div style={{ fontSize:10, color:palette.textFaint, marginBottom:3, paddingRight:2 }}>
                             💬 You
                           </div>
                           <div style={{
                             maxWidth:"90%", padding:"8px 12px", borderRadius:"10px 10px 2px 10px",
-                            background: VS.accent, color:"#fff",
+                            background: palette.accent, color:"#fff",
                             fontSize:12, lineHeight:1.5, fontFamily:FONT_MONO,
                             wordBreak:"break-word",
                           }}>
@@ -2473,14 +2503,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           display:"flex", flexDirection:"column", alignItems:"flex-start",
                           marginBottom:10, animation:"fadeIn 0.2s ease",
                         }}>
-                          <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingLeft:2 }}>
+                          <div style={{ fontSize:10, color:palette.textFaint, marginBottom:3, paddingLeft:2 }}>
                             ⚡ Firebox AI
                           </div>
                           <div style={{
                             maxWidth:"92%", padding:"8px 12px", borderRadius:"10px 10px 10px 2px",
                             background:"rgba(255,255,255,0.06)",
                             border:"1px solid rgba(255,255,255,0.09)",
-                            color: VS.text,
+                            color: palette.text,
                             fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
                             wordBreak:"break-word", whiteSpace:"pre-wrap",
                           }}>
@@ -2496,14 +2526,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         display:"flex", flexDirection:"column", alignItems:"flex-start",
                         marginBottom:10, animation:"fadeIn 0.2s ease",
                       }}>
-                        <div style={{ fontSize:10, color:VS.textFaint, marginBottom:3, paddingLeft:2 }}>
+                        <div style={{ fontSize:10, color:palette.textFaint, marginBottom:3, paddingLeft:2 }}>
                           ⚡ Firebox AI
                         </div>
                         <div style={{
                           maxWidth:"92%", padding:"8px 12px", borderRadius:"10px 10px 10px 2px",
                           background:"rgba(255,255,255,0.06)",
                           border:"1px solid rgba(0,120,212,0.25)",
-                          color: VS.text,
+                          color: palette.text,
                           fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
                           wordBreak:"break-word", whiteSpace:"pre-wrap",
                         }}>
@@ -2546,7 +2576,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             }}>
 {isActive
                                  ? <FireboxAgentMark size={16} animated state="working"/>
-                                 : <Icon size={14} color={isDone ? color : isError ? VS.error : VS.textMuted}/>
+                                 : <Icon size={14} color={isDone ? color : isError ? palette.error : palette.textMuted}/>
                               }
                             </div>
 
@@ -2555,17 +2585,17 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                                 <span style={{
                                   fontSize:13, fontWeight:600,
-                                  color: isActive ? VS.textActive : isDone ? VS.text : VS.textMuted,
+                                  color: isActive ? palette.textActive : isDone ? palette.text : palette.textMuted,
                                 }}>
                                   {name}
                                 </span>
-                                {isDone && <CheckCircle2 size={13} color={VS.success}/>}
-                                {isError && <AlertTriangle size={13} color={VS.error}/>}
+                                {isDone && <CheckCircle2 size={13} color={palette.success}/>}
+                                {isError && <AlertTriangle size={13} color={palette.error}/>}
                               </div>
                               <div style={{ fontSize:11, marginTop:1 }}>
-                                {isDone   && <span style={{ color:VS.textMuted }}>Worked for {elapsed}s</span>}
+                                {isDone   && <span style={{ color:palette.textMuted }}>Worked for {elapsed}s</span>}
                                 {isActive && <ThinkingDots/>}
-                                {isError  && <span style={{ color:VS.error }}>Failed</span>}
+                                {isError  && <span style={{ color:palette.error }}>Failed</span>}
                               </div>
                             </div>
 
@@ -2578,7 +2608,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   padding:"3px 8px", borderRadius:20,
                                   background:"rgba(255,255,255,0.06)",
                                   border:"1px solid rgba(255,255,255,0.1)",
-                                  color:VS.textMuted, fontSize:11, cursor:"pointer",
+                                  color:palette.textMuted, fontSize:11, cursor:"pointer",
                                   flexShrink:0, transition:"background 0.15s",
                                 }}
                                 onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.1)"}
@@ -2606,7 +2636,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   <span style={{ fontSize:13, flexShrink:0, lineHeight:1 }}>{step.icon}</span>
                                   <span style={{
                                     fontSize:12, lineHeight:1.4,
-                                    color: i === visCount-1 && isActive ? VS.text : VS.textMuted,
+                                    color: i === visCount-1 && isActive ? palette.text : palette.textMuted,
                                   }}>
                                     {step.text}
                                   </span>
@@ -2644,15 +2674,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             {editingFiles
                               ? <Loader2 size={14} color="#0078D4" style={{ animation:"spin 1s linear infinite" }}/>
                               : editError
-                              ? <AlertTriangle size={14} color={VS.error}/>
-                              : <CheckCircle2 size={14} color={VS.success}/>
+                              ? <AlertTriangle size={14} color={palette.error}/>
+                              : <CheckCircle2 size={14} color={palette.success}/>
                             }
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13, fontWeight:600, color: editError ? VS.error : editingFiles ? "#0078D4" : VS.success }}>
+                            <div style={{ fontSize:13, fontWeight:600, color: editError ? palette.error : editingFiles ? "#0078D4" : palette.success }}>
                               {editingFiles ? "Editing files…" : editError ? "Edit failed" : `${editChangedFiles.length} file${editChangedFiles.length !== 1 ? "s" : ""} updated`}
                             </div>
-                            <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>
+                            <div style={{ fontSize:11, color:palette.textMuted, marginTop:1 }}>
                               {editingFiles
                                 ? <ThinkingDots/>
                                 : editError
@@ -2670,7 +2700,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             maxHeight:80, overflowY:"auto",
                           }}>
                             <pre style={{
-                              margin:0, fontSize:10, color:VS.textFaint,
+                              margin:0, fontSize:10, color:palette.textFaint,
                               fontFamily:FONT_MONO, whiteSpace:"pre-wrap", wordBreak:"break-all",
                               lineHeight:1.5,
                             }}>{editStream.slice(-400)}</pre>
@@ -2685,7 +2715,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           }}>
                             {editChangedFiles.map(f => (
                               <span key={f.path} style={{
-                                fontSize:11, color: f.isNew ? "#0078D4" : VS.success,
+                                fontSize:11, color: f.isNew ? "#0078D4" : palette.success,
                                 background: f.isNew ? "rgba(0,120,212,0.1)" : "rgba(78,201,148,0.08)",
                                 border:`1px solid ${f.isNew ? "rgba(0,120,212,0.2)" : "rgba(78,201,148,0.2)"}`,
                                 borderRadius:4, padding:"1px 6px", fontFamily:FONT_MONO,
@@ -2701,18 +2731,18 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {/* Error banner */}
                     {errorMsg && (
                       <div style={{ marginTop:6, padding:"8px 12px", borderRadius:8, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.2)`, display:"flex", gap:7 }}>
-                        <AlertTriangle size={12} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
-                        <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{errorMsg}</span>
+                        <AlertTriangle size={12} color={palette.error} style={{ flexShrink:0, marginTop:1 }}/>
+                        <span style={{ fontSize:11, color:palette.error, lineHeight:1.5 }}>{errorMsg}</span>
                       </div>
                     )}
 
                     {/* Build complete banner */}
                     {phase === "complete" && !aiThinking && !editingFiles && (
                       <div style={{ marginTop:6, padding:"10px 14px", borderRadius:10, background:"rgba(78,201,148,0.08)", border:`1px solid rgba(78,201,148,0.2)`, display:"flex", alignItems:"center", gap:8, animation:"fadeIn 0.3s ease" }}>
-                        <CheckCircle2 size={14} color={VS.success}/>
+                        <CheckCircle2 size={14} color={palette.success}/>
                         <div>
-                          <div style={{ fontSize:12, fontWeight:600, color:VS.success }}>Build complete</div>
-                          <div style={{ fontSize:11, color:VS.textMuted, marginTop:1 }}>Chat with AI below — ask questions, request changes, or click <strong style={{color:VS.text}}>New project</strong> to start fresh.</div>
+                          <div style={{ fontSize:12, fontWeight:600, color:palette.success }}>Build complete</div>
+                          <div style={{ fontSize:11, color:palette.textMuted, marginTop:1 }}>Chat with AI below — ask questions, request changes, or click <strong style={{color:palette.text}}>New project</strong> to start fresh.</div>
                         </div>
                       </div>
                     )}
@@ -2724,25 +2754,25 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* Panel: Search (placeholder) */}
               {activity === "search" && (
                 <div style={{ padding:"10px 12px" }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", marginBottom:10 }}>SEARCH</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", marginBottom:10 }}>SEARCH</div>
                   <input placeholder="Search" style={{
-                    width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                    borderRadius:4, padding:"6px 10px", color:VS.text, fontSize:12, outline:"none",
+                    width:"100%", background:"#3C3C3C", border:`1px solid ${palette.border}`,
+                    borderRadius:4, padding:"6px 10px", color:palette.text, fontSize:12, outline:"none",
                     fontFamily:FONT_UI,
                   }}/>
-                  <div style={{ fontSize:12, color:VS.textFaint, marginTop:12 }}>Search across generated files.</div>
+                  <div style={{ fontSize:12, color:palette.textFaint, marginTop:12 }}>Search across generated files.</div>
                 </div>
               )}
 
               {/* Panel: Git */}
               {activity === "git" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <span>SOURCE CONTROL</span>
                     {gitRepo && (
                       <button
                         onClick={() => { setGitRepo(null); setGitFileShas({}); setGitError(""); setGitPushResult(null); setGitShowPromptStep(false); setGitChangePrompt(""); }}
-                        style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:2 }} title="Back to repo list">
+                        style={{ background:"transparent", border:"none", color:palette.textMuted, cursor:"pointer", padding:2 }} title="Back to repo list">
                         <X size={12}/>
                       </button>
                     )}
@@ -2753,12 +2783,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {/* ── Step 1: Token entry (no saved token) ── */}
                     {!gitRepo && !gitTokenSaved && (
                       <div style={{ padding:"10px 10px 0" }}>
-                        <div style={{ fontSize:12, color:VS.textMuted, marginBottom:10, lineHeight:1.6 }}>
+                        <div style={{ fontSize:12, color:palette.textMuted, marginBottom:10, lineHeight:1.6 }}>
                           Enter your GitHub personal access token to see all your repositories.
                         </div>
 
                         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                          <Key size={12} color={VS.textMuted} style={{ flexShrink:0 }}/>
+                          <Key size={12} color={palette.textMuted} style={{ flexShrink:0 }}/>
                           <input
                             type="password"
                             value={gitTokenInput}
@@ -2766,12 +2796,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             onKeyDown={e => e.key==="Enter" && saveGitToken()}
                             placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                             style={{
-                              flex:1, background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                              borderRadius:4, padding:"5px 8px", color:VS.text,
+                              flex:1, background:"#3C3C3C", border:`1px solid ${palette.border}`,
+                              borderRadius:4, padding:"5px 8px", color:palette.text,
                               fontSize:12, outline:"none", fontFamily:FONT_MONO,
                             }}
-                            onFocus={e => (e.target.style.borderColor=VS.accent)}
-                            onBlur={e  => (e.target.style.borderColor=VS.border)}
+                            onFocus={e => (e.target.style.borderColor=palette.accent)}
+                            onBlur={e  => (e.target.style.borderColor=palette.border)}
                           />
                         </div>
 
@@ -2782,7 +2812,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           style={{
                             display:"flex", alignItems:"center", justifyContent:"center", gap:6,
                             width:"100%", padding:"7px", borderRadius:4, border:"none",
-                            background: gitTokenInput.trim() ? VS.accent : "#3C3C3C",
+                            background: gitTokenInput.trim() ? palette.accent : "#3C3C3C",
                             color:"#fff", fontSize:12, fontWeight:600, cursor: gitTokenInput.trim() ? "pointer" : "not-allowed",
                           }}
                         >
@@ -2793,15 +2823,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                         {gitError && (
                           <div style={{ marginTop:8, padding:"6px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6 }}>
-                            <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
-                            <span style={{ fontSize:11, color:VS.error, lineHeight:1.5 }}>{gitError}</span>
+                            <AlertTriangle size={11} color={palette.error} style={{ flexShrink:0, marginTop:1 }}/>
+                            <span style={{ fontSize:11, color:palette.error, lineHeight:1.5 }}>{gitError}</span>
                           </div>
                         )}
 
-                        <div style={{ marginTop:10, fontSize:11, color:VS.textFaint, lineHeight:1.6 }}>
+                        <div style={{ marginTop:10, fontSize:11, color:palette.textFaint, lineHeight:1.6 }}>
                           Generate a token at{" "}
                           <a href="https://github.com/settings/tokens/new?scopes=repo" target="_blank" rel="noreferrer"
-                            style={{ color:VS.accent }}>github.com/settings/tokens</a>
+                            style={{ color:palette.accent }}>github.com/settings/tokens</a>
                           {" "}with <code style={{ fontSize:10, background:"#3C3C3C", padding:"1px 4px", borderRadius:3 }}>repo</code> scope.
                           The token is saved to your database.
                         </div>
@@ -2814,38 +2844,38 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         {/* Header row */}
                         <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                           <div style={{ position:"relative", flex:1 }}>
-                            <Search size={11} color={VS.textMuted} style={{ position:"absolute", left:7, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}/>
+                            <Search size={11} color={palette.textMuted} style={{ position:"absolute", left:7, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}/>
                             <input
                               value={gitRepoFilter}
                               onChange={e => setGitRepoFilter(e.target.value)}
                               placeholder="Filter repositories…"
                               style={{
-                                width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                                borderRadius:4, padding:"5px 8px 5px 24px", color:VS.text,
+                                width:"100%", background:"#3C3C3C", border:`1px solid ${palette.border}`,
+                                borderRadius:4, padding:"5px 8px 5px 24px", color:palette.text,
                                 fontSize:12, outline:"none", fontFamily:FONT_UI, boxSizing:"border-box",
                               }}
-                              onFocus={e => (e.target.style.borderColor=VS.accent)}
-                              onBlur={e  => (e.target.style.borderColor=VS.border)}
+                              onFocus={e => (e.target.style.borderColor=palette.accent)}
+                              onBlur={e  => (e.target.style.borderColor=palette.border)}
                             />
                           </div>
                           <button
                             onClick={() => { setGitReposLoading(true); fetch("/api/git/repos").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setGitRepos(d); setGitReposLoading(false); }).catch(()=>setGitReposLoading(false)); }}
                             title="Refresh repositories"
-                            style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}
+                            style={{ background:"transparent", border:"none", color:palette.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}
                           >
                             <RefreshCw size={12}/>
                           </button>
                           <button onClick={removeGitToken} title="Disconnect GitHub account"
-                            style={{ background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}>
+                            style={{ background:"transparent", border:"none", color:palette.textMuted, cursor:"pointer", padding:4, flexShrink:0 }}>
                             <X size={12}/>
                           </button>
                         </div>
 
                         {gitError && (
                           <div style={{ margin:"0 10px 6px", padding:"6px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6 }}>
-                            <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
-                            <span style={{ fontSize:11, color:VS.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
-                            <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}><X size={10}/></button>
+                            <AlertTriangle size={11} color={palette.error} style={{ flexShrink:0, marginTop:1 }}/>
+                            <span style={{ fontSize:11, color:palette.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
+                            <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:0 }}><X size={10}/></button>
                           </div>
                         )}
 
@@ -2853,16 +2883,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <div style={{ flex:1, overflowY:"auto" }}>
                           {gitReposLoading ? (
                             <div style={{ padding:"20px 10px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                              <Loader2 size={14} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
-                              <span style={{ fontSize:12, color:VS.textMuted }}>Loading repositories…</span>
+                              <Loader2 size={14} color={palette.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                              <span style={{ fontSize:12, color:palette.textMuted }}>Loading repositories…</span>
                             </div>
                           ) : gitConnecting ? (
                             <div style={{ padding:"20px 10px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                              <Loader2 size={14} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
-                              <span style={{ fontSize:12, color:VS.textMuted }}>Connecting…</span>
+                              <Loader2 size={14} color={palette.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                              <span style={{ fontSize:12, color:palette.textMuted }}>Connecting…</span>
                             </div>
                           ) : gitRepos.filter(r => !gitRepoFilter || r.fullName.toLowerCase().includes(gitRepoFilter.toLowerCase())).length === 0 ? (
-                            <div style={{ padding:"20px 10px", textAlign:"center", fontSize:12, color:VS.textFaint }}>
+                            <div style={{ padding:"20px 10px", textAlign:"center", fontSize:12, color:palette.textFaint }}>
                               {gitRepos.length === 0 ? "No repositories found." : "No matches."}
                             </div>
                           ) : (
@@ -2874,28 +2904,28 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   onClick={() => connectGitRepo(r.fullName)}
                                   style={{
                                     display:"block", width:"100%", textAlign:"left",
-                                    background:"transparent", border:"none", borderBottom:`1px solid ${VS.border}`,
-                                    padding:"8px 12px", cursor:"pointer", color:VS.text,
+                                    background:"transparent", border:"none", borderBottom:`1px solid ${palette.border}`,
+                                    padding:"8px 12px", cursor:"pointer", color:palette.text,
                                   }}
                                   onMouseEnter={e => (e.currentTarget.style.background="#2A2D2E")}
                                   onMouseLeave={e => (e.currentTarget.style.background="transparent")}
                                 >
                                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                                    <GitBranch size={11} color={r.private ? VS.warning : VS.success} style={{ flexShrink:0 }}/>
+                                    <GitBranch size={11} color={r.private ? palette.warning : palette.success} style={{ flexShrink:0 }}/>
                                     <span style={{ fontSize:12, fontWeight:600, fontFamily:FONT_MONO, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                       {r.fullName}
                                     </span>
                                     {r.private && (
-                                      <span style={{ fontSize:9, background:"#3C3C3C", color:VS.textMuted, padding:"1px 5px", borderRadius:10, flexShrink:0 }}>private</span>
+                                      <span style={{ fontSize:9, background:"#3C3C3C", color:palette.textMuted, padding:"1px 5px", borderRadius:10, flexShrink:0 }}>private</span>
                                     )}
                                   </div>
                                   {r.description && (
-                                    <div style={{ fontSize:11, color:VS.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingLeft:17 }}>
+                                    <div style={{ fontSize:11, color:palette.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingLeft:17 }}>
                                       {r.description}
                                     </div>
                                   )}
                                   {r.language && (
-                                    <div style={{ fontSize:10, color:VS.textFaint, paddingLeft:17, marginTop:1 }}>{r.language}</div>
+                                    <div style={{ fontSize:10, color:palette.textFaint, paddingLeft:17, marginTop:1 }}>{r.language}</div>
                                   )}
                                 </button>
                               ))
@@ -2910,19 +2940,19 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       return (
                         <>
                           {/* Repo header */}
-                          <div style={{ padding:"6px 10px 4px", borderBottom:`1px solid ${VS.border}`, flexShrink:0 }}>
+                          <div style={{ padding:"6px 10px 4px", borderBottom:`1px solid ${palette.border}`, flexShrink:0 }}>
                             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                              <GitBranch size={12} color={VS.accent}/>
-                              <span style={{ fontSize:12, color:VS.textActive, fontWeight:600, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              <GitBranch size={12} color={palette.accent}/>
+                              <span style={{ fontSize:12, color:palette.textActive, fontWeight:600, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                 {gitRepo.fullName}
                               </span>
                               <a href={gitRepo.htmlUrl} target="_blank" rel="noreferrer"
-                                style={{ color:VS.textMuted, display:"flex", alignItems:"center" }} title="Open on GitHub">
+                                style={{ color:palette.textMuted, display:"flex", alignItems:"center" }} title="Open on GitHub">
                                 <ExternalLink size={11}/>
                               </a>
                             </div>
-                            <div style={{ fontSize:10, color:VS.textMuted, marginTop:2 }}>
-                              branch: <span style={{ color:VS.success }}>{gitRepo.branch}</span>
+                            <div style={{ fontSize:10, color:palette.textMuted, marginTop:2 }}>
+                              branch: <span style={{ color:palette.success }}>{gitRepo.branch}</span>
                               {" · "}{gitRepo.files.length} files
                             </div>
                           </div>
@@ -2931,11 +2961,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           {gitShowPromptStep && (
                             <div style={{ margin:"8px 8px 0", padding:"10px", borderRadius:6, background:"rgba(0,122,204,0.08)", border:`1px solid rgba(0,122,204,0.3)` }}>
                               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                                <Sparkles size={11} color={VS.accent}/>
-                                <span style={{ fontSize:11, fontWeight:700, color:VS.text }}>What would you like to do?</span>
+                                <Sparkles size={11} color={palette.accent}/>
+                                <span style={{ fontSize:11, fontWeight:700, color:palette.text }}>What would you like to do?</span>
                                 <button
                                   onClick={() => setGitShowPromptStep(false)}
-                                  style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}
+                                  style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:0 }}
                                 >
                                   <X size={11}/>
                                 </button>
@@ -2948,7 +2978,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 style={{
                                   width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
                                   padding:"9px", borderRadius:4, border:"none",
-                                  background: VS.accent, color:"#fff",
+                                  background: palette.accent, color:"#fff",
                                   fontSize:12, fontWeight:700,
                                   cursor: (gitImporting || gitAnalyzing) ? "not-allowed" : "pointer",
                                   marginBottom:4, opacity: (gitImporting || gitAnalyzing) ? 0.6 : 1,
@@ -2958,7 +2988,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   ? <><Loader2 size={12} style={{ animation:"spin 1s linear infinite" }}/> Importing…</>
                                   : <><FolderOpen size={12}/> Import as Project</>}
                               </button>
-                              <div style={{ fontSize:10, color:VS.textFaint, marginBottom:8, textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:palette.textFaint, marginBottom:8, textAlign:"center" }}>
                                 Saves repo files as a project — edit anything with AI
                               </div>
 
@@ -2969,7 +2999,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 style={{
                                   width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
                                   padding:"7px", borderRadius:4, border:`1px solid rgba(0,122,204,0.5)`,
-                                  background:"rgba(0,122,204,0.10)", color: VS.accent,
+                                  background:"rgba(0,122,204,0.10)", color: palette.accent,
                                   fontSize:11, fontWeight:600,
                                   cursor: (gitAnalyzing || gitImporting) ? "not-allowed" : "pointer",
                                   marginBottom:4, opacity: (gitAnalyzing || gitImporting) ? 0.6 : 1,
@@ -2979,13 +3009,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Analyzing…</>
                                   : <><Brain size={11}/> Analyze with AI Agents</>}
                               </button>
-                              <div style={{ fontSize:10, color:VS.textFaint, marginBottom:8, textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:palette.textFaint, marginBottom:8, textAlign:"center" }}>
                                 7 agents generate a full code review report
                               </div>
 
-                              <div style={{ borderTop:`1px solid ${VS.border}`, marginBottom:8 }}/>
+                              <div style={{ borderTop:`1px solid ${palette.border}`, marginBottom:8 }}/>
 
-                              <div style={{ fontSize:11, color:VS.textMuted, marginBottom:5, fontWeight:600 }}>Or make targeted changes:</div>
+                              <div style={{ fontSize:11, color:palette.textMuted, marginBottom:5, fontWeight:600 }}>Or make targeted changes:</div>
                               <textarea
                                 value={gitChangePrompt}
                                 onChange={e => setGitChangePrompt(e.target.value)}
@@ -2999,13 +3029,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 placeholder={`e.g. "Add dark mode toggle", "Fix the login bug", "Add TypeScript types"…`}
                                 rows={3}
                                 style={{
-                                  width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                                  borderRadius:4, padding:"6px 8px", color:VS.text,
+                                  width:"100%", background:"#3C3C3C", border:`1px solid ${palette.border}`,
+                                  borderRadius:4, padding:"6px 8px", color:palette.text,
                                   fontSize:11, fontFamily:FONT_MONO, resize:"none", outline:"none",
                                   lineHeight:1.6, boxSizing:"border-box",
                                 }}
-                                onFocus={e => (e.target.style.borderColor=VS.accent)}
-                                onBlur={e  => (e.target.style.borderColor=VS.border)}
+                                onFocus={e => (e.target.style.borderColor=palette.accent)}
+                                onBlur={e  => (e.target.style.borderColor=palette.border)}
                               />
                               <div style={{ display:"flex", gap:5, marginTop:6 }}>
                                 <button
@@ -3020,7 +3050,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   style={{
                                     flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                                     padding:"6px", borderRadius:4, border:"none",
-                                    background: gitChangePrompt.trim() ? VS.accent : "#3C3C3C",
+                                    background: gitChangePrompt.trim() ? palette.accent : "#3C3C3C",
                                     color:"#fff", fontSize:11, fontWeight:600,
                                     cursor: gitChangePrompt.trim() ? "pointer" : "not-allowed",
                                   }}
@@ -3030,14 +3060,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 <button
                                   onClick={() => setGitShowPromptStep(false)}
                                   style={{
-                                    padding:"6px 10px", borderRadius:4, border:`1px solid ${VS.border}`,
-                                    background:"transparent", color:VS.textMuted, fontSize:11, cursor:"pointer",
+                                    padding:"6px 10px", borderRadius:4, border:`1px solid ${palette.border}`,
+                                    background:"transparent", color:palette.textMuted, fontSize:11, cursor:"pointer",
                                   }}
                                 >
                                   Browse files
                                 </button>
                               </div>
-                              <div style={{ fontSize:10, color:VS.textFaint, marginTop:5 }}>
+                              <div style={{ fontSize:10, color:palette.textFaint, marginTop:5 }}>
                                 Ctrl+Enter to confirm · Open a file in the tree, then AI Edit will apply your instruction
                               </div>
                             </div>
@@ -3045,8 +3075,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                           {/* File tree */}
                           <div style={{ flex:1, overflowY:"auto" }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", fontSize:12, color:VS.text, fontWeight:600 }}>
-                              <ChevronDown size={13} color={VS.textMuted}/>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", fontSize:12, color:palette.text, fontWeight:600 }}>
+                              <ChevronDown size={13} color={palette.textMuted}/>
                               <FolderOpen size={13} color="#DCB67A"/>
                               <span>{gitRepo.repo}</span>
                             </div>
@@ -3061,8 +3091,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             />
                             {gitLoadingFile && (
                               <div style={{ padding:"4px 10px", display:"flex", alignItems:"center", gap:6 }}>
-                                <Loader2 size={11} color={VS.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
-                                <span style={{ fontSize:11, color:VS.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                <Loader2 size={11} color={palette.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
+                                <span style={{ fontSize:11, color:palette.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                   {gitLoadingFile.split("/").pop()}
                                 </span>
                               </div>
@@ -3070,14 +3100,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           </div>
 
                           {/* ── Bottom toolbar: AI edit + push ── */}
-                          <div style={{ borderTop:`1px solid ${VS.border}`, flexShrink:0, padding:"8px 8px 6px" }}>
+                          <div style={{ borderTop:`1px solid ${palette.border}`, flexShrink:0, padding:"8px 8px 6px" }}>
 
                             {/* Error */}
                             {gitError && (
                               <div style={{ marginBottom:6, padding:"5px 8px", borderRadius:4, background:"rgba(244,135,113,0.08)", border:`1px solid rgba(244,135,113,0.25)`, display:"flex", gap:6, alignItems:"flex-start" }}>
-                                <AlertTriangle size={11} color={VS.error} style={{ flexShrink:0, marginTop:1 }}/>
-                                <span style={{ fontSize:11, color:VS.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
-                                <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0, flexShrink:0 }}>
+                                <AlertTriangle size={11} color={palette.error} style={{ flexShrink:0, marginTop:1 }}/>
+                                <span style={{ fontSize:11, color:palette.error, lineHeight:1.5, flex:1 }}>{gitError}</span>
+                                <button onClick={() => setGitError("")} style={{ background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:0, flexShrink:0 }}>
                                   <X size={10}/>
                                 </button>
                               </div>
@@ -3086,14 +3116,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             {/* Push result */}
                             {gitPushResult && !gitPushResult.error && (
                               <div style={{ marginBottom:6, padding:"5px 8px", borderRadius:4, background:"rgba(78,201,148,0.08)", border:`1px solid rgba(78,201,148,0.25)`, display:"flex", gap:6, alignItems:"center" }}>
-                                <CheckCircle2 size={11} color={VS.success}/>
-                                <span style={{ fontSize:11, color:VS.success, flex:1 }}>Pushed!</span>
+                                <CheckCircle2 size={11} color={palette.success}/>
+                                <span style={{ fontSize:11, color:palette.success, flex:1 }}>Pushed!</span>
                                 {gitPushResult.commitUrl && (
-                                  <a href={gitPushResult.commitUrl} target="_blank" rel="noreferrer" style={{ color:VS.success }}>
+                                  <a href={gitPushResult.commitUrl} target="_blank" rel="noreferrer" style={{ color:palette.success }}>
                                     <ExternalLink size={11}/>
                                   </a>
                                 )}
-                                <button onClick={() => setGitPushResult(null)} style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:0 }}>
+                                <button onClick={() => setGitPushResult(null)} style={{ background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:0 }}>
                                   <X size={10}/>
                                 </button>
                               </div>
@@ -3108,7 +3138,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   style={{
                                     flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                                     padding:"6px", borderRadius:4, border:"none",
-                                    background: VS.accent, color:"#fff",
+                                    background: palette.accent, color:"#fff",
                                     fontSize:11, fontWeight:700,
                                     cursor: (gitImporting || gitAnalyzing) ? "not-allowed" : "pointer",
                                     opacity: (gitImporting || gitAnalyzing) ? 0.6 : 1,
@@ -3125,7 +3155,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   style={{
                                     display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                                     padding:"6px 8px", borderRadius:4, border:`1px solid rgba(0,122,204,0.4)`,
-                                    background:"rgba(0,122,204,0.1)", color: VS.accent,
+                                    background:"rgba(0,122,204,0.1)", color: palette.accent,
                                     fontSize:11, fontWeight:600,
                                     cursor: (gitAnalyzing || gitImporting) ? "not-allowed" : "pointer",
                                     opacity: (gitAnalyzing || gitImporting) ? 0.6 : 1,
@@ -3148,13 +3178,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   placeholder={`Describe what to change in ${activeTabPath?.split("/").pop() || "this file"}…`}
                                   rows={3}
                                   style={{
-                                    width:"100%", background:"#3C3C3C", border:`1px solid ${VS.border}`,
-                                    borderRadius:4, padding:"6px 8px", color:VS.text,
+                                    width:"100%", background:"#3C3C3C", border:`1px solid ${palette.border}`,
+                                    borderRadius:4, padding:"6px 8px", color:palette.text,
                                     fontSize:11, fontFamily:FONT_MONO, resize:"none", outline:"none",
                                     lineHeight:1.6,
                                   }}
-                                  onFocus={e => (e.target.style.borderColor=VS.accent)}
-                                  onBlur={e  => (e.target.style.borderColor=VS.border)}
+                                  onFocus={e => (e.target.style.borderColor=palette.accent)}
+                                  onBlur={e  => (e.target.style.borderColor=palette.border)}
                                   autoFocus
                                 />
                                 <div style={{ display:"flex", gap:5, marginTop:4 }}>
@@ -3164,7 +3194,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                     style={{
                                       flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                                       padding:"5px", borderRadius:4, border:"none",
-                                      background: gitInstruction.trim() && activeTabPath ? VS.accent : "#3C3C3C",
+                                      background: gitInstruction.trim() && activeTabPath ? palette.accent : "#3C3C3C",
                                       color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer",
                                     }}
                                   >
@@ -3173,11 +3203,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                       : <><Sparkles size={11}/> Apply</>}
                                   </button>
                                   <button onClick={() => { setGitAiOpen(false); setGitInstruction(""); }}
-                                    style={{ padding:"5px 8px", borderRadius:4, border:`1px solid ${VS.border}`, background:"transparent", color:VS.textMuted, fontSize:11, cursor:"pointer" }}>
+                                    style={{ padding:"5px 8px", borderRadius:4, border:`1px solid ${palette.border}`, background:"transparent", color:palette.textMuted, fontSize:11, cursor:"pointer" }}>
                                     Cancel
                                   </button>
                                 </div>
-                                <div style={{ fontSize:10, color:VS.textFaint, marginTop:3 }}>Ctrl+Enter to apply</div>
+                                <div style={{ fontSize:10, color:palette.textFaint, marginTop:3 }}>Ctrl+Enter to apply</div>
                               </div>
                             )}
 
@@ -3189,12 +3219,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 placeholder="Commit message (optional)"
                                 style={{
                                   width:"100%", marginBottom:6, background:"#3C3C3C",
-                                  border:`1px solid ${VS.border}`, borderRadius:4,
-                                  padding:"5px 8px", color:VS.text, fontSize:11,
+                                  border:`1px solid ${palette.border}`, borderRadius:4,
+                                  padding:"5px 8px", color:palette.text, fontSize:11,
                                   outline:"none", fontFamily:FONT_UI,
                                 }}
-                                onFocus={e => (e.target.style.borderColor=VS.accent)}
-                                onBlur={e  => (e.target.style.borderColor=VS.border)}
+                                onFocus={e => (e.target.style.borderColor=palette.accent)}
+                                onBlur={e  => (e.target.style.borderColor=palette.border)}
                               />
                             )}
 
@@ -3206,13 +3236,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 title={activeTabPath ? "AI-edit current file" : "Open a file first"}
                                 style={{
                                   flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-                                  padding:"6px", borderRadius:4, border:`1px solid ${VS.border}`,
+                                  padding:"6px", borderRadius:4, border:`1px solid ${palette.border}`,
                                   background: gitAiOpen ? "#3C3C3C" : "transparent",
-                                  color: activeTabPath ? VS.text : VS.textFaint,
+                                  color: activeTabPath ? palette.text : palette.textFaint,
                                   fontSize:11, fontWeight:500, cursor: activeTabPath ? "pointer" : "not-allowed",
                                 }}
                               >
-                                <Sparkles size={11} color={activeTabPath ? VS.agentColors.Frontend : VS.textFaint}/>
+                                <Sparkles size={11} color={activeTabPath ? palette.agentColors.Frontend : palette.textFaint}/>
                                 AI Edit
                               </button>
                               <button
@@ -3243,20 +3273,20 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* Panel: Projects */}
               {activity === "projects" && (
                 <>
-                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
+                  <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
                     PROJECTS
                   </div>
                   <div style={{ flex:1, overflowY:"auto" }}>
                     {recentBuilds.length === 0 ? (
-                      <div style={{ padding:"20px 16px", fontSize:12, color:VS.textFaint, lineHeight:1.6 }}>
+                      <div style={{ padding:"20px 16px", fontSize:12, color:palette.textFaint, lineHeight:1.6 }}>
                         No builds yet. Start a build in the AI Agents panel.
                       </div>
                     ) : recentBuilds.map(build => {
                       const isExpanded = expandedProjects.has(build._id);
                       const isLoading  = loadingProjectId === build._id;
                       const files      = projectFilesMap[build._id] || [];
-                      const statusColor = build.status === "complete" ? VS.success
-                        : build.status === "failed" ? VS.error : VS.textMuted;
+                      const statusColor = build.status === "complete" ? palette.success
+                        : build.status === "failed" ? palette.error : palette.textMuted;
 
                       return (
                         <React.Fragment key={build._id}>
@@ -3269,16 +3299,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             onMouseLeave={e => e.currentTarget.querySelector(".del-btn")?.style && (e.currentTarget.querySelector(".del-btn").style.opacity="0")}
                           >
                             {isExpanded
-                              ? <ChevronDown  size={12} color={VS.textMuted}/>
-                              : <ChevronRight size={12} color={VS.textMuted}/>}
+                              ? <ChevronDown  size={12} color={palette.textMuted}/>
+                              : <ChevronRight size={12} color={palette.textMuted}/>}
                             {isExpanded
                               ? <FolderOpen size={14} color="#DCB67A"/>
                               : <Folder     size={14} color="#DCB67A"/>}
-                            <span style={{ fontSize:12, color:VS.text, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            <span style={{ fontSize:12, color:palette.text, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                               {build.description}
                             </span>
                             {isLoading
-                              ? <Loader2 size={11} color={VS.textMuted} style={{ animation:"spin 1s linear infinite", flexShrink:0 }}/>
+                              ? <Loader2 size={11} color={palette.textMuted} style={{ animation:"spin 1s linear infinite", flexShrink:0 }}/>
                               : <span style={{ fontSize:10, color:statusColor, flexShrink:0, fontWeight:500 }}>{build.status}</span>
                             }
                             <button
@@ -3289,7 +3319,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 opacity:0, transition:"opacity 0.15s",
                                 width:20, height:20, borderRadius:4,
                                 background:"transparent", border:"none",
-                                color:VS.error, cursor:"pointer", flexShrink:0,
+                                color:palette.error, cursor:"pointer", flexShrink:0,
                                 display:"flex", alignItems:"center", justifyContent:"center",
                                 padding:0,
                               }}
@@ -3303,7 +3333,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           {/* File list */}
                           {isExpanded && !isLoading && (
                             files.length === 0
-                              ? <div style={{ paddingLeft:36, paddingBottom:4, fontSize:11, color:VS.textFaint }}>No files.</div>
+                              ? <div style={{ paddingLeft:36, paddingBottom:4, fontSize:11, color:palette.textFaint }}>No files.</div>
                               : (() => {
                                   // Group files by agent
                                   const byAgent = {};
@@ -3314,7 +3344,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   return Object.entries(byAgent).map(([agentName, agentFiles]) => {
                                     const meta     = AGENT_META.find(a => a.name === agentName);
                                     const AgIcon   = meta?.Icon || FileText;
-                                    const agColor  = meta?.color || VS.textMuted;
+                                    const agColor  = meta?.color || palette.textMuted;
                                     const groupKey = `proj:${build._id}:${agentName}`;
                                     const open     = expandedDirs.has(groupKey);
                                     return (
@@ -3325,10 +3355,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                           onClick={() => toggleDir(groupKey)}
                                           style={{ display:"flex", alignItems:"center", gap:5, paddingLeft:24, height:22, cursor:"pointer", userSelect:"none" }}
                                         >
-                                          {open ? <ChevronDown size={11} color={VS.textMuted}/> : <ChevronRight size={11} color={VS.textMuted}/>}
+                                          {open ? <ChevronDown size={11} color={palette.textMuted}/> : <ChevronRight size={11} color={palette.textMuted}/>}
                                           <AgIcon size={12} color={agColor}/>
-                                          <span style={{ fontSize:11, color:VS.textMuted, fontWeight:500 }}>{agentName}</span>
-                                          <span style={{ fontSize:10, color:VS.textFaint, marginLeft:"auto", paddingRight:8 }}>{agentFiles.length}</span>
+                                          <span style={{ fontSize:11, color:palette.textMuted, fontWeight:500 }}>{agentName}</span>
+                                          <span style={{ fontSize:10, color:palette.textFaint, marginLeft:"auto", paddingRight:8 }}>{agentFiles.length}</span>
                                         </div>
                                         {/* Files */}
                                         {open && agentFiles.map(f => (
@@ -3344,7 +3374,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                           >
                                             <FileIcon path={f.path} size={13}/>
                                             <span style={{
-                                              fontSize:12, color: activeTabPath === f.path ? VS.textActive : VS.text,
+                                              fontSize:12, color: activeTabPath === f.path ? palette.textActive : palette.text,
                                               whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
                                             }}>
                                               {f.path.split("/").pop()}
@@ -3365,7 +3395,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {/* ── Persistent chat input bar — Replit-style ─────────── */}
               <div style={{
                 flexShrink:0, padding:"10px 12px 12px",
-                background: VS.sideBar,
+                background: palette.sideBar,
               }}>
                 {/* Outer card */}
                 <div
@@ -3417,7 +3447,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     style={{
                       display:"block", width:"100%",
                       background:"transparent", border:"none", outline:"none",
-                      color: phase === "building" ? VS.textFaint : VS.textActive,
+                      color: phase === "building" ? palette.textFaint : palette.textActive,
                       fontSize:13, fontFamily:FONT_UI, resize:"none",
                       lineHeight:1.55, minHeight:38, maxHeight:140,
                       cursor: phase === "building" ? "not-allowed" : "text",
@@ -3436,11 +3466,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           padding:"3px 10px", borderRadius:20,
                           background:"transparent",
                           border:"1.5px solid rgba(255,255,255,0.12)",
-                          color:VS.textMuted, fontSize:11, fontFamily:FONT_UI,
+                          color:palette.textMuted, fontSize:11, fontFamily:FONT_UI,
                           cursor:"pointer", transition:"all 0.15s", flexShrink:0,
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.3)"; e.currentTarget.style.color=VS.text; }}
-                        onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; e.currentTarget.style.color=VS.textMuted; }}
+                        onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.3)"; e.currentTarget.style.color=palette.text; }}
+                        onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"; e.currentTarget.style.color=palette.textMuted; }}
                       >
                         <Plus size={11}/> New project
                       </button>
@@ -3451,7 +3481,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           width:28, height:28, borderRadius:"50%",
                           background:"transparent",
                           border:"1.5px solid rgba(255,255,255,0.12)",
-                          color:VS.textMuted,
+                          color:palette.textMuted,
                           display:"flex", alignItems:"center", justifyContent:"center",
                           cursor:"pointer", transition:"all 0.15s", flexShrink:0,
                         }}
@@ -3472,7 +3502,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         background: chatInput.trim() && phase !== "building"
                           ? "linear-gradient(135deg,#0078D4,#1a94ff)"
                           : "rgba(255,255,255,0.07)",
-                        color: chatInput.trim() && phase !== "building" ? "#fff" : VS.textFaint,
+                        color: chatInput.trim() && phase !== "building" ? "#fff" : palette.textFaint,
                         display:"flex", alignItems:"center", justifyContent:"center",
                         cursor: chatInput.trim() && phase !== "building" ? "pointer" : "not-allowed",
                         transition:"all 0.15s",
@@ -3494,14 +3524,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
             /* editor inner content — shared by mobile & desktop Panel */
             const editorContent = activity === "home" ? (
-              <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
+              <div style={{ flex:1, overflowY:"auto", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
                 <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:isMobile ? "28px 16px 44px" : "52px 28px 70px", boxSizing:"border-box" }}>
                   <div style={{ textAlign:"center", marginBottom:24 }}>
-                    <div style={{ color:VS.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
-                    <div style={{ color:VS.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
+                    <div style={{ color:palette.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
+                    <div style={{ color:palette.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
                   </div>
 
-                  <div style={{ border:`1px solid ${VS.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:800 }}>
+                  <div style={{ border:`1px solid ${palette.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:800 }}>
                     <textarea
                       ref={chatInputRef}
                       value={chatInput}
@@ -3509,22 +3539,22 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }}
                       placeholder="Describe what you want to create..."
                       rows={2}
-                      style={{ width:"100%", minHeight:46, maxHeight:130, resize:"none", display:"block", background:"transparent", border:"none", outline:"none", color:VS.textActive, fontFamily:FONT_UI, fontSize:14, lineHeight:1.55 }}
+                      style={{ width:"100%", minHeight:46, maxHeight:130, resize:"none", display:"block", background:"transparent", border:"none", outline:"none", color:palette.textActive, fontFamily:FONT_UI, fontSize:14, lineHeight:1.55 }}
                     />
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:7, color:VS.textMuted, fontSize:11 }}>
-                        <button onClick={() => { setActivity("agents"); setSideOpen(true); }} title="Open AI Agents" style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:`1px solid ${VS.border}`, borderRadius:6, background:"transparent", color:VS.textMuted, cursor:"pointer" }}><Plus size={14}/></button>
-                        <span style={{ padding:"6px 9px", border:`1px solid ${VS.border}`, borderRadius:6, color:VS.textMuted }}>{aiProvider === "cloud" ? "Cloud AI" : "Local AI"}</span>
-                        <span style={{ display:isMobile ? "none" : "inline", color:VS.textFaint }}>Enter to build · Shift+Enter for a new line</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:7, color:palette.textMuted, fontSize:11 }}>
+                        <button onClick={() => { setActivity("agents"); setSideOpen(true); }} title="Open AI Agents" style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:`1px solid ${palette.border}`, borderRadius:6, background:"transparent", color:palette.textMuted, cursor:"pointer" }}><Plus size={14}/></button>
+                        <span style={{ padding:"6px 9px", border:`1px solid ${palette.border}`, borderRadius:6, color:palette.textMuted }}>{aiProvider === "cloud" ? "Cloud AI" : "Local AI"}</span>
+                        <span style={{ display:isMobile ? "none" : "inline", color:palette.textFaint }}>Enter to build · Shift+Enter for a new line</span>
                       </div>
-                      <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, borderRadius:8, border:"none", display:"flex", alignItems:"center", justifyContent:"center",                         background:"transparent", color:chatInput.trim() ? VS.text : VS.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
+                      <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, borderRadius:8, border:"none", display:"flex", alignItems:"center", justifyContent:"center",                         background:"transparent", color:chatInput.trim() ? palette.text : palette.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
                     </div>
                   </div>
 
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:isMobile ? 10 : 22, flexWrap:"wrap", marginBottom:26 }}>
                     {[[Globe,"Website","Build a web app"],[Code2,"Mobile","Build a mobile app"],[Package,"Dashboard","Create a dashboard"],[Server,"API","Create a backend"],[Sparkles,"Landing page","Design a landing page"]].map(([Icon,label,prompt]) => (
-                      <button key={label} onClick={() => { setChatInput(prompt); setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minWidth:82, display:"flex", flexDirection:"column", alignItems:"center", gap:7, border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontFamily:FONT_UI }}>
-                        <span style={{ width:48, height:48, border:`1px solid ${VS.border}`, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.035)" }}><Icon size={19}/></span>
+                      <button key={label} onClick={() => { setChatInput(prompt); setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minWidth:82, display:"flex", flexDirection:"column", alignItems:"center", gap:7, border:"none", background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI }}>
+                        <span style={{ width:48, height:48, border:`1px solid ${palette.border}`, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.035)" }}><Icon size={19}/></span>
                         <span style={{ fontSize:11 }}>{label}</span>
                       </button>
                     ))}
@@ -3534,41 +3564,41 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 </div>
               </div>
             ) : activity === "workspace" ? (
-              <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", position:"relative", background:"#181818", color:VS.text, fontFamily:FONT_UI }}>
-                <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 18px", borderBottom:`1px solid ${VS.border}`, background:"#202020" }}>
-                  <div><div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:VS.textMuted, fontSize:11, marginTop:3 }}>{workflowStage?.activity || "Follow your agents and inspect generated project files."}</div></div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}{phase === "building" && <><button onClick={() => setBuildExecutionState(buildPaused ? "running" : "paused")} style={{ marginLeft:6, border:`1px solid ${VS.accent}66`, borderRadius:6, background:`${VS.accent}12`, color:VS.accent, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>{buildPaused ? "Resume" : "Pause"}</button><button onClick={stopBuild} style={{ marginLeft:4, border:`1px solid ${VS.error}66`, borderRadius:6, background:`${VS.error}12`, color:VS.error, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>Stop Agent</button></>}</div>
+              <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", position:"relative", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
+                <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 18px", borderBottom:`1px solid ${palette.border}`, background:palette.titleBar }}>
+                  <div><div style={{ color:palette.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:palette.textMuted, fontSize:11, marginTop:3 }}>{workflowStage?.activity || "Follow your agents and inspect generated project files."}</div></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? palette.error : phase === "complete" ? palette.success : palette.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}{phase === "building" && <><button onClick={() => setBuildExecutionState(buildPaused ? "running" : "paused")} style={{ marginLeft:6, border:`1px solid ${palette.accent}66`, borderRadius:6, background:`${palette.accent}12`, color:palette.accent, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>{buildPaused ? "Resume" : "Pause"}</button><button onClick={stopBuild} style={{ marginLeft:4, border:`1px solid ${palette.error}66`, borderRadius:6, background:`${palette.error}12`, color:palette.error, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>Stop Agent</button></>}</div>
                 </div>
-                {projectOpenStatus?.phase === "opening" && <div style={{ position:"absolute", inset:0, zIndex:20, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(24,24,24,0.96)", backdropFilter:"blur(4px)" }}><div style={{ width:"min(420px, calc(100% - 48px))", textAlign:"center", padding:"36px 28px", border:`1px solid ${VS.borderLight}`, borderRadius:16, background:"linear-gradient(145deg, #252526, #1b1b1b)", boxShadow:"0 18px 60px rgba(0,0,0,0.45)" }}><div style={{ width:"80%", maxWidth:280, aspectRatio:"1", margin:"0 auto 24px", display:"flex", alignItems:"center", justifyContent:"center" }}><FireboxAgentMark size={220} animated state="working"/></div><div style={{ color:VS.textActive, fontSize:17, fontWeight:700 }}>Opening project</div><div style={{ color:VS.textMuted, fontSize:12, marginTop:8 }}>{projectOpenStatus.message}</div><div style={{ color:VS.textFaint, fontSize:10, marginTop:12 }}>Step {(projectOpenStatus.currentStepIndex || 0) + 1} of {projectOpenStatus.steps.length}</div></div></div>}
-                {(planning || buildPlan) && <div style={{ flexShrink:0, margin:"10px 14px 0", padding:"12px 14px", border:`1px solid ${VS.accent}66`, borderRadius:9, background:`${VS.accent}0d` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8 }}><div style={{ color:VS.textActive, fontSize:12, fontWeight:700 }}>🔥 Firebox Agent plan</div>{planning ? <span style={{ color:VS.accent, fontSize:10 }}>Understanding your request…</span> : <button onClick={() => setBuildPlan(null)} style={{ border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontSize:11 }}>Cancel</button>}</div>{planning ? <div style={{ color:VS.textMuted, fontSize:11 }}>I’ll inspect the request and prepare the build steps before changing the project.</div> : <><div style={{ color:VS.text, fontSize:12, lineHeight:1.5, marginBottom:8 }}>{buildPlan.summary}</div><ol style={{ margin:"0 0 10px 18px", padding:0, color:VS.textMuted, fontSize:11, lineHeight:1.6 }}>{buildPlan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol>{buildPlan.needsConfirmation ? <><div style={{ padding:"8px 10px", borderRadius:7, background:`${VS.warning || "#d7ba7d"}18`, color:VS.textMuted, fontSize:11, marginBottom:8 }}>Confirmation required: {buildPlan.confirmationReason}</div><button onClick={() => confirmBuildPlan(true)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Confirm and start building →</button></> : <button onClick={() => confirmBuildPlan(false)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Start building →</button>}</>}</div>}
+                {projectOpenStatus?.phase === "opening" && <div style={{ position:"absolute", inset:0, zIndex:20, display:"flex", alignItems:"center", justifyContent:"center", background:isLightMode ? "rgba(248,250,252,0.96)" : "rgba(24,24,24,0.96)", backdropFilter:"blur(4px)" }}><div style={{ width:"min(420px, calc(100% - 48px))", textAlign:"center", padding:"36px 28px", border:`1px solid ${palette.borderLight}`, borderRadius:16, background:`linear-gradient(145deg, ${palette.panelBg}, ${palette.sideBar})`, boxShadow:"0 18px 60px rgba(0,0,0,0.45)" }}><div style={{ width:"80%", maxWidth:280, aspectRatio:"1", margin:"0 auto 24px", display:"flex", alignItems:"center", justifyContent:"center" }}><FireboxAgentMark size={220} animated state="working"/></div><div style={{ color:palette.textActive, fontSize:17, fontWeight:700 }}>Opening project</div><div style={{ color:palette.textMuted, fontSize:12, marginTop:8 }}>{projectOpenStatus.message}</div><div style={{ color:palette.textFaint, fontSize:10, marginTop:12 }}>Step {(projectOpenStatus.currentStepIndex || 0) + 1} of {projectOpenStatus.steps.length}</div></div></div>}
+                {(planning || buildPlan) && <div style={{ flexShrink:0, margin:"10px 14px 0", padding:"12px 14px", border:`1px solid ${palette.accent}66`, borderRadius:9, background:`${palette.accent}0d` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8 }}><div style={{ color:palette.textActive, fontSize:12, fontWeight:700 }}>🔥 Firebox Agent plan</div>{planning ? <span style={{ color:palette.accent, fontSize:10 }}>Understanding your request…</span> : <button onClick={() => setBuildPlan(null)} style={{ border:"none", background:"transparent", color:palette.textMuted, cursor:"pointer", fontSize:11 }}>Cancel</button>}</div>{planning ? <div style={{ color:palette.textMuted, fontSize:11 }}>I’ll inspect the request and prepare the build steps before changing the project.</div> : <><div style={{ color:palette.text, fontSize:12, lineHeight:1.5, marginBottom:8 }}>{buildPlan.summary}</div><ol style={{ margin:"0 0 10px 18px", padding:0, color:palette.textMuted, fontSize:11, lineHeight:1.6 }}>{buildPlan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol>{buildPlan.needsConfirmation ? <><div style={{ padding:"8px 10px", borderRadius:7, background:`${palette.warning || "#d7ba7d"}18`, color:palette.textMuted, fontSize:11, marginBottom:8 }}>Confirmation required: {buildPlan.confirmationReason}</div><button onClick={() => confirmBuildPlan(true)} style={{ border:"none", borderRadius:7, background:palette.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Confirm and start building →</button></> : <button onClick={() => confirmBuildPlan(false)} style={{ border:"none", borderRadius:7, background:palette.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Start building →</button>}</>}</div>}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
-                  <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${VS.border}`, background:"#252526" }}>
-                    <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${VS.border}` }}><div style={{ color:VS.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:VS.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={VS.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:VS.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><FireboxAgentMark size={15} animated state="working"/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:VS.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:VS.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>
-                     <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"12px 10px" }}><div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, color:VS.textActive, fontSize:11, fontWeight:700 }}><FireboxAgentMark size={17} animated={phase === "building" || aiThinking} state={phase === "error" ? "error" : phase === "complete" ? "complete" : "working"}/><span>Firebox Agent</span>{(phase === "building" || aiThinking) && <ThinkingDots/>}</div>{agentStates.every(state => state.status === "idle") && !chatHistory.length && !editingFiles ? <div style={{ padding:"14px 8px", color:VS.textFaint, fontSize:11, lineHeight:1.6 }}>The Agent’s live activity will appear here after you send a request.</div> : <>{chatHistory.filter(message => message.role === "user").slice(-3).map((message, index) => <div key={`request-${index}`} style={{ marginBottom:10, padding:"8px 9px", borderRadius:7, background:"rgba(0,120,212,0.10)", border:"1px solid rgba(0,120,212,0.22)", color:VS.text, fontSize:11, lineHeight:1.45 }}><div style={{ color:VS.textFaint, fontSize:9, marginBottom:3 }}>REQUEST</div>{message.text}</div>)}{AGENT_META.map(({ name, Icon, color }) => { const state = agentStates.find(item => item.name === name); if (!state || state.status === "idle") return null; const active = state.status === "working"; const done = state.status === "done"; const failed = state.status === "error"; const steps = AGENT_STEPS[name] || []; const visible = agentVisSteps[name] || 0; return <div key={name} style={{ marginBottom:8, padding:"8px 9px", borderRadius:7, background:active ? `${color}10` : "rgba(255,255,255,0.025)", border:`1px solid ${active ? `${color}55` : "rgba(255,255,255,0.08)"}` }}><div style={{ display:"flex", alignItems:"center", gap:7 }}><span style={{ color:active ? color : done ? VS.success : failed ? VS.error : VS.textMuted, fontSize:12 }}>{active ? "●" : done ? "✓" : failed ? "✕" : "○"}</span><Icon size={13} color={active ? color : done ? VS.success : failed ? VS.error : VS.textMuted}/><span style={{ color:active ? VS.textActive : VS.text, fontSize:11, fontWeight:650 }}>{active ? "Working" : done ? "Completed" : failed ? "Failed" : "Waiting"}</span><span style={{ color:VS.textMuted, fontSize:10 }}>{name}</span>{active && <ThinkingDots/>}</div>{visible > 0 && <div style={{ marginTop:6, paddingLeft:20 }}>{steps.slice(0, visible).map((step, stepIndex) => <div key={`${name}-${stepIndex}`} style={{ display:"flex", alignItems:"center", gap:6, color:stepIndex === visible - 1 && active ? VS.text : VS.textMuted, fontSize:10, lineHeight:1.45, marginTop:3 }}><span>{step.icon}</span><span>{step.text}</span>{stepIndex === visible - 1 && active && <span style={{ width:4, height:4, borderRadius:"50%", background:color, animation:"pulse 0.9s ease-in-out infinite" }}/>}</div>)}</div>}{state.streaming && <div style={{ marginTop:6, paddingLeft:20, color:VS.textFaint, fontSize:9, lineHeight:1.4, maxHeight:42, overflow:"hidden" }}>{state.streaming.slice(-280)}</div>}</div>})}{(editingFiles || editChangedFiles.length > 0 || editError) && <div style={{ padding:"8px 9px", borderRadius:7, background:"rgba(255,255,255,0.025)", border:`1px solid ${editError ? `${VS.error}55` : `${VS.success}44`}`, color:editError ? VS.error : VS.textMuted, fontSize:10 }}>{editingFiles ? "● Editing files…" : editError ? `✕ ${editError}` : `✓ ${editChangedFiles.length} file${editChangedFiles.length === 1 ? "" : "s"} updated`}</div>}{workflowStage?.activity && <div style={{ marginTop:8, color:VS.textFaint, fontSize:10 }}>● {workflowStage.activity}</div>}</>}</div>
-                    <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${VS.border}`, background:"#202020" }}>
-                      <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${VS.borderLight}`, borderRadius:8, background:"#181818", color:VS.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${VS.border}`, borderRadius:999, background:"transparent", color:VS.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? VS.accent : "#38383a", color:chatInput.trim() ? "#fff" : VS.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
+                  <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${palette.border}`, background:palette.sideBar }}>
+                    <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ color:palette.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:palette.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><FireboxAgentMark size={15} animated state="working"/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:palette.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:palette.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>
+                     <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"12px 10px" }}><div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, color:palette.textActive, fontSize:11, fontWeight:700 }}><FireboxAgentMark size={17} animated={phase === "building" || aiThinking} state={phase === "error" ? "error" : phase === "complete" ? "complete" : "working"}/><span>Firebox Agent</span>{(phase === "building" || aiThinking) && <ThinkingDots/>}</div>{agentStates.every(state => state.status === "idle") && !chatHistory.length && !editingFiles ? <div style={{ padding:"14px 8px", color:palette.textFaint, fontSize:11, lineHeight:1.6 }}>The Agent’s live activity will appear here after you send a request.</div> : <>{chatHistory.filter(message => message.role === "user").slice(-3).map((message, index) => <div key={`request-${index}`} style={{ marginBottom:10, padding:"8px 9px", borderRadius:7, background:"rgba(0,120,212,0.10)", border:"1px solid rgba(0,120,212,0.22)", color:palette.text, fontSize:11, lineHeight:1.45 }}><div style={{ color:palette.textFaint, fontSize:9, marginBottom:3 }}>REQUEST</div>{message.text}</div>)}{AGENT_META.map(({ name, Icon, color }) => { const state = agentStates.find(item => item.name === name); if (!state || state.status === "idle") return null; const active = state.status === "working"; const done = state.status === "done"; const failed = state.status === "error"; const steps = AGENT_STEPS[name] || []; const visible = agentVisSteps[name] || 0; return <div key={name} style={{ marginBottom:8, padding:"8px 9px", borderRadius:7, background:active ? `${color}10` : "rgba(255,255,255,0.025)", border:`1px solid ${active ? `${color}55` : "rgba(255,255,255,0.08)"}` }}><div style={{ display:"flex", alignItems:"center", gap:7 }}><span style={{ color:active ? color : done ? palette.success : failed ? palette.error : palette.textMuted, fontSize:12 }}>{active ? "●" : done ? "✓" : failed ? "✕" : "○"}</span><Icon size={13} color={active ? color : done ? palette.success : failed ? palette.error : palette.textMuted}/><span style={{ color:active ? palette.textActive : palette.text, fontSize:11, fontWeight:650 }}>{active ? "Working" : done ? "Completed" : failed ? "Failed" : "Waiting"}</span><span style={{ color:palette.textMuted, fontSize:10 }}>{name}</span>{active && <ThinkingDots/>}</div>{visible > 0 && <div style={{ marginTop:6, paddingLeft:20 }}>{steps.slice(0, visible).map((step, stepIndex) => <div key={`${name}-${stepIndex}`} style={{ display:"flex", alignItems:"center", gap:6, color:stepIndex === visible - 1 && active ? palette.text : palette.textMuted, fontSize:10, lineHeight:1.45, marginTop:3 }}><span>{step.icon}</span><span>{step.text}</span>{stepIndex === visible - 1 && active && <span style={{ width:4, height:4, borderRadius:"50%", background:color, animation:"pulse 0.9s ease-in-out infinite" }}/>}</div>)}</div>}{state.streaming && <div style={{ marginTop:6, paddingLeft:20, color:palette.textFaint, fontSize:9, lineHeight:1.4, maxHeight:42, overflow:"hidden" }}>{state.streaming.slice(-280)}</div>}</div>})}{(editingFiles || editChangedFiles.length > 0 || editError) && <div style={{ padding:"8px 9px", borderRadius:7, background:"rgba(255,255,255,0.025)", border:`1px solid ${editError ? `${palette.error}55` : `${palette.success}44`}`, color:editError ? palette.error : palette.textMuted, fontSize:10 }}>{editingFiles ? "● Editing files…" : editError ? `✕ ${editError}` : `✓ ${editChangedFiles.length} file${editChangedFiles.length === 1 ? "" : "s"} updated`}</div>}{workflowStage?.activity && <div style={{ marginTop:8, color:palette.textFaint, fontSize:10 }}>● {workflowStage.activity}</div>}</>}</div>
+                    <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
+                      <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${palette.borderLight}`, borderRadius:8, background:palette.editorBg, color:palette.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? palette.accent : "#38383a", color:chatInput.trim() ? "#fff" : palette.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
                     </div>
                   </div>
-                  <div style={{ minWidth:0, minHeight:0, display:"flex", flexDirection:"column", background:"#1e1e1e" }}>
-                    <div style={{ height:36, flexShrink:0, display:"flex", alignItems:"stretch", overflowX:"auto", borderBottom:`1px solid ${VS.border}`, background:VS.tabBar }}>
-                      {openTabs.length === 0 ? <div style={{ display:"flex", alignItems:"center", padding:"0 12px", color:VS.textFaint, fontSize:11 }}>No project file selected</div> : openTabs.map(tab => { const isActive = tab.path === activeTabPath; return <button key={tab.path} onClick={() => setActiveTabPath(tab.path)} style={{ display:"flex", alignItems:"center", gap:6, minWidth:110, maxWidth:190, padding:"0 10px", border:"none", borderRight:`1px solid ${VS.border}`, borderTop:`2px solid ${isActive ? VS.accent : "transparent"}`, background:isActive ? VS.activeTab : VS.inactiveTab, color:isActive ? VS.textActive : VS.textMuted, fontFamily:FONT_UI, fontSize:11, cursor:"pointer" }}><FileIcon path={tab.path} size={13}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tab.path.split("/").pop()}</span></button>; })}
+                  <div style={{ minWidth:0, minHeight:0, display:"flex", flexDirection:"column", background:palette.editorBg }}>
+                    <div style={{ height:36, flexShrink:0, display:"flex", alignItems:"stretch", overflowX:"auto", borderBottom:`1px solid ${palette.border}`, background:palette.tabBar }}>
+                      {openTabs.length === 0 ? <div style={{ display:"flex", alignItems:"center", padding:"0 12px", color:palette.textFaint, fontSize:11 }}>No project file selected</div> : openTabs.map(tab => { const isActive = tab.path === activeTabPath; return <button key={tab.path} onClick={() => setActiveTabPath(tab.path)} style={{ display:"flex", alignItems:"center", gap:6, minWidth:110, maxWidth:190, padding:"0 10px", border:"none", borderRight:`1px solid ${palette.border}`, borderTop:`2px solid ${isActive ? palette.accent : "transparent"}`, background:isActive ? palette.activeTab : palette.inactiveTab, color:isActive ? palette.textActive : palette.textMuted, fontFamily:FONT_UI, fontSize:11, cursor:"pointer" }}><FileIcon path={tab.path} size={13}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tab.path.split("/").pop()}</span></button>; })}
                     </div>
-                    <div style={{ flex:1, minHeight:220 }}>{activeTabPath ? <MonacoEditor height="100%" language={getMonacoLang(activeTabPath)} theme="vs-dark" value={activeContent} onChange={value => { if (activeTabPath) setTabContents(prev => ({ ...prev, [activeTabPath]: value ?? "" })); }} options={{ minimap:{ enabled:false }, fontSize:13, automaticLayout:true, wordWrap:"on", padding:{ top:12 } }} /> : <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:VS.textFaint, fontSize:12 }}>Generated files will appear here after an agent opens a project file.</div>}</div>
+                    <div style={{ flex:1, minHeight:220 }}>{activeTabPath ? <MonacoEditor height="100%" language={getMonacoLang(activeTabPath)} theme={isLightMode ? "vs" : "firebox-dark"} value={activeContent} onChange={value => { if (activeTabPath) setTabContents(prev => ({ ...prev, [activeTabPath]: value ?? "" })); }} options={{ minimap:{ enabled:false }, fontSize:13, automaticLayout:true, wordWrap:"on", padding:{ top:12 } }} /> : <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:palette.textFaint, fontSize:12 }}>Generated files will appear here after an agent opens a project file.</div>}</div>
                   </div>
                 </div>
               </div>
             ) : activity === "agents" ? (
-              <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
+              <div style={{ flex:1, overflowY:"auto", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
                 <div style={{ width:"100%", margin:0, padding:isMobile ? "24px 16px 44px" : "30px 20px 58px", boxSizing:"border-box" }}>
                   <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:20, marginBottom:28 }}>
                     <div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
-                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Choose your AI engine</h1>
-                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>One Firebox Agent handles the complete development workflow through these capabilities.</p>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
+                      <h1 style={{ margin:0, color:palette.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Choose your AI engine</h1>
+                      <p style={{ margin:"9px 0 0", color:palette.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>One Firebox Agent handles the complete development workflow through these capabilities.</p>
                     </div>
-                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}>
-                      <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent, boxShadow:`0 0 8px ${phase === "error" ? VS.error : VS.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
+                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${palette.border}`, borderRadius:8, color:palette.textMuted, fontSize:11 }}>
+                      <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? palette.error : phase === "complete" ? palette.success : palette.accent, boxShadow:`0 0 8px ${phase === "error" ? palette.error : palette.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
                     </div>
                   </div>
 
@@ -3582,13 +3612,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         else { setAiProvider("cloud"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }
                       };
                       return (
-                        <div key={id} style={{ position:"relative", minHeight:245, display:"flex", flexDirection:"column", padding:18, border:`1px solid ${selected ? VS.accent : VS.border}`, borderRadius:12, background:selected ? "linear-gradient(180deg, rgba(0,120,212,0.10), rgba(255,255,255,0.025))" : "rgba(255,255,255,0.025)", boxShadow:selected ? `0 0 0 1px ${VS.accent}44, 0 16px 40px rgba(0,0,0,0.18)` : "none" }}>
-                          {selected && <span style={{ position:"absolute", top:14, right:14, padding:"5px 8px", borderRadius:999, background:"rgba(0,120,212,0.22)", color:VS.accent, fontSize:9, fontWeight:800, letterSpacing:"0.08em" }}>SELECTED</span>}
+                        <div key={id} style={{ position:"relative", minHeight:245, display:"flex", flexDirection:"column", padding:18, border:`1px solid ${selected ? palette.accent : palette.border}`, borderRadius:12, background:selected ? "linear-gradient(180deg, rgba(0,120,212,0.10), rgba(255,255,255,0.025))" : "rgba(255,255,255,0.025)", boxShadow:selected ? `0 0 0 1px ${palette.accent}44, 0 16px 40px rgba(0,0,0,0.18)` : "none" }}>
+                          {selected && <span style={{ position:"absolute", top:14, right:14, padding:"5px 8px", borderRadius:999, background:"rgba(0,120,212,0.22)", color:palette.accent, fontSize:9, fontWeight:800, letterSpacing:"0.08em" }}>SELECTED</span>}
                           <div style={{ width:64, height:64, margin:"4px auto 15px", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, background:`${color}22`, color, boxShadow:`inset 0 0 0 1px ${color}55` }}><Icon size={32} strokeWidth={1.8}/></div>
-                          <div style={{ textAlign:"center", color:VS.textActive, fontSize:18, fontWeight:700, letterSpacing:"-0.02em" }}>{title}</div>
+                          <div style={{ textAlign:"center", color:palette.textActive, fontSize:18, fontWeight:700, letterSpacing:"-0.02em" }}>{title}</div>
                           <div style={{ textAlign:"center", color, fontSize:12, fontWeight:600, marginTop:6 }}>{subtitle}</div>
-                          <div style={{ flex:1, textAlign:"center", color:VS.textMuted, fontSize:12, lineHeight:1.5, margin:"10px 8px 15px" }}>{description}</div>
-                          <button onClick={handleSelect} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 12px", border:`1px solid ${selected ? VS.accent : VS.borderLight}`, borderRadius:8, background:selected ? "rgba(0,120,212,0.14)" : "transparent", color:selected ? VS.accent : enabled ? color : VS.textMuted, cursor:enabled ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>
+                          <div style={{ flex:1, textAlign:"center", color:palette.textMuted, fontSize:12, lineHeight:1.5, margin:"10px 8px 15px" }}>{description}</div>
+                          <button onClick={handleSelect} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 12px", border:`1px solid ${selected ? palette.accent : palette.borderLight}`, borderRadius:8, background:selected ? "rgba(0,120,212,0.14)" : "transparent", color:selected ? palette.accent : enabled ? color : palette.textMuted, cursor:enabled ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>
                             {selected ? <Check size={15}/> : <span>{action}</span>}{!selected && enabled && <ChevronRight size={15}/>} {selected && <span>Selected</span>}
                           </button>
                         </div>
@@ -3596,7 +3626,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     })}
                   </div>
 
-                  {errorMsg && <div style={{ marginTop:14, padding:"10px 12px", border:`1px solid ${VS.error}55`, borderRadius:8, color:VS.error, background:`${VS.error}12`, fontSize:11 }}>{errorMsg}</div>}
+                  {errorMsg && <div style={{ marginTop:14, padding:"10px 12px", border:`1px solid ${palette.error}55`, borderRadius:8, color:palette.error, background:`${palette.error}12`, fontSize:11 }}>{errorMsg}</div>}
                 </div>
               </div>
             ) : (
@@ -3604,8 +3634,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
             {/* Tab bar */}
             <div style={{
-              height:35, flexShrink:0, background:VS.tabBar,
-              borderBottom:`1px solid ${VS.border}`,
+              height:35, flexShrink:0, background:palette.tabBar,
+              borderBottom:`1px solid ${palette.border}`,
               display:"flex", alignItems:"stretch", overflowX:"auto",
               overflowY:"hidden",
             }}>
@@ -3621,15 +3651,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     style={{
                       display:"flex", alignItems:"center", gap:6, padding:"0 10px",
                       minWidth:100, maxWidth:180, flexShrink:0,
-                      background: isActive ? VS.activeTab : VS.inactiveTab,
-                      borderRight:`1px solid ${VS.border}`,
-                      borderTop:`1px solid ${isActive ? VS.accent : "transparent"}`,
+                      background: isActive ? palette.activeTab : palette.inactiveTab,
+                      borderRight:`1px solid ${palette.border}`,
+                      borderTop:`1px solid ${isActive ? palette.accent : "transparent"}`,
                       cursor:"pointer", userSelect:"none", position:"relative",
                     }}
                   >
                     <FileIcon path={tab.path} size={13}/>
                     <span style={{
-                      fontSize:12, color: isActive ? VS.textActive : VS.textMuted,
+                      fontSize:12, color: isActive ? palette.textActive : palette.textMuted,
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1,
                     }}>
                       {tab.path.split("/").pop()}
@@ -3640,7 +3670,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       style={{
                         display:"flex", alignItems:"center", justifyContent:"center",
                         width:16, height:16, borderRadius:3, background:"transparent",
-                        border:"none", color:VS.textMuted, cursor:"pointer", flexShrink:0,
+                        border:"none", color:palette.textMuted, cursor:"pointer", flexShrink:0,
                         padding:0,
                       }}
                     ><X size={11}/></button>
@@ -3648,7 +3678,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 );
               })}
               {/* Add-tab spacer */}
-              <div style={{ flex:1, background:VS.tabBar, borderBottom:`1px solid transparent` }}/>
+              <div style={{ flex:1, background:palette.tabBar, borderBottom:`1px solid transparent` }}/>
 
               {/* Preview toggle button */}
               {activeFile && (
@@ -3659,13 +3689,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     display:"flex", alignItems:"center", gap:5,
                     padding:"0 12px", height:"100%", flexShrink:0,
                     background: previewOpen ? "rgba(0,122,204,0.15)" : "transparent",
-                    border:"none", borderLeft:`1px solid ${VS.border}`,
-                    color: previewOpen ? VS.accent : VS.textMuted,
+                    border:"none", borderLeft:`1px solid ${palette.border}`,
+                    color: previewOpen ? palette.accent : palette.textMuted,
                     fontSize:11, fontWeight:600, cursor:"pointer",
                     transition:"color 0.15s, background 0.15s",
                   }}
-                  onMouseEnter={e => { if (!previewOpen) e.currentTarget.style.color=VS.text; }}
-                  onMouseLeave={e => { if (!previewOpen) e.currentTarget.style.color=VS.textMuted; }}
+                  onMouseEnter={e => { if (!previewOpen) e.currentTarget.style.color=palette.text; }}
+                  onMouseLeave={e => { if (!previewOpen) e.currentTarget.style.color=palette.textMuted; }}
                 >
                   {previewOpen ? <EyeOff size={13}/> : <Eye size={13}/>}
                   {!isMobile && (previewOpen ? " Close Preview" : " Preview")}
@@ -3676,15 +3706,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             {/* Breadcrumb bar */}
             {activeFile && (
               <div style={{
-                height:24, flexShrink:0, background:"#1E1E1E",
-                borderBottom:`1px solid ${VS.border}`,
+                height:24, flexShrink:0, background:palette.editorBg,
+                borderBottom:`1px solid ${palette.border}`,
                 display:"flex", alignItems:"center", padding:"0 12px",
                 overflowX:"auto",
               }}>
                 {breadcrumbs.map((part, i) => (
                   <React.Fragment key={i}>
-                    {i > 0 && <ChevronRight size={11} color={VS.textFaint} style={{ margin:"0 3px", flexShrink:0 }}/>}
-                    <span style={{ fontSize:12, color: i===breadcrumbs.length-1 ? VS.text : VS.textMuted, whiteSpace:"nowrap", flexShrink:0 }}>
+                    {i > 0 && <ChevronRight size={11} color={palette.textFaint} style={{ margin:"0 3px", flexShrink:0 }}/>}
+                    <span style={{ fontSize:12, color: i===breadcrumbs.length-1 ? palette.text : palette.textMuted, whiteSpace:"nowrap", flexShrink:0 }}>
                       {part}
                     </span>
                   </React.Fragment>
@@ -3706,7 +3736,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   beforeMount={defineFireboxTheme}
                   onMount={handleEditorMount}
                   onChange={handleEditorChange}
-                  theme="firebox-dark"
+                  theme={isLightMode ? "vs" : "firebox-dark"}
                   options={{
                     minimap:              { enabled: !isMobile, scale: 1 },
                     lineNumbers:          isMobile ? "off" : "on",
@@ -3743,17 +3773,17 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               ) : (
                 <div style={{
                   height:"100%", overflowY:"auto",
-                  background:"#1a1a1a", fontFamily:FONT_UI,
+                  background:palette.editorBg, fontFamily:FONT_UI,
                 }}>
                   <div style={{ maxWidth:860, margin:"0 auto", padding:"40px 32px 60px" }}>
 
                     {/* Header */}
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:36 }}>
                       <div>
-                        <div style={{ fontSize:22, fontWeight:700, color:VS.textActive, marginBottom:4 }}>
+                        <div style={{ fontSize:22, fontWeight:700, color:palette.textActive, marginBottom:4 }}>
                           My Projects
                         </div>
-                        <div style={{ fontSize:13, color:VS.textMuted }}>
+                        <div style={{ fontSize:13, color:palette.textMuted }}>
                           Open a project, import from GitHub, or describe a new app below.
                         </div>
                       </div>
@@ -3762,13 +3792,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onClick={() => { setActivity("git"); setSideOpen(true); }}
                           style={{
                             display:"flex", alignItems:"center", gap:7,
-                            padding:"8px 16px", borderRadius:8, border:`1px solid ${VS.border}`,
-                            background:"#252526", color:VS.text, fontSize:13,
+                            padding:"8px 16px", borderRadius:8, border:`1px solid ${palette.border}`,
+                            background:palette.sideBar, color:palette.text, fontSize:13,
                             fontFamily:FONT_UI, cursor:"pointer", fontWeight:500,
                             transition:"all 0.15s",
                           }}
-                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.background="#2a2d2e"; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=VS.border; e.currentTarget.style.background="#252526"; }}
+                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=palette.accent; e.currentTarget.style.background="#2a2d2e"; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=palette.border; e.currentTarget.style.background="#252526"; }}
                         >
                           <Github size={15}/> Import from GitHub
                         </button>
@@ -3777,13 +3807,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           style={{
                             display:"flex", alignItems:"center", gap:7,
                             padding:"8px 16px", borderRadius:8, border:"none",
-                            background: VS.accent, color:"#fff", fontSize:13,
+                            background: palette.accent, color:"#fff", fontSize:13,
                             fontFamily:FONT_UI, cursor:"pointer", fontWeight:600,
                             boxShadow:"0 2px 8px rgba(0,120,212,0.35)",
                             transition:"all 0.15s",
                           }}
-                          onMouseEnter={e=>{ e.currentTarget.style.background=VS.accentHover; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.background=VS.accent; }}
+                          onMouseEnter={e=>{ e.currentTarget.style.background=palette.accentHover; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.background=palette.accent; }}
                         >
                           <Sparkles size={15}/> New with AI
                         </button>
@@ -3793,7 +3823,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {/* Project grid */}
                     {recentBuilds.length > 0 ? (
                       <>
-                        <div style={{ fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", marginBottom:14 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", marginBottom:14 }}>
                           RECENT PROJECTS
                         </div>
                         <div style={{
@@ -3814,8 +3844,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 key={build._id}
                                 onClick={() => !isLoading && loadProjectFiles(build)}
                                 style={{
-                                  background:"#252526",
-                                  border:`1px solid ${VS.border}`,
+                                  background:palette.sideBar,
+                                  border:`1px solid ${palette.border}`,
                                   borderRadius:12,
                                   padding:"16px 16px 14px",
                                   cursor: isLoading ? "wait" : "pointer",
@@ -3825,14 +3855,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   overflow:"hidden",
                                 }}
                                 onMouseEnter={e=>{
-                                  e.currentTarget.style.borderColor=VS.accent;
+                                  e.currentTarget.style.borderColor=palette.accent;
                                   e.currentTarget.style.transform="translateY(-2px)";
                                   e.currentTarget.style.boxShadow=`0 6px 20px rgba(0,0,0,0.35)`;
                                   const btn = e.currentTarget.querySelector(".grid-del-btn");
                                   if (btn) btn.style.opacity="1";
                                 }}
                                 onMouseLeave={e=>{
-                                  e.currentTarget.style.borderColor=VS.border;
+                                  e.currentTarget.style.borderColor=palette.border;
                                   e.currentTarget.style.transform="translateY(0)";
                                   e.currentTarget.style.boxShadow="none";
                                   const btn = e.currentTarget.querySelector(".grid-del-btn");
@@ -3850,7 +3880,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                     width:26, height:26, borderRadius:6,
                                     background:"rgba(244,135,113,0.12)",
                                     border:"1px solid rgba(244,135,113,0.25)",
-                                    color:VS.error, cursor:"pointer",
+                                    color:palette.error, cursor:"pointer",
                                     display:"flex", alignItems:"center", justifyContent:"center",
                                     padding:0, zIndex:2,
                                   }}
@@ -3869,14 +3899,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   marginBottom:12,
                                 }}>
                                   {isLoading
-                                    ? <Loader2 size={16} color={VS.accent} style={{ animation:"spin 1s linear infinite" }}/>
-                                    : <Zap size={16} color={VS.accent}/>
+                                    ? <Loader2 size={16} color={palette.accent} style={{ animation:"spin 1s linear infinite" }}/>
+                                    : <Zap size={16} color={palette.accent}/>
                                   }
                                 </div>
 
                                 {/* Name */}
                                 <div style={{
-                                  fontSize:13, fontWeight:600, color:VS.textActive,
+                                  fontSize:13, fontWeight:600, color:palette.textActive,
                                   lineHeight:1.4, marginBottom:6,
                                   display:"-webkit-box", WebkitLineClamp:2,
                                   WebkitBoxOrient:"vertical", overflow:"hidden",
@@ -3888,7 +3918,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:"auto" }}>
                                   <span style={{
                                     fontSize:11, fontWeight:500,
-                                    color: isOk ? VS.success : isFail ? VS.error : VS.textMuted,
+                                    color: isOk ? palette.success : isFail ? palette.error : palette.textMuted,
                                     display:"flex", alignItems:"center", gap:3,
                                   }}>
                                     {isOk && <CheckCircle2 size={10}/>}
@@ -3896,15 +3926,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                     {isLoading ? "opening" : isOk ? "complete" : build.status}
                                   </span>
                                   {fileCount > 0 && (
-                                    <span style={{ fontSize:11, color:VS.textFaint }}>· {fileCount} files</span>
+                                    <span style={{ fontSize:11, color:palette.textFaint }}>· {fileCount} files</span>
                                   )}
-                                  <span style={{ fontSize:11, color:VS.textFaint, marginLeft:"auto" }}>{dateStr}</span>
+                                  <span style={{ fontSize:11, color:palette.textFaint, marginLeft:"auto" }}>{dateStr}</span>
                                 </div>
 
                                 {/* Agent color bar */}
                                 <div style={{
                                   position:"absolute", bottom:0, left:0, right:0, height:3,
-                                  background:`linear-gradient(90deg,${VS.accent},#A78BFA,#F472B6)`,
+                                  background:`linear-gradient(90deg,${palette.accent},#A78BFA,#F472B6)`,
                                   opacity: isOk ? 0.6 : 0.15,
                                 }}/>
                               </div>
@@ -3922,7 +3952,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               display:"flex", flexDirection:"column",
                               alignItems:"center", justifyContent:"center", gap:8, minHeight:130,
                             }}
-                            onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.background="rgba(0,120,212,0.04)"; }}
+                            onMouseEnter={e=>{ e.currentTarget.style.borderColor=palette.accent; e.currentTarget.style.background="rgba(0,120,212,0.04)"; }}
                             onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(255,255,255,0.1)"; e.currentTarget.style.background="transparent"; }}
                           >
                             <div style={{
@@ -3931,9 +3961,9 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               border:`1px solid rgba(255,255,255,0.1)`,
                               display:"flex", alignItems:"center", justifyContent:"center",
                             }}>
-                              <Plus size={16} color={VS.textMuted}/>
+                              <Plus size={16} color={palette.textMuted}/>
                             </div>
-                            <span style={{ fontSize:12, color:VS.textMuted, fontWeight:500 }}>New project</span>
+                            <span style={{ fontSize:12, color:palette.textMuted, fontWeight:500 }}>New project</span>
                           </div>
                         </div>
                       </>
@@ -3950,12 +3980,12 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           border:`1px solid rgba(0,120,212,0.2)`,
                           display:"flex", alignItems:"center", justifyContent:"center",
                         }}>
-                          <Zap size={26} color={VS.accent}/>
+                          <Zap size={26} color={palette.accent}/>
                         </div>
-                        <div style={{ fontSize:16, fontWeight:600, color:VS.textActive, marginBottom:8 }}>
+                        <div style={{ fontSize:16, fontWeight:600, color:palette.textActive, marginBottom:8 }}>
                           No projects yet
                         </div>
-                        <div style={{ fontSize:13, color:VS.textMuted, marginBottom:24, lineHeight:1.6 }}>
+                        <div style={{ fontSize:13, color:palette.textMuted, marginBottom:24, lineHeight:1.6 }}>
                           Describe your app in the chat below and 7 AI agents will<br/>generate every file — live.
                         </div>
                         <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
@@ -3963,7 +3993,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             onClick={() => { setActivity("workspace"); setSideOpen(false); setTimeout(()=>chatInputRef.current?.focus(),100); }}
                             style={{
                               padding:"9px 20px", borderRadius:8, border:"none",
-                              background:VS.accent, color:"#fff", fontSize:13,
+                              background:palette.accent, color:"#fff", fontSize:13,
                               fontFamily:FONT_UI, cursor:"pointer", fontWeight:600,
                             }}
                           >
@@ -3974,8 +4004,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                             onClick={() => { setActivity("git"); setSideOpen(true); }}
                             style={{
                               padding:"9px 20px", borderRadius:8,
-                              border:`1px solid ${VS.border}`,
-                              background:"#252526", color:VS.text, fontSize:13,
+                              border:`1px solid ${palette.border}`,
+                              background:palette.sideBar, color:palette.text, fontSize:13,
                               fontFamily:FONT_UI, cursor:"pointer", fontWeight:500,
                             }}
                           >
@@ -3990,8 +4020,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {recentBuilds.length > 0 && (
                       <div style={{
                         marginTop:36,
-                        background:"#252526",
-                        border:`1px solid ${VS.border}`,
+                        background:palette.sideBar,
+                        border:`1px solid ${palette.border}`,
                         borderRadius:12, padding:"18px 20px",
                         display:"flex", alignItems:"center", justifyContent:"space-between", gap:16,
                       }}>
@@ -3999,16 +4029,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           <div style={{
                             width:40, height:40, borderRadius:10, flexShrink:0,
                             background:"rgba(255,255,255,0.05)",
-                            border:`1px solid ${VS.border}`,
+                            border:`1px solid ${palette.border}`,
                             display:"flex", alignItems:"center", justifyContent:"center",
                           }}>
-                            <Github size={20} color={VS.text}/>
+                            <Github size={20} color={palette.text}/>
                           </div>
                           <div>
-                            <div style={{ fontSize:13, fontWeight:600, color:VS.textActive, marginBottom:2 }}>
+                            <div style={{ fontSize:13, fontWeight:600, color:palette.textActive, marginBottom:2 }}>
                               Import from GitHub
                             </div>
-                            <div style={{ fontSize:12, color:VS.textMuted }}>
+                            <div style={{ fontSize:12, color:palette.textMuted }}>
                               Connect a repo — AI agents can read, edit, and push changes back.
                             </div>
                           </div>
@@ -4017,13 +4047,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           onClick={() => { setActivity("git"); setSideOpen(true); }}
                           style={{
                             flexShrink:0, padding:"7px 16px", borderRadius:8,
-                            border:`1px solid ${VS.border}`,
-                            background:"#2d2d2d", color:VS.text,
+                            border:`1px solid ${palette.border}`,
+                            background:"#2d2d2d", color:palette.text,
                             fontSize:12, fontFamily:FONT_UI,
                             cursor:"pointer", fontWeight:500, whiteSpace:"nowrap",
                           }}
-                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=VS.accent; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=VS.border; }}
+                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=palette.accent; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=palette.border; }}
                         >
                           Connect GitHub →
                         </button>
@@ -4038,24 +4068,24 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               {previewOpen && activeFile && (
                 <div style={{
                   flex: "0 0 50%", display:"flex", flexDirection:"column",
-                  borderLeft:`1px solid ${VS.border}`, overflow:"hidden",
+                  borderLeft:`1px solid ${palette.border}`, overflow:"hidden",
                   background:"#fff",
                 }}>
                   {/* Preview header */}
                   <div style={{
                     height:35, flexShrink:0, display:"flex", alignItems:"center",
                     justifyContent:"space-between", padding:"0 12px",
-                    background:VS.titleBar, borderBottom:`1px solid ${VS.border}`,
+                    background:palette.titleBar, borderBottom:`1px solid ${palette.border}`,
                   }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <Globe size={12} color={VS.accent}/>
-                      <span style={{ fontSize:11, fontWeight:600, color:VS.text }}>
+                      <Globe size={12} color={palette.accent}/>
+                      <span style={{ fontSize:11, fontWeight:600, color:palette.text }}>
                         {activeFile.path.split("/").pop()} — Preview
                       </span>
                     </div>
                     <button
                       onClick={() => setPreviewOpen(false)}
-                      style={{ background:"none", border:"none", cursor:"pointer", color:VS.textMuted, padding:2 }}
+                      style={{ background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:2 }}
                       title="Close preview"
                     >
                       <X size={12}/>
@@ -4075,10 +4105,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{
                       flex:1, display:"flex", flexDirection:"column",
                       alignItems:"center", justifyContent:"center", gap:10,
-                      background:VS.editorBg, color:VS.textMuted,
+                      background:palette.editorBg, color:palette.textMuted,
                     }}>
-                      <Eye size={28} color={VS.textFaint}/>
-                      <div style={{ fontSize:12, color:VS.textMuted, textAlign:"center", padding:"0 20px", lineHeight:1.6 }}>
+                      <Eye size={28} color={palette.textFaint}/>
+                      <div style={{ fontSize:12, color:palette.textMuted, textAlign:"center", padding:"0 20px", lineHeight:1.6 }}>
                         No preview for <code style={{ fontFamily:FONT_MONO, fontSize:11, background:"#3C3C3C", padding:"1px 5px", borderRadius:3 }}>
                           .{activeFile.path.split(".").pop()}
                         </code> files.
@@ -4102,8 +4132,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{
                       position:"absolute", top:0, left:0, right:0,
                       bottom:52, zIndex:100,
-                      background:VS.sideBar,
-                      borderBottom:`1px solid ${VS.border}`,
+                      background:palette.sideBar,
+                      borderBottom:`1px solid ${palette.border}`,
                       display:"flex", flexDirection:"column", overflow:"hidden",
                     }}>
                       {sideContent}
@@ -4129,8 +4159,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       minSize="15%"
                       maxSize="50%"
                       style={{
-                        background: VS.sideBar,
-                        borderRight: `1px solid ${VS.border}`,
+                        background: palette.sideBar,
+                        borderRight: `1px solid ${palette.border}`,
                         display: "flex",
                         flexDirection: "column",
                         overflow: "hidden",
@@ -4141,7 +4171,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <PanelResizeHandle
                       style={{
                         width: 4,
-                        background: VS.border,
+                        background: palette.border,
                         cursor: "col-resize",
                         flexShrink: 0,
                         transition: "background 0.15s",
@@ -4166,7 +4196,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
         {/* ══ Status bar ══════════════════════════════════════════════════ */}
         <div style={{
           height: isMobile ? 20 : 22, flexShrink:0,
-          background: phase==="error" ? "#5A1D1D" : VS.statusBar,
+          background: phase==="error" ? "#5A1D1D" : palette.statusBar,
           display:"flex", alignItems:"center", justifyContent:"space-between",
           padding:"0 10px", fontSize:11, color:"#fff", userSelect:"none",
           transition:"background 0.3s", overflow:"hidden",
