@@ -71,6 +71,20 @@ export function createProjectTools({ root, emit = () => {} }) {
       return { path: relativePath };
     }),
     inspect_package_json: () => withTool("inspect_package_json", {}, async () => JSON.parse(await fs.readFile(resolve("package.json"), "utf8"))),
+    inspect_project: () => withTool("inspect_project", {}, async () => {
+      const files = [];
+      async function walk(directory) {
+        for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+          if (["node_modules", ".git", "dist", "build"].includes(entry.name)) continue;
+          const target = path.join(directory, entry.name);
+          if (entry.isDirectory()) await walk(target);
+          else if (entry.isFile()) files.push(path.relative(root, target));
+        }
+      }
+      await walk(root);
+      const packageJson = await fs.readFile(resolve("package.json"), "utf8").then(JSON.parse).catch(() => null);
+      return { files: files.slice(0, 500), packageJson };
+    }),
     search_project: async (term) => withTool("search_project", { term }, async () => {
       const results = [];
       async function walk(directory) {

@@ -95,6 +95,8 @@ async function runBuild(job, res) {
   const emit = (event, data) => send(res, event, data);
   const tools = createProjectTools({ root: projectDir, emit });
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
+  const inspectedProject = await tools.inspect_project();
+  send(res, "project-inspected", { files: inspectedProject.files, packageJson: inspectedProject.packageJson ? { name: inspectedProject.packageJson.name, scripts: inspectedProject.packageJson.scripts || {}, dependencies: Object.keys(inspectedProject.packageJson.dependencies || {}) } : null });
 
   for (const agent of AGENT_DEFS) {
     const capability = AGENT_CAPABILITIES[agent.name] || { id: agent.name.toLowerCase(), label: agent.task, activity: agent.task };

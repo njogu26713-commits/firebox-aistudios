@@ -912,6 +912,12 @@ export default function FireboxAIStudio() {
         setChatHistory(prev => [...prev, { role:"ai", text:`Build step failed. I’m investigating and retrying (${repair.attempt}/${repair.maxAttempts})…` }]);
       } catch { /* ignore malformed repair event */ }
     });
+    es.addEventListener("project-inspected", e => {
+      try {
+        const project = JSON.parse(e.data);
+        setChatHistory(prev => [...prev, { role:"ai", text:`I inspected the project before editing it${project.files?.length ? ` (${project.files.length} files found)` : ""}.` }]);
+      } catch { /* ignore malformed inspection event */ }
+    });
 
     es.addEventListener("agent-start", e => {
       const { agent } = JSON.parse(e.data);
