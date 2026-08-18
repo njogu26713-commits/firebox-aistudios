@@ -2262,47 +2262,51 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             if (isMobile) {
               return (
                 <div style={{
-                  position:"absolute", bottom:0, left:0, right:0, zIndex:200,
-                  height:58, flexShrink:0, background:palette.activityBar,
-                  borderTop:`1px solid ${palette.border}`,
-                  display:"flex", flexDirection:"row", alignItems:"center",
-                  justifyContent:"flex-start", overflowX:"auto", overflowY:"hidden",
-                  scrollbarWidth:"none", padding:"0 4px",
+                  position:"absolute", top:0, left:0, bottom:0, zIndex:180,
+                  width:sideOpen ? 218 : 48, flexShrink:0, background:palette.activityBar,
+                  borderRight:`1px solid ${palette.border}`, display:"flex", flexDirection:"column",
+                  overflow:"hidden", transition:"width 0.2s ease",
                 }}>
-                  {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
-                    <button
-                      key={id}
-                      className="act-btn"
-                      title={title}
-                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else if (id === "workspace") { setActivity("workspace"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
-                      style={{
-                        position:"relative", display:"flex", flexDirection:"column",
-                        alignItems:"center", justifyContent:"center",
-                        flex:"0 0 64px", minWidth:64, height:58, background:"transparent", border:"none",
-                        borderTop:`2px solid ${activity===id && sideOpen ? palette.accent : "transparent"}`,
-                        color: activity===id && sideOpen ? palette.textActive : palette.textMuted,
-                        cursor:"pointer", transition:"color 0.15s", gap:3,
-                      }}
-                    >
-                      <Icon size={18}/>
-                      <span style={{ fontSize:9, fontWeight:500 }}>{title}</span>
-                      {badge && (
-                        <span style={{
-                          position:"absolute", top:4, right:"calc(50% - 16px)", minWidth:14, height:14, borderRadius:7,
-                          background: badgeColor || palette.accent, color:"#fff",
-                          fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
-                          padding:"0 3px",
-                        }}>{typeof badge==="number" ? badge : null}</span>
-                      )}
-                    </button>
-                  ))}
+                  <button
+                    className="act-btn"
+                    title={sideOpen ? "Collapse sidebar" : "Open sidebar"}
+                    onClick={() => setSideOpen(p => !p)}
+                    style={{
+                      display:"flex", alignItems:"center", justifyContent:sideOpen ? "flex-end" : "center",
+                      width:"100%", height:44, padding:sideOpen ? "0 14px" : 0,
+                      background:"transparent", border:"none", borderBottom:`1px solid ${palette.border}`,
+                      color:palette.textMuted, cursor:"pointer", flexShrink:0,
+                    }}
+                  >
+                    {sideOpen ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}
+                  </button>
+                  <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", paddingTop:6 }}>
+                    {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
+                      <button
+                        key={id}
+                        className="act-btn"
+                        title={title}
+                        onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(true); } else if (id === "agents") { setActivity("agents"); setSideOpen(true); } else if (id === "workspace") { setActivity("workspace"); setSideOpen(false); } else { setActivity(id); setSideOpen(true); } }}
+                        style={{
+                          position:"relative", display:"flex", flexDirection:"row", alignItems:"center",
+                          justifyContent:sideOpen ? "flex-start" : "center", gap:sideOpen ? 11 : 0,
+                          width:"100%", height:44, padding:sideOpen ? "0 14px" : 0,
+                          background:activity===id ? "rgba(0,120,212,0.08)" : "transparent", border:"none",
+                          borderLeft:`2px solid ${activity===id ? palette.accent : "transparent"}`,
+                          color:activity===id ? palette.textActive : palette.textMuted, cursor:"pointer", flexShrink:0,
+                        }}
+                      >
+                        <Icon size={19}/>
+                        {sideOpen && <span style={{ fontSize:12, fontWeight:activity===id ? 600 : 500, whiteSpace:"nowrap" }}>{title}</span>}
+                        {badge && <span style={{ position:sideOpen ? "static" : "absolute", top:6, right:5, marginLeft:sideOpen ? "auto" : 0, minWidth:14, height:14, borderRadius:7, background:badgeColor || palette.accent, color:"#fff", fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{typeof badge === "number" ? badge : null}</span>}
+                      </button>
+                    ))}
+                  </div>
                   <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
-                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                    flex:"0 0 64px", minWidth:64, height:58, background:"transparent", border:"none",
-                    borderTop:`2px solid ${activity === "settings" && sideOpen ? palette.accent : "transparent"}`, color: activity === "settings" && sideOpen ? palette.textActive : palette.textMuted, cursor:"pointer", gap:3,
+                    display:"flex", flexDirection:"row", alignItems:"center", justifyContent:sideOpen ? "flex-start" : "center", gap:sideOpen ? 11 : 0,
+                    width:"100%", height:44, padding:sideOpen ? "0 14px" : 0, background:activity === "settings" ? "rgba(0,120,212,0.08)" : "transparent", border:"none", borderLeft:`2px solid ${activity === "settings" ? palette.accent : "transparent"}`, color:activity === "settings" ? palette.textActive : palette.textMuted, cursor:"pointer", flexShrink:0,
                   }}>
-                    <Settings size={18}/>
-                    <span style={{ fontSize:9, fontWeight:500 }}>Settings</span>
+                    <Settings size={19}/>{sideOpen && <span style={{ fontSize:12, fontWeight:activity === "settings" ? 600 : 500 }}>Settings</span>}
                   </button>
                 </div>
               );
@@ -4323,16 +4327,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <>
                   {sideOpen && activity !== "home" && activity !== "agents" && (
                     <div style={{
-                      position:"absolute", top:0, left:0, right:0,
-                      bottom:58, zIndex:100,
+                      position:"absolute", top:0, left:sideOpen ? 218 : 48, right:0,
+                      bottom:0, zIndex:100,
                       background:palette.sideBar,
-                      borderBottom:`1px solid ${palette.border}`,
+                      borderLeft:`1px solid ${palette.border}`,
                       display:"flex", flexDirection:"column", overflow:"hidden",
                     }}>
                       {sideContent}
                     </div>
                   )}
-                  <div style={{                     flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom:58 }}>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingLeft:sideOpen ? 218 : 48 }}>
                     {editorContent}
                   </div>
                 </>
