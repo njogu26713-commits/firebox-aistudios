@@ -812,6 +812,12 @@ export default function FireboxAIStudio() {
     model: localAiModel.trim(),
     apiKey: localAiApiKey.trim(),
   }), [localAiEndpoint, localAiModel, localAiApiKey]);
+  // Only Local AI and Custom may override the endpoint/model. Built-in cloud providers use their own server defaults.
+  const providerConfig = useMemo(() => (
+    aiProvider === "local" || aiProvider === "custom"
+      ? localAiConfig
+      : { apiKey: localAiApiKey.trim() }
+  ), [aiProvider, localAiConfig, localAiApiKey]);
 
   /* projects panel state */
   const [expandedProjects, setExpandedProjects] = useState(new Set());
@@ -988,7 +994,7 @@ export default function FireboxAIStudio() {
 
     try {
       if (aiProvider !== "local") {
-        const response = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: aiProvider, localAi: localAiConfig, description: `Reply with exactly: Firebox ${aiProvider} connection OK`, fileNames: [] }) });
+        const response = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: aiProvider, localAi: providerConfig, description: `Reply with exactly: Firebox ${aiProvider} connection OK`, fileNames: [] }) });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.plan) throw new Error(data.error || `${aiProvider} connection test failed`);
         setLocalAiTestState("success");
@@ -1063,7 +1069,7 @@ export default function FireboxAIStudio() {
       setLocalAiTestState("error");
       setLocalAiTestMessage(err.message || "Local AI request failed");
     }
-  }, [aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
+  }, [aiProvider, localAiConfig, providerConfig, localEngineUrl, localEngineToken]);
 
   const testLocalEngine = useCallback(async () => {
     setLocalAiTestState("testing");
@@ -1131,7 +1137,7 @@ export default function FireboxAIStudio() {
         } : {
           description: buildDesc,
           provider: aiProvider,
-          localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
+          localAi: aiProvider !== "cloud" ? providerConfig : undefined,
           toolMode: true,
         }),
       });
@@ -1338,7 +1344,7 @@ export default function FireboxAIStudio() {
       setErrorMsg("Connection lost before the Agent returned a result. Check the provider response and Railway logs.");
       es.close();
     };
-  }, [updateAgent, appendActivity, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
+  }, [updateAgent, appendActivity, aiProvider, providerConfig, localAiConfig, localEngineUrl, localEngineToken]);
 
   const setBuildExecutionState = useCallback(async (nextState) => {
     if (!currentBuildId) return;
@@ -1376,7 +1382,7 @@ export default function FireboxAIStudio() {
           buildId: currentBuildId,
           instruction,
           provider: aiProvider,
-          localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
+          localAi: aiProvider !== "cloud" ? providerConfig : undefined,
         }),
       });
 
@@ -1456,7 +1462,7 @@ export default function FireboxAIStudio() {
       setEditError(err.message);
     }
     setEditingFiles(false);
-  }, [currentBuildId, aiProvider, localAiConfig]);
+  }, [currentBuildId, aiProvider, providerConfig, localAiConfig]);
 
   const requestBuildPlan = useCallback(async (requestText) => {
     const text = String(requestText || "").trim();
@@ -1482,7 +1488,7 @@ export default function FireboxAIStudio() {
     } finally {
       setPlanning(false);
     }
-  }, [planning, aiProvider, localEngineUrl, localEngineToken, localAiConfig, allFiles, startBuild]);
+  }, [planning, aiProvider, localEngineUrl, localEngineToken, providerConfig, localAiConfig, allFiles, startBuild]);
 
   const confirmBuildPlan = useCallback((override = false) => {
     if (!buildPlan?.request || (buildPlan.needsConfirmation && !override)) return;
@@ -1549,7 +1555,7 @@ export default function FireboxAIStudio() {
             hasFiles: allFiles.length > 0,
             fileNames: allFiles.map(f => f.path),
             provider: aiProvider,
-            localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
+            localAi: aiProvider !== "cloud" ? providerConfig : undefined,
           }),
         });
 
@@ -1608,7 +1614,7 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
     }
-  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
 
   const stopBuild = useCallback(() => {
     esRef.current?.close();
