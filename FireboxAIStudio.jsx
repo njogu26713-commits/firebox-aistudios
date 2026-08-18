@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertTriangle, Loader2, Play, Sparkles, Terminal,
   Copy, Check, ChevronRight, ChevronDown, RotateCcw, X, Search,
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
-  FolderOpen, Folder, History, Zap, Code2, Package,
+  FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
   Eye, EyeOff, Globe, Plus, Github, Trash2,
 } from "lucide-react";
@@ -1918,6 +1918,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
           {/* ── Activity bar — desktop: left column; mobile: bottom strip ── */}
           {(() => {
             const navItems = [
+              { id:"home",     Icon:Home,      title:"Home" },
               { id:"explorer", Icon:Files,     title:"Explorer",    badge: allFiles.length || null },
               { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
@@ -1938,7 +1939,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       key={id}
                       className="act-btn"
                       title={title}
-                      onClick={() => { setActivity(id); setSideOpen(p => activity===id ? !p : true); }}
+                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(true); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                       style={{
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
@@ -2196,11 +2197,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               )}
 
               {/* Panel: Agent pipeline — conversational activity feed */}
-              {activity === "agents" && (
+              {(activity === "agents" || activity === "home") && (
                 <>
                   <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span>AGENT PIPELINE</span>
-                    {phase !== "idle" && (
+                    <span>{activity === "home" ? "HOME" : "AGENT PIPELINE"}</span>
+                    {activity === "agents" && phase !== "idle" && (
                       <span style={{ fontSize:10, color: phase==="complete" ? VS.success : VS.textMuted, fontWeight:500, letterSpacing:0 }}>
                         {phase==="complete" ? `✓ ${doneCount}/${AGENT_META.length} done` : `${doneCount}/${AGENT_META.length}`}
                       </span>
