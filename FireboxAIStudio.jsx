@@ -1656,8 +1656,34 @@ export default function FireboxAIStudio() {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ owner: gitRepo.owner, repo: gitRepo.repo, path: filePath, token: gitToken }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const responseText = await res.text();
+      let data;
+      try { data = JSON.parse(responseText); }
+      catch {
+        // A stale proxy or frontend fallback can return index.html for this API call.
+        // Fall back to GitHub directly so Source Control remains usable while the backend redeploys.
+        if (responseText.trimStart().startsWith("<!DOCTYPE") || responseText.trimStart().startsWith("<html")) {
+          const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+          const directRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(gitRepo.owner)}/${encodeURIComponent(gitRepo.repo)}/contents/${encodedPath}?ref=${encodeURIComponent(gitRepo.branch)}`, {
+            headers: {
+              Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${gitToken}`,
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+          });
+          const directText = await directRes.text();
+          try { data = JSON.parse(directText); }
+          catch { throw new Error(`GitHub file request returned non-JSON data (HTTP ${directRes.status})`); }
+          if (!directRes.ok) throw new Error(data.message || `GitHub returned HTTP ${directRes.status}`);
+          if (!data.content) throw new Error("GitHub returned no file content");
+          const binary = atob(data.content.replace(/\s/g, ""));
+          const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+          data.content = new TextDecoder().decode(bytes);
+        } else {
+          throw new Error(`GitHub file request returned non-JSON data (HTTP ${res.status})`);
+        }
+      }
+      if (!res.ok && !data.content) throw new Error(data.error || `GitHub file request failed with HTTP ${res.status}`);
       setGitFileShas(prev => ({ ...prev, [filePath]: data.sha }));
       openFile({ path: filePath, content: data.content, agent: "Git", language: "" });
     } catch (err) { setGitError(err.message); }
