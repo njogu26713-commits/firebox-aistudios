@@ -10,12 +10,30 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
   let repairAttempts = 0;
   for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
-    const response = await getStructuredCompletion({ config, messages: transcript, tools: toolDefinitions, maxTokens, temperature, signal });
+    const response = await getStructuredCompletion({
+      config,
+      messages: transcript,
+      tools: toolDefinitions,
+      toolChoice: config.provider && config.provider !== "cloud" && turn === 0 ? "required" : "auto",
+      maxTokens,
+      temperature,
+      signal,
+    });
     const message = response?.choices?.[0]?.message || {};
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    transcript.push({ role: "assistant", content: message.content || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
+    const content = Array.isArray(message.content)
+      ? message.content.map((part) => typeof part === "string" ? part : part?.text || "").join("")
+      : String(message.content || "");
+    transcript.push({ role: "assistant", content: content || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
 
-    if (!toolCalls.length) return { content: String(message.content || ""), messages: transcript, turns: turn + 1 };
+    if (!toolCalls.length) {
+      if (content.trim()) return { content, messages: transcript, turns: turn + 1 };
+      if (turn < 2) {
+        transcript.push({ role: "user", content: "Your previous response contained no assistant content and no Firebox tool call. Begin by using the appropriate Firebox tool to inspect or modify the project, then continue the task." });
+        continue;
+      }
+      throw new Error("Provider returned no assistant content or Firebox tool calls");
+    }
 
     for (const call of toolCalls) {
       const name = call.function?.name;
