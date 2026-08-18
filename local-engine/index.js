@@ -21,6 +21,7 @@ const OLLAMA_MODEL = String(process.env.OLLAMA_MODEL || "").trim();
 const OLLAMA_API_KEY = String(process.env.OLLAMA_API_KEY || "").trim();
 const jobs = new Map();
 const PREVIEW_PORT = Number(process.env.FIREBOX_PREVIEW_PORT || 5173);
+const PREVIEW_IDLE_MS = Number(process.env.FIREBOX_PREVIEW_IDLE_MS || 30 * 60 * 1000);
 const previews = new Map();
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -121,6 +122,7 @@ async function startPreviewProcess(projectDir, projectName, script = null, port 
   const existing = previews.get(projectName);
   if (existing && existing.child.exitCode === null && !existing.child.killed) {
     const url = `http://127.0.0.1:${existing.port}`;
+    existing.lastAccessAt = Date.now();
     if (await probePreview(url)) return { projectName, port: existing.port, url, gatewayUrl:previewGatewayUrl(projectName), healthy: true, status:"running", framework:existing.framework, packageManager:existing.packageManager, script:existing.script, startedAt:existing.startedAt };
     stopPreviewProcess(projectName);
   }
@@ -129,7 +131,7 @@ async function startPreviewProcess(projectDir, projectName, script = null, port 
   if (framework === "next") args.push("--", "-H", "0.0.0.0", "-p", String(allocatedPort));
   else args.push("--", "--host", "0.0.0.0", "--port", String(allocatedPort));
   const child = spawn(command, args, { cwd: projectDir, shell: false, windowsHide: true });
-  const preview = { child, projectName, port:allocatedPort, script:selectedScript, framework, packageManager, startedAt: new Date().toISOString(), status:"starting", healthy:false, lastOutput: "" };
+  const preview = { child, projectName, port:allocatedPort, script:selectedScript, framework, packageManager, startedAt: new Date().toISOString(), lastAccessAt:Date.now(), status:"starting", healthy:false, lastOutput: "" };
   child.stdout?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
   child.stderr?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
   child.on("error", (error) => { preview.error = error.message; });
@@ -151,6 +153,13 @@ function previewGatewayUrl(projectName, runtimePath = "") {
   const suffix = runtimePath ? `/${String(runtimePath).replace(/^\/+/, "")}` : "/";
   return `http://127.0.0.1:${PORT}/preview/${encodeURIComponent(projectName)}${suffix}?token=${encodeURIComponent(TOKEN)}`;
 }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [projectName, preview] of previews.entries()) {
+    if (preview.lastAccessAt && now - preview.lastAccessAt > PREVIEW_IDLE_MS) stopPreviewProcess(projectName);
+  }
+}, 60_000).unref?.();
 
 function stopPreviewProcess(projectName) {
   const preview = previews.get(projectName);
@@ -442,6 +451,7 @@ app.get("/api/preview/status", auth, async (req, res) => {
   if (!preview || preview.child.exitCode !== null || preview.child.killed) {
     return res.json({ ok: true, running: false, preview: null });
   }
+  preview.lastAccessAt = Date.now();
   const url = `http://127.0.0.1:${preview.port}`;
   const healthy = await probePreview(url);
   res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url, gatewayUrl:previewGatewayUrl(projectName), framework:preview.framework, packageManager:preview.packageManager, script:preview.script, status:preview.status, healthy } : null, status:healthy ? "running" : (preview.status || "starting"), lastOutput: preview.lastOutput || null, error:preview.error || null });
