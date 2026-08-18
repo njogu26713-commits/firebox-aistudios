@@ -846,7 +846,7 @@ export default function FireboxAIStudio() {
     setActiveTabPath(null);
     setTabContents({});
     setActiveAgent(null);
-    setActivity("agents");
+    setActivity("workspace");
     setAgentStartTimes({});
     setAgentElapsed({});
     setAgentVisSteps({});
@@ -994,8 +994,8 @@ export default function FireboxAIStudio() {
     setEditStream("");
     setEditChangedFiles([]);
     setEditError("");
-    setActivity("agents");
-    setSideOpen(true);
+    setActivity("workspace");
+    setSideOpen(false);
 
     try {
       const res = await fetch("/api/edit-files", {
@@ -1096,8 +1096,8 @@ export default function FireboxAIStudio() {
     setChatInput("");
     setAiThinking(true);
     setAiStreamText("");
-    setActivity("agents");
-    setSideOpen(true);
+    setActivity("workspace");
+    setSideOpen(false);
     setTimeout(() => chatInputRef.current?.focus(), 0);
 
     // Build conversation for the API (last 10 messages for context)
@@ -1195,7 +1195,7 @@ export default function FireboxAIStudio() {
     setOpenTabs([]); setActiveTabPath(null); setTabContents({});
     setAgentStates(AGENT_META.map(a => ({name:a.name, status:"idle", streaming:""})));
     setActiveAgent(null); setErrorMsg(""); streamingRef.current = {};
-    setActivity("agents");
+    setActivity("workspace");
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
     setChatHistory([]); setChatInput("");
     setCurrentBuildId(null);
@@ -1445,7 +1445,7 @@ export default function FireboxAIStudio() {
     setActiveTabPath(null);
     setTabContents({});
     setActiveAgent(null);
-    setActivity("agents");
+    setActivity("workspace");
     setAgentStartTimes({});
     setAgentElapsed({});
     setAgentVisSteps({});
@@ -3680,7 +3680,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           <Github size={15}/> Import from GitHub
                         </button>
                         <button
-                          onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                          onClick={() => { setActivity("workspace"); setSideOpen(false); setTimeout(()=>chatInputRef.current?.focus(),100); }}
                           style={{
                             display:"flex", alignItems:"center", gap:7,
                             padding:"8px 16px", borderRadius:8, border:"none",
@@ -3820,7 +3820,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                           {/* + New card */}
                           <div
-                            onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                            onClick={() => { setActivity("workspace"); setSideOpen(false); setTimeout(()=>chatInputRef.current?.focus(),100); }}
                             style={{
                               background:"transparent",
                               border:`1.5px dashed rgba(255,255,255,0.1)`,
@@ -3867,7 +3867,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         </div>
                         <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
                           <button
-                            onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(()=>chatInputRef.current?.focus(),100); }}
+                            onClick={() => { setActivity("workspace"); setSideOpen(false); setTimeout(()=>chatInputRef.current?.focus(),100); }}
                             style={{
                               padding:"9px 20px", borderRadius:8, border:"none",
                               background:VS.accent, color:"#fff", fontSize:13,
