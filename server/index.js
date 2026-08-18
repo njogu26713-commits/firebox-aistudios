@@ -26,7 +26,7 @@ app.use("/api/git", gitRouter);
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", dbRequired, async (req, res) => {
-  const { description, provider = "cloud", localAi = {}, toolMode = false } = req.body;
+  const { description, projectName = "firebox-project", provider = "cloud", localAi = {}, toolMode = false } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
 
@@ -39,6 +39,7 @@ app.post("/api/build", dbRequired, async (req, res) => {
 
   const build = await Build.create({
     description: description.trim(),
+    projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",
     provider: aiConfig.provider,
     localAi: aiConfig.provider !== "cloud" ? aiConfig : undefined,
     status: "running",

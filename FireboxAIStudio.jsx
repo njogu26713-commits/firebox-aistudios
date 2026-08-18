@@ -1080,7 +1080,7 @@ export default function FireboxAIStudio() {
           buildId: currentBuildId,
           instruction,
           provider: aiProvider,
-          localAi: aiProvider === "local" ? localAiConfig : undefined,
+          localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
         }),
       });
 
@@ -1174,7 +1174,7 @@ export default function FireboxAIStudio() {
       const requestUrl = useLocalEngine ? `${engineBase}/api/plan` : "/api/plan";
       const headers = { "Content-Type": "application/json" };
       if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
-      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, endpoint:localAiConfig.endpoint, model:localAiConfig.model, apiKey:localAiConfig.apiKey, localAi:aiProvider === "local" ? localAiConfig : undefined }) });
+      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, endpoint:localAiConfig.endpoint, model:localAiConfig.model, apiKey:localAiConfig.apiKey, localAi:aiProvider !== "cloud" ? localAiConfig : undefined }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
       setBuildPlan({ ...data.plan, request:text });
@@ -1233,7 +1233,7 @@ export default function FireboxAIStudio() {
             hasFiles: allFiles.length > 0,
             fileNames: allFiles.map(f => f.path),
             provider: aiProvider,
-            localAi: aiProvider === "local" ? localAiConfig : undefined,
+            localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
           }),
         });
 
@@ -1746,41 +1746,17 @@ export default function FireboxAIStudio() {
       return;
     }
 
-    // Load imported files straight into the editor (same as loadProjectFiles)
     try {
-      const res  = await fetch(`/api/build/${buildId}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      const files = data.files || [];
-      setAllFiles(files);
-      setOpenTabs([]); setActiveTabPath(null); setTabContents({});
-      if (files.length > 0) {
-        const first = files[0];
-        setOpenTabs([first]);
-        setActiveTabPath(first.path);
-        setTabContents({ [first.path]: first.content });
-        // Expand parent dirs
-        files.forEach(f => {
-          const parts = f.path.split("/");
-          for (let i = 0; i < parts.length - 1; i++) {
-            setExpandedDirs(prev => new Set([...prev, `${i}:${parts[i]}`]));
-          }
-        });
-      }
-      setDescription(`Imported from GitHub: ${gitRepo.owner}/${gitRepo.repo}`);
-      setCurrentBuildId(buildId);
-      setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
-      setPhase("complete");
-      setActivity("explorer");
-      setSideOpen(true);
-      // Refresh project history
+      const importedBuild = { _id: buildId, description: `Imported from GitHub: ${gitRepo.owner}/${gitRepo.repo}`, projectName: gitRepo.repo };
+      await loadProjectFiles(importedBuild);
+      setGitError("");
       fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(() => {});
     } catch (err) {
       setGitError(err.message);
     }
 
     setGitImporting(false);
-  }, [gitRepo, gitToken, gitImporting]);
+  }, [gitRepo, gitToken, gitImporting, loadProjectFiles]);
 
   /* ── Delete a project ───────────────────────────────────────────────────── */
   const deleteProject = useCallback(async (buildId, e) => {
@@ -3529,7 +3505,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 {(planning || buildPlan) && <div style={{ flexShrink:0, margin:"10px 14px 0", padding:"12px 14px", border:`1px solid ${VS.accent}66`, borderRadius:9, background:`${VS.accent}0d` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8 }}><div style={{ color:VS.textActive, fontSize:12, fontWeight:700 }}>🔥 Firebox Agent plan</div>{planning ? <span style={{ color:VS.accent, fontSize:10 }}>Understanding your request…</span> : <button onClick={() => setBuildPlan(null)} style={{ border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontSize:11 }}>Cancel</button>}</div>{planning ? <div style={{ color:VS.textMuted, fontSize:11 }}>I’ll inspect the request and prepare the build steps before changing the project.</div> : <><div style={{ color:VS.text, fontSize:12, lineHeight:1.5, marginBottom:8 }}>{buildPlan.summary}</div><ol style={{ margin:"0 0 10px 18px", padding:0, color:VS.textMuted, fontSize:11, lineHeight:1.6 }}>{buildPlan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol>{buildPlan.needsConfirmation ? <><div style={{ padding:"8px 10px", borderRadius:7, background:`${VS.warning || "#d7ba7d"}18`, color:VS.textMuted, fontSize:11, marginBottom:8 }}>Confirmation required: {buildPlan.confirmationReason}</div><button onClick={() => confirmBuildPlan(true)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Confirm and start building →</button></> : <button onClick={() => confirmBuildPlan(false)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Start building →</button>}</>}</div>}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${VS.border}`, background:"#252526" }}>
-                    <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${VS.border}` }}><div style={{ color:VS.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:VS.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={VS.textMuted}/><span style={{ color:VS.accent }}>🔥</span><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:VS.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:VS.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:VS.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>
+                    <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${VS.border}` }}><div style={{ color:VS.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:VS.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={VS.textMuted}/><span style={{ color:VS.accent }}>🔥</span><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:VS.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:VS.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:VS.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:VS.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>{projectOpenStatus?.steps?.length > 0 && <div style={{ padding:"8px 12px", borderBottom:`1px solid ${VS.border}`, background:"rgba(255,255,255,0.018)" }}>{projectOpenStatus.steps.map((step, index) => <div key={`${step}-${index}`} style={{ display:"flex", alignItems:"center", gap:6, color:projectOpenStatus.phase === "error" ? VS.error : VS.success, fontSize:9, lineHeight:1.5, marginTop:index ? 3 : 0 }}><span>{projectOpenStatus.phase === "opening" && index === projectOpenStatus.steps.length - 1 ? "●" : "✓"}</span><span>{step}</span></div>)}</div>}
                      <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"12px 10px" }}><div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, color:VS.textActive, fontSize:11, fontWeight:700 }}><Flame size={14} color={VS.accent}/><span>Firebox Agent</span>{(phase === "building" || aiThinking) && <ThinkingDots/>}</div>{agentStates.every(state => state.status === "idle") && !chatHistory.length && !editingFiles ? <div style={{ padding:"14px 8px", color:VS.textFaint, fontSize:11, lineHeight:1.6 }}>The Agent’s live activity will appear here after you send a request.</div> : <>{chatHistory.filter(message => message.role === "user").slice(-3).map((message, index) => <div key={`request-${index}`} style={{ marginBottom:10, padding:"8px 9px", borderRadius:7, background:"rgba(0,120,212,0.10)", border:"1px solid rgba(0,120,212,0.22)", color:VS.text, fontSize:11, lineHeight:1.45 }}><div style={{ color:VS.textFaint, fontSize:9, marginBottom:3 }}>REQUEST</div>{message.text}</div>)}{AGENT_META.map(({ name, Icon, color }) => { const state = agentStates.find(item => item.name === name); if (!state || state.status === "idle") return null; const active = state.status === "working"; const done = state.status === "done"; const failed = state.status === "error"; const steps = AGENT_STEPS[name] || []; const visible = agentVisSteps[name] || 0; return <div key={name} style={{ marginBottom:8, padding:"8px 9px", borderRadius:7, background:active ? `${color}10` : "rgba(255,255,255,0.025)", border:`1px solid ${active ? `${color}55` : "rgba(255,255,255,0.08)"}` }}><div style={{ display:"flex", alignItems:"center", gap:7 }}><span style={{ color:active ? color : done ? VS.success : failed ? VS.error : VS.textMuted, fontSize:12 }}>{active ? "●" : done ? "✓" : failed ? "✕" : "○"}</span><Icon size={13} color={active ? color : done ? VS.success : failed ? VS.error : VS.textMuted}/><span style={{ color:active ? VS.textActive : VS.text, fontSize:11, fontWeight:650 }}>{active ? "Working" : done ? "Completed" : failed ? "Failed" : "Waiting"}</span><span style={{ color:VS.textMuted, fontSize:10 }}>{name}</span>{active && <ThinkingDots/>}</div>{visible > 0 && <div style={{ marginTop:6, paddingLeft:20 }}>{steps.slice(0, visible).map((step, stepIndex) => <div key={`${name}-${stepIndex}`} style={{ display:"flex", alignItems:"center", gap:6, color:stepIndex === visible - 1 && active ? VS.text : VS.textMuted, fontSize:10, lineHeight:1.45, marginTop:3 }}><span>{step.icon}</span><span>{step.text}</span>{stepIndex === visible - 1 && active && <span style={{ width:4, height:4, borderRadius:"50%", background:color, animation:"pulse 0.9s ease-in-out infinite" }}/>}</div>)}</div>}{state.streaming && <div style={{ marginTop:6, paddingLeft:20, color:VS.textFaint, fontSize:9, lineHeight:1.4, maxHeight:42, overflow:"hidden" }}>{state.streaming.slice(-280)}</div>}</div>})}{(editingFiles || editChangedFiles.length > 0 || editError) && <div style={{ padding:"8px 9px", borderRadius:7, background:"rgba(255,255,255,0.025)", border:`1px solid ${editError ? `${VS.error}55` : `${VS.success}44`}`, color:editError ? VS.error : VS.textMuted, fontSize:10 }}>{editingFiles ? "● Editing files…" : editError ? `✕ ${editError}` : `✓ ${editChangedFiles.length} file${editChangedFiles.length === 1 ? "" : "s"} updated`}</div>}{workflowStage?.activity && <div style={{ marginTop:8, color:VS.textFaint, fontSize:10 }}>● {workflowStage.activity}</div>}</>}</div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${VS.border}`, background:"#202020" }}>
                       <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${VS.borderLight}`, borderRadius:8, background:"#181818", color:VS.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
@@ -3867,7 +3843,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   display:"-webkit-box", WebkitLineClamp:2,
                                   WebkitBoxOrient:"vertical", overflow:"hidden",
                                 }}>
-                                  {build.description}
+                                  {isLoading ? "Opening project…" : (build.projectName || build.description)}
                                 </div>
 
                                 {/* Meta row */}
@@ -3879,7 +3855,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   }}>
                                     {isOk && <CheckCircle2 size={10}/>}
                                     {isFail && <AlertTriangle size={10}/>}
-                                    {isOk ? "complete" : build.status}
+                                    {isLoading ? "opening" : isOk ? "complete" : build.status}
                                   </span>
                                   {fileCount > 0 && (
                                     <span style={{ fontSize:11, color:VS.textFaint }}>· {fileCount} files</span>

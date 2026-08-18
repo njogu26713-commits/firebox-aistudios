@@ -290,6 +290,7 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
 
   const build = await Build.create({
     description: `Imported from GitHub: ${owner}/${repo} (branch: ${branch})`,
+    projectName: repo,
     status: "complete",
     agents: [],
     files:  fetchedFiles,
@@ -355,6 +356,7 @@ router.post("/analyze", dbRequired, async (req, res) => {
   // Create a Build record using the analysis agent definitions
   const build = await Build.create({
     description: `GitHub Import Analysis: ${owner}/${repo}\n\n${repoContext}`,
+    projectName: `${repo} analysis`,
     status: "running",
     agents: ANALYZE_AGENT_DEFS.map(a => ({ name: a.name, status: "idle" })),
     files:  [],
