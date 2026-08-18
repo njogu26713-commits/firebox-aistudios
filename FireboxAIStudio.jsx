@@ -3493,7 +3493,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div>
                       <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
                       <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Choose your AI engine</h1>
-                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>Your agent can handle the complete development workflow.</p>
+                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>One Firebox Agent handles the complete development workflow through these capabilities.</p>
                     </div>
                     <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}>
                       <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent, boxShadow:`0 0 8px ${phase === "error" ? VS.error : VS.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
@@ -3541,7 +3541,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1.1fr 0.9fr", gap:16, alignItems:"start" }}>
                     <div style={{ border:`1px solid ${VS.border}`, borderRadius:12, background:"#222223", overflow:"hidden" }}>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 15px", borderBottom:`1px solid ${VS.border}` }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textActive, fontSize:12, fontWeight:700 }}><Workflow size={15} color={VS.accent}/> Agent pipeline</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textActive, fontSize:12, fontWeight:700 }}><Workflow size={15} color={VS.accent}/> Firebox Agent capabilities</div>
                         <span style={{ color:phase === "complete" ? VS.success : VS.textMuted, fontSize:10 }}>{doneCount}/{AGENT_META.length}</span>
                       </div>
                       <div style={{ height:3, background:"rgba(255,255,255,0.06)" }}><div style={{ height:"100%", width:`${progress}%`, background:phase === "complete" ? VS.success : VS.accent, transition:"width .3s ease" }}/></div>
