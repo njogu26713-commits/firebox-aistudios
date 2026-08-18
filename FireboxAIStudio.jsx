@@ -3391,29 +3391,33 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 </div>
               </div>
             ) : activity === "workspace" ? (
-              <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
-                <div style={{ width:"100%", margin:0, padding:isMobile ? "24px 16px 44px" : "38px 28px 58px", boxSizing:"border-box" }}>
-                  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:20, marginBottom:24 }}>
-                    <div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Workflow size={14}/> WORKSPACE</div>
-                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 25 : 32, letterSpacing:"-0.03em", fontWeight:700 }}>What your agents are doing</h1>
-                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.6 }}>Follow the live Firebox development workflow without changing the Agents page.</p>
+              <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:"#181818", color:VS.text, fontFamily:FONT_UI }}>
+                <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 18px", borderBottom:`1px solid ${VS.border}`, background:"#202020" }}>
+                  <div><div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:VS.textMuted, fontSize:11, marginTop:3 }}>Follow your agents and inspect generated project files.</div></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}</div>
+                </div>
+                <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
+                  <div style={{ minHeight:0, overflowY:"auto", borderRight:isMobile ? "none" : `1px solid ${VS.border}`, background:"#202020" }}>
+                    <div style={{ padding:"14px 14px 8px", color:VS.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em" }}>AGENT ACTIVITY</div>
+                    <div style={{ padding:"0 10px 14px" }}><div style={{ display:"flex", justifyContent:"space-between", color:VS.textMuted, fontSize:10, marginBottom:6 }}><span>Pipeline progress</span><span>{doneCount}/{AGENT_META.length}</span></div><div style={{ height:3, background:"rgba(255,255,255,0.08)", borderRadius:3 }}><div style={{ height:"100%", width:`${progress}%`, background:phase === "complete" ? VS.success : VS.accent, borderRadius:3 }}/></div></div>
+                    <div style={{ padding:"0 10px 14px", display:"flex", flexDirection:"column", gap:7 }}>
+                      {AGENT_META.map(({ name, Icon, color }) => {
+                        const state = agentStates.find(a => a.name === name) || { status:"idle" };
+                        const status = state.status || "idle";
+                        const active = status === "working" || activeAgent === name;
+                        const label = active ? "Working now" : status === "done" ? "Completed" : status === "error" ? "Needs attention" : "Waiting";
+                        const labelColor = active ? color : status === "done" ? VS.success : status === "error" ? VS.error : VS.textFaint;
+                        const steps = AGENT_STEPS[name] || [];
+                        const stepIndex = Math.max(0, Math.min((agentVisSteps[name] || 1) - 1, steps.length - 1));
+                        return <div key={name} style={{ padding:"11px 10px", border:`1px solid ${active ? color + "55" : VS.border}`, borderRadius:9, background:active ? `${color}0d` : "rgba(255,255,255,0.025)" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><span style={{ width:28, height:28, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", background:`${color}18`, color }}><Icon size={14}/></span><div style={{ flex:1, minWidth:0 }}><div style={{ color:VS.textActive, fontSize:11, fontWeight:700 }}>{name}</div><div style={{ color:labelColor, fontSize:10, marginTop:2 }}>{label}</div></div>{active && <Loader2 size={13} color={color} style={{ animation:"spin 1s linear infinite" }}/>} {status === "done" && <CheckCircle2 size={14} color={VS.success}/>} {status === "error" && <AlertTriangle size={14} color={VS.error}/>}</div><div style={{ marginTop:8, color:VS.textMuted, fontSize:10, lineHeight:1.45 }}>{active || status === "done" ? (steps[stepIndex]?.text || "Completing assigned work…") : "Ready for work"}</div></div>;
+                      })}
                     </div>
-                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Working" : phase === "complete" ? "Complete" : "Needs attention"}</div>
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8, color:VS.textMuted, fontSize:11 }}><span>Agent progress</span><span>{doneCount}/{AGENT_META.length} complete · {Math.round(progress)}%</span></div>
-                  <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:4, marginBottom:18 }}><div style={{ height:"100%", width:`${progress}%`, background:phase === "complete" ? VS.success : VS.accent, borderRadius:4, transition:"width .3s ease" }}/></div>
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap:12 }}>
-                    {AGENT_META.map(({ name, Icon, color }) => {
-                      const state = agentStates.find(a => a.name === name) || { status:"idle" };
-                      const status = state.status || "idle";
-                      const active = status === "working" || activeAgent === name;
-                      const label = active ? "Working now" : status === "done" ? "Completed" : status === "error" ? "Needs attention" : "Waiting to start";
-                      const labelColor = active ? color : status === "done" ? VS.success : status === "error" ? VS.error : VS.textFaint;
-                      const steps = AGENT_STEPS[name] || [];
-                      const stepIndex = Math.max(0, Math.min((agentVisSteps[name] || 1) - 1, steps.length - 1));
-                      return <div key={name} style={{ padding:"16px", border:`1px solid ${active ? color + "55" : VS.border}`, borderRadius:11, background:active ? `${color}0d` : "rgba(255,255,255,0.025)" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:34, height:34, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", background:`${color}18`, color }}><Icon size={17}/></span><div style={{ flex:1 }}><div style={{ color:VS.textActive, fontSize:13, fontWeight:700 }}>{name}</div><div style={{ color:labelColor, fontSize:11, marginTop:3 }}>{label}</div></div>{active && <Loader2 size={15} color={color} style={{ animation:"spin 1s linear infinite" }}/>} {status === "done" && <CheckCircle2 size={16} color={VS.success}/>} {status === "error" && <AlertTriangle size={16} color={VS.error}/>}</div><div style={{ marginTop:12, paddingTop:10, borderTop:`1px solid ${VS.border}`, color:VS.textMuted, fontSize:11, lineHeight:1.5 }}>{active || status === "done" ? (steps[stepIndex]?.text || "Completing assigned work…") : "Waiting for the previous agent to finish."}</div></div>;
-                    })}
+                  <div style={{ minWidth:0, minHeight:0, display:"flex", flexDirection:"column", background:"#1e1e1e" }}>
+                    <div style={{ height:36, flexShrink:0, display:"flex", alignItems:"stretch", overflowX:"auto", borderBottom:`1px solid ${VS.border}`, background:VS.tabBar }}>
+                      {openTabs.length === 0 ? <div style={{ display:"flex", alignItems:"center", padding:"0 12px", color:VS.textFaint, fontSize:11 }}>No project file selected</div> : openTabs.map(tab => { const isActive = tab.path === activeTabPath; return <button key={tab.path} onClick={() => setActiveTabPath(tab.path)} style={{ display:"flex", alignItems:"center", gap:6, minWidth:110, maxWidth:190, padding:"0 10px", border:"none", borderRight:`1px solid ${VS.border}`, borderTop:`2px solid ${isActive ? VS.accent : "transparent"}`, background:isActive ? VS.activeTab : VS.inactiveTab, color:isActive ? VS.textActive : VS.textMuted, fontFamily:FONT_UI, fontSize:11, cursor:"pointer" }}><FileIcon path={tab.path} size={13}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tab.path.split("/").pop()}</span></button>; })}
+                    </div>
+                    <div style={{ flex:1, minHeight:220 }}>{activeTabPath ? <MonacoEditor height="100%" language={getMonacoLang(activeTabPath)} theme="vs-dark" value={activeContent} onChange={value => { if (activeTabPath) setTabContents(prev => ({ ...prev, [activeTabPath]: value ?? "" })); }} options={{ minimap:{ enabled:false }, fontSize:13, automaticLayout:true, wordWrap:"on", padding:{ top:12 } }} /> : <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:VS.textFaint, fontSize:12 }}>Generated files will appear here after an agent opens a project file.</div>}</div>
                   </div>
                 </div>
               </div>
