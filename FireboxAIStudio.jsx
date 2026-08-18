@@ -3967,7 +3967,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   height:"100%", overflowY:"auto",
                   background:palette.editorBg, fontFamily:FONT_UI,
                 }}>
-                  <div style={{ maxWidth:860, margin:"0 auto", padding:"40px 32px 60px" }}>
+                  <div style={{ width:"100%", maxWidth:"none", margin:0, padding: isMobile ? "24px 12px 48px" : "28px 16px 60px", boxSizing:"border-box" }}>
 
                     {/* Header */}
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:36 }}>
