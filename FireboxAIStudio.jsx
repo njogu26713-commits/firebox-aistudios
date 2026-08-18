@@ -741,7 +741,10 @@ export default function FireboxAIStudio() {
           body: JSON.stringify(localAiConfig),
         });
         const engineData = await engineResponse.json().catch(() => ({}));
-        if (!engineResponse.ok || !engineData.ok) throw new Error(engineData.error || `Local Engine returned HTTP ${engineResponse.status}`);
+        if (!engineResponse.ok || !engineData.ok) {
+          const cause = engineData.cause ? ` (${engineData.cause})` : "";
+          throw new Error(`${engineData.error || `Local Engine returned HTTP ${engineResponse.status}`}${cause}`);
+        }
         const suffix = engineData.selectedModelAvailable === false ? ` Model was not listed by Ollama.` : "";
         setLocalAiTestState("success");
         setLocalAiTestMessage(`Connection works through Local Engine. ${engineData.models?.length || 0} model(s) available.${suffix}`);

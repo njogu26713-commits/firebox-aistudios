@@ -160,9 +160,15 @@ app.post("/api/test-ollama", auth, async (req, res) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
     const models = Array.isArray(data.data) ? data.data.map((model) => model.id).filter(Boolean) : [];
-    res.json({ ok: true, models, selectedModel: config.model, selectedModelAvailable: models.includes(config.model) });
+    res.json({ ok: true, models, selectedModel: config.model, selectedModelAvailable: models.includes(config.model), endpoint: config.endpoint });
   } catch (error) {
-    res.status(400).json({ ok: false, error: error.message });
+    const cause = error?.cause?.code || error?.cause?.message || "unknown network cause";
+    res.status(502).json({
+      ok: false,
+      error: `Ollama request failed at ${OLLAMA_ENDPOINT}: ${error.message}`,
+      cause,
+      endpoint: OLLAMA_ENDPOINT,
+    });
   }
 });
 
