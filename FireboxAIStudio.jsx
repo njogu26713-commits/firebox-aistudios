@@ -1125,6 +1125,8 @@ export default function FireboxAIStudio() {
             messages: historyForApi,
             hasFiles: allFiles.length > 0,
             fileNames: allFiles.map(f => f.path),
+            provider: aiProvider,
+            localAi: aiProvider === "local" ? localAiConfig : undefined,
           }),
         });
 
