@@ -513,10 +513,13 @@ export default function FireboxAIStudio() {
     AGENT_META.map((a) => ({ name:a.name, status:"idle", streaming:"" }))
   );
   const [activeAgent,    setActiveAgent]    = useState(null);
+  const [workflowStage,  setWorkflowStage]  = useState(null);
   const [allFiles,       setAllFiles]       = useState([]);
   const [errorMsg,       setErrorMsg]       = useState("");
   const [recentBuilds,   setRecentBuilds]   = useState([]);
   const [currentBuildId, setCurrentBuildId] = useState(null);
+  const [buildPlan, setBuildPlan] = useState(null);
+  const [planning, setPlanning] = useState(false);
 
   /* edit state */
   const [editingFiles,     setEditingFiles]     = useState(false);
@@ -846,6 +849,7 @@ export default function FireboxAIStudio() {
     setActiveTabPath(null);
     setTabContents({});
     setActiveAgent(null);
+    setWorkflowStage(null);
     setActivity("workspace");
     setAgentStartTimes({});
     setAgentElapsed({});
@@ -892,6 +896,22 @@ export default function FireboxAIStudio() {
       : `/api/build/${buildId}/events`;
     const es = new EventSource(eventUrl);
     esRef.current = es;
+
+    es.addEventListener("workflow-stage-start", e => {
+      try { setWorkflowStage(JSON.parse(e.data)); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("workflow-stage-complete", e => {
+      try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), completed:true })); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("workflow-stage-error", e => {
+      try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), error:true })); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("workflow-repair", e => {
+      try {
+        const repair = JSON.parse(e.data);
+        setChatHistory(prev => [...prev, { role:"ai", text:`Build step failed. I’m investigating and retrying (${repair.attempt}/${repair.maxAttempts})…` }]);
+      } catch { /* ignore malformed repair event */ }
+    });
 
     es.addEventListener("agent-start", e => {
       const { agent } = JSON.parse(e.data);
@@ -975,6 +995,8 @@ export default function FireboxAIStudio() {
     es.addEventListener("build-complete", () => {
       setPhase("complete");
       setActiveAgent(null);
+      setWorkflowStage({ stage:"preview", label:"Preview", activity:"Build complete — preview is ready", completed:true });
+      setPreviewOpen(true);
       es.close();
       fetch("/api/builds").then(r=>r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
     });
@@ -1087,6 +1109,38 @@ export default function FireboxAIStudio() {
     setEditingFiles(false);
   }, [currentBuildId, aiProvider, localAiConfig]);
 
+  const requestBuildPlan = useCallback(async (requestText) => {
+    const text = String(requestText || "").trim();
+    if (!text || planning) return;
+    setPlanning(true);
+    setBuildPlan(null);
+    try {
+      const useLocalEngine = aiProvider === "local";
+      const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
+      if (useLocalEngine && (!engineBase || !localEngineToken.trim())) throw new Error("Local AI planning requires the Local Firebox Engine URL and pairing token.");
+      const requestUrl = useLocalEngine ? `${engineBase}/api/plan` : "/api/plan";
+      const headers = { "Content-Type": "application/json" };
+      if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
+      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, endpoint:localAiConfig.endpoint, model:localAiConfig.model, apiKey:localAiConfig.apiKey, localAi:aiProvider === "local" ? localAiConfig : undefined }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
+      setBuildPlan({ ...data.plan, request:text });
+      setChatHistory(prev => [...prev, { role:"ai", text:`${data.plan.summary}\n\n${data.plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nReview the plan above, then choose Start building.` }]);
+    } catch (error) {
+      setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
+    } finally {
+      setPlanning(false);
+    }
+  }, [planning, aiProvider, localEngineUrl, localEngineToken, localAiConfig, allFiles]);
+
+  const confirmBuildPlan = useCallback(() => {
+    if (!buildPlan?.request || buildPlan.needsConfirmation) return;
+    const request = buildPlan.request;
+    setBuildPlan(null);
+    setDescription(request);
+    startBuild(request);
+  }, [buildPlan, startBuild]);
+
   /* ── Send chat message — AI replies first, then acts ──────────────────── */
   const sendChatMessage = useCallback(async () => {
     const text = chatInput.trim();
@@ -1173,8 +1227,7 @@ export default function FireboxAIStudio() {
 
       // Perform the action the AI decided on
       if (action === "build") {
-        setDescription(text);
-        startBuild(text);
+        await requestBuildPlan(text);
       } else if (action === "edit" && currentBuildId && allFiles.length > 0) {
         startEditFiles(text);
       }
@@ -1186,7 +1239,17 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
     }
-  }, [chatInput, chatHistory, startBuild, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig]);
+
+  const stopBuild = useCallback(() => {
+    esRef.current?.close();
+    esRef.current = null;
+    Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => { clearInterval(elapsed); steps.forEach(clearTimeout); });
+    agentTimerRefs.current = {};
+    setActiveAgent(null);
+    setPhase("idle");
+    setErrorMsg("Agent stopped. No further changes are being made.");
+  }, []);
 
   /* ── Reset ────────────────────────────────────────────────────────────── */
   const reset = () => {
@@ -3393,9 +3456,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             ) : activity === "workspace" ? (
               <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:"#181818", color:VS.text, fontFamily:FONT_UI }}>
                 <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 18px", borderBottom:`1px solid ${VS.border}`, background:"#202020" }}>
-                  <div><div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:VS.textMuted, fontSize:11, marginTop:3 }}>Follow your agents and inspect generated project files.</div></div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}</div>
+                  <div><div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:VS.textMuted, fontSize:11, marginTop:3 }}>{workflowStage?.activity || "Follow your agents and inspect generated project files."}</div></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}{phase === "building" && <button onClick={stopBuild} style={{ marginLeft:6, border:`1px solid ${VS.error}66`, borderRadius:6, background:`${VS.error}12`, color:VS.error, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>Stop Agent</button>}</div>
                 </div>
+                {(planning || buildPlan) && <div style={{ flexShrink:0, margin:"10px 14px 0", padding:"12px 14px", border:`1px solid ${VS.accent}66`, borderRadius:9, background:`${VS.accent}0d` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8 }}><div style={{ color:VS.textActive, fontSize:12, fontWeight:700 }}>🔥 Firebox Agent plan</div>{planning ? <span style={{ color:VS.accent, fontSize:10 }}>Understanding your request…</span> : <button onClick={() => setBuildPlan(null)} style={{ border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontSize:11 }}>Cancel</button>}</div>{planning ? <div style={{ color:VS.textMuted, fontSize:11 }}>I’ll inspect the request and prepare the build steps before changing the project.</div> : <><div style={{ color:VS.text, fontSize:12, lineHeight:1.5, marginBottom:8 }}>{buildPlan.summary}</div><ol style={{ margin:"0 0 10px 18px", padding:0, color:VS.textMuted, fontSize:11, lineHeight:1.6 }}>{buildPlan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol>{buildPlan.needsConfirmation ? <div style={{ padding:"8px 10px", borderRadius:7, background:`${VS.warning || "#d7ba7d"}18`, color:VS.textMuted, fontSize:11 }}>Confirmation required: {buildPlan.confirmationReason}</div> : <button onClick={confirmBuildPlan} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Start building →</button>}</>}</div>}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${VS.border}`, background:"#252526" }}>
                     <div style={{ padding:"12px 12px 7px", color:VS.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em" }}>EXPLORER</div>

@@ -15,6 +15,7 @@ import { AGENT_DEFS } from "./agents/config.js";
 import gitRouter from "./routes/git.js";
 import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
+import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -123,6 +124,33 @@ app.delete("/api/build/:id", dbRequired, async (req, res) => {
     res.json({ ok: true });
   } catch {
     res.status(400).json({ error: "Invalid build id" });
+  }
+});
+
+/* ── POST /api/plan — understand a build request before execution ─────────── */
+app.post("/api/plan", async (req, res) => {
+  const { description, fileNames = [], provider = "cloud", localAi = {} } = req.body || {};
+  if (!description?.trim()) return res.status(400).json({ error: "Description is required" });
+  let aiConfig;
+  try {
+    aiConfig = normalizeAiConfig({ provider, ...localAi });
+    const stream = await getCompletionStream({
+      config: aiConfig,
+      messages: [{ role: "user", content: buildPlanningPrompt({ description: description.trim(), fileNames }) }],
+      maxTokens: 900,
+      temperature: 0.2,
+    });
+    let raw = "";
+    for await (const chunk of stream) {
+      raw += typeof chunk === "string" ? chunk : chunk.choices?.[0]?.delta?.content || "";
+    }
+    const jsonText = raw.match(/\{[\s\S]*\}/)?.[0];
+    let plan;
+    try { plan = normalizePlan(JSON.parse(jsonText || raw)); }
+    catch { plan = normalizePlan({ summary: raw.replace(/```json|```/g, "").trim() }); }
+    res.json({ ok: true, plan });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
   }
 });
 

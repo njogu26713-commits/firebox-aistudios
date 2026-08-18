@@ -2,9 +2,22 @@ import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
 import { getCompletionStream, normalizeAiConfig } from "../aiProvider.js";
+import { AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "./workflow.js";
 
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+async function getStreamWithRepair({ config, messages, maxTokens, temperature, signal, res, agent }) {
+  for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
+    try {
+      return await getCompletionStream({ config, messages, maxTokens, temperature, signal });
+    } catch (error) {
+      if (attempt >= MAX_REPAIR_ATTEMPTS) throw error;
+      sse(res, "workflow-repair", { agent, attempt, maxAttempts: MAX_REPAIR_ATTEMPTS, message: error.message });
+    }
+  }
+  throw new Error("Provider retry limit reached");
 }
 
 export async function runAgentPipeline(build, res, signal) {
@@ -18,13 +31,15 @@ export async function runAgentPipeline(build, res, signal) {
     if (signal?.aborted) break;
 
     const agentDef = AGENT_DEFS[i];
+    const capability = AGENT_CAPABILITIES[agentDef.name] || { id: agentDef.name.toLowerCase(), label: agentDef.task, activity: agentDef.task };
+    sse(res, "workflow-stage-start", { stage: capability.id, label: capability.label, activity: capability.activity, agent: agentDef.name });
 
     await Build.findOneAndUpdate(
       { _id: build._id, "agents.name": agentDef.name },
       { $set: { "agents.$.status": "working", "agents.$.startedAt": new Date() } }
     );
 
-    sse(res, "agent-start", { agent: agentDef.name, task: agentDef.task });
+    sse(res, "agent-start", { agent: agentDef.name, task: agentDef.task, capability });
 
     // Build context from description + all prior agent outputs
     const contextLines = [`## App Description\n${build.description}`];
@@ -33,7 +48,7 @@ export async function runAgentPipeline(build, res, signal) {
     }
 
     try {
-      const stream = await getCompletionStream({
+      const stream = await getStreamWithRepair({
         config: aiConfig,
         messages: [
           { role: "system", content: agentDef.systemPrompt },
@@ -80,10 +95,13 @@ export async function runAgentPipeline(build, res, signal) {
       );
 
       if (files.length > 0) {
+        sse(res, "tool-start", { tool: "create_or_update_files", agent: agentDef.name, count: files.length });
         await Build.findByIdAndUpdate(build._id, { $push: { files: { $each: files } } });
+        sse(res, "tool-complete", { tool: "create_or_update_files", agent: agentDef.name, count: files.length });
       }
 
-      sse(res, "agent-complete", { agent: agentDef.name, output: fullOutput, files });
+      sse(res, "agent-complete", { agent: agentDef.name, output: fullOutput, files, capability });
+      sse(res, "workflow-stage-complete", { stage: capability.id, label: capability.label, agent: agentDef.name });
 
     } catch (err) {
       console.error(`Agent ${agentDef.name} error:`, err.message);
@@ -91,7 +109,8 @@ export async function runAgentPipeline(build, res, signal) {
         { _id: build._id, "agents.name": agentDef.name },
         { $set: { "agents.$.status": "error" } }
       );
-      sse(res, "agent-error", { agent: agentDef.name, message: err.message });
+      sse(res, "agent-error", { agent: agentDef.name, message: err.message, capability });
+      sse(res, "workflow-stage-error", { stage: capability.id, label: capability.label, agent: agentDef.name, message: err.message });
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
       return;
     }

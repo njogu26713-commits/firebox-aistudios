@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { AGENT_DEFS } from "../server/agents/config.js";
 import { extractFiles } from "../server/utils/fileParser.js";
 import { getCompletionStream, normalizeAiConfig } from "../server/aiProvider.js";
+import { buildPlanningPrompt, normalizePlan, AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "../server/agents/workflow.js";
+import { createProjectTools } from "./tools.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.FIREBOX_ENGINE_PORT || 8787);
@@ -46,6 +48,17 @@ function send(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+async function getStreamWithRepair({ config, messages, maxTokens, temperature, res, agent }) {
+  for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
+    try { return await getCompletionStream({ config, messages, maxTokens, temperature }); }
+    catch (error) {
+      if (attempt >= MAX_REPAIR_ATTEMPTS) throw error;
+      send(res, "workflow-repair", { agent, attempt, maxAttempts: MAX_REPAIR_ATTEMPTS, message: error.message });
+    }
+  }
+  throw new Error("Provider retry limit reached");
+}
+
 function runCommand(command, args, cwd, onOutput) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, shell: false, windowsHide: true });
@@ -79,13 +92,17 @@ async function runBuild(job, res) {
   const projectDir = safeWorkspacePath(job.projectName);
   await fs.mkdir(projectDir, { recursive: true });
   const outputs = {};
+  const emit = (event, data) => send(res, event, data);
+  const tools = createProjectTools({ root: projectDir, emit });
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
 
   for (const agent of AGENT_DEFS) {
-    send(res, "agent-start", { agent: agent.name, task: agent.task });
+    const capability = AGENT_CAPABILITIES[agent.name] || { id: agent.name.toLowerCase(), label: agent.task, activity: agent.task };
+    send(res, "workflow-stage-start", { stage: capability.id, label: capability.label, activity: capability.activity, agent: agent.name });
+    send(res, "agent-start", { agent: agent.name, task: agent.task, capability });
     const context = [`## App Description\n${job.description}`];
     for (const [name, output] of Object.entries(outputs)) context.push(`\n## ${name} Agent Output\n${output}`);
-    const stream = await getCompletionStream({
+    const stream = await getStreamWithRepair({
       config,
       messages: [{ role: "system", content: agent.systemPrompt }, { role: "user", content: context.join("\n\n") }],
       maxTokens: 4000,
@@ -107,12 +124,11 @@ async function runBuild(job, res) {
     outputs[agent.name] = full;
     const files = extractFiles(agent.name, full);
     for (const file of files) {
-      const absolute = safeWorkspacePath(file.path, projectDir);
-      await fs.mkdir(path.dirname(absolute), { recursive: true });
-      await fs.writeFile(absolute, file.content, "utf8");
+      await tools.write_file(file.path, file.content);
       send(res, "file-written", { agent: agent.name, path: file.path, language: file.language });
     }
-    send(res, "agent-complete", { agent: agent.name, output: full, files });
+    send(res, "agent-complete", { agent: agent.name, output: full, files, capability });
+    send(res, "workflow-stage-complete", { stage: capability.id, label: capability.label, agent: agent.name });
   }
 
   try {
@@ -148,6 +164,21 @@ app.post("/api/chat", auth, async (req, res) => {
       text += typeof token === "string" ? token : token.choices?.[0]?.delta?.content || "";
     }
     res.json({ ok: true, text });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/plan", auth, async (req, res) => {
+  try {
+    const config = normalizeAiConfig({ provider: "local", endpoint: req.body?.endpoint || OLLAMA_ENDPOINT, model: req.body?.model || OLLAMA_MODEL, apiKey: req.body?.apiKey || OLLAMA_API_KEY });
+    const stream = await getCompletionStream({ config, messages: [{ role: "user", content: buildPlanningPrompt({ description: String(req.body?.description || "").trim(), fileNames: Array.isArray(req.body?.fileNames) ? req.body.fileNames : [] }) }], maxTokens: 900, temperature: 0.2 });
+    let raw = "";
+    for await (const token of stream) raw += typeof token === "string" ? token : token.choices?.[0]?.delta?.content || "";
+    const jsonText = raw.match(/\{[\s\S]*\}/)?.[0];
+    let plan;
+    try { plan = normalizePlan(JSON.parse(jsonText || raw)); } catch { plan = normalizePlan({ summary: raw.replace(/```json|```/g, "").trim() }); }
+    res.json({ ok: true, plan });
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message });
   }
