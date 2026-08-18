@@ -85,6 +85,35 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
   }
 }
 
+export async function getStructuredCompletion({ config, messages, tools = [], maxTokens, temperature, signal }) {
+  const normalized = normalizeAiConfig(config);
+  if (normalized.provider === "local") {
+    const headers = { "Content-Type": "application/json" };
+    if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
+    const response = await fetch(localCompletionUrl(normalized.endpoint), {
+      method: "POST",
+      headers,
+      signal,
+      body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? "auto" : "none", think: false, stream: false, max_tokens: maxTokens, temperature }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Local AI request failed (${response.status})${body ? `: ${body.slice(0, 300)}` : ""}`);
+    }
+    return response.json();
+  }
+  return callWithFallback((client) => client.chat.completions.create({
+    model: DEFAULT_CLOUD_MODEL,
+    messages,
+    tools,
+    tool_choice: tools.length ? "auto" : "none",
+    stream: false,
+    max_tokens: maxTokens,
+    temperature,
+    signal,
+  }));
+}
+
 export async function getCompletionStream({ config, messages, maxTokens, temperature, signal }) {
   const normalized = normalizeAiConfig(config);
   if (normalized.provider === "local") {
