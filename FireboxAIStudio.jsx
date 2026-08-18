@@ -9,7 +9,7 @@ import {
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
   FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
-  Eye, EyeOff, Globe, Plus, Github, Trash2,
+  Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -540,6 +540,9 @@ export default function FireboxAIStudio() {
   /* layout state */
   const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"|"projects"
   const [sideOpen,    setSideOpen]    = useState(true);
+  const [navExpanded, setNavExpanded] = useState(() => {
+    try { return localStorage.getItem("firebox-nav-expanded") !== "false"; } catch { return true; }
+  });
   const [lineCol,     setLineCol]     = useState({ line:1, col:1 });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1974,29 +1977,44 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             }
             return (
               <div style={{
-                width:48, flexShrink:0, background:VS.activityBar,
+                width:navExpanded ? 176 : 48, flexShrink:0, background:VS.activityBar,
                 borderRight:`1px solid ${VS.border}`,
-                display:"flex", flexDirection:"column", alignItems:"center",
-                paddingTop:8, gap:0,
+                display:"flex", flexDirection:"column", alignItems:"stretch",
+                paddingTop:8, gap:0, transition:"width 0.2s ease",
               }}>
+                <button
+                  className="act-btn"
+                  title={navExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                  onClick={() => setNavExpanded(prev => { const next = !prev; try { localStorage.setItem("firebox-nav-expanded", String(next)); } catch {} return next; })}
+                  style={{
+                    display:"flex", alignItems:"center", justifyContent:navExpanded ? "flex-end" : "center",
+                    width:"100%", height:34, padding:navExpanded ? "0 14px" : 0,
+                    background:"transparent", border:"none", color:VS.textMuted, cursor:"pointer",
+                  }}
+                >
+                  {navExpanded ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}
+                </button>
                 {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
                   <button
                     key={id}
                     className="act-btn"
                     title={title}
-                    onClick={() => { setActivity(id); setSideOpen(p => activity===id ? !p : true); }}
+                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                     style={{
-                      position:"relative", display:"flex", alignItems:"center", justifyContent:"center",
-                      width:48, height:48, background:"transparent", border:"none",
-                      borderLeft:`2px solid ${activity===id && sideOpen ? VS.accent : "transparent"}`,
-                      color: activity===id && sideOpen ? VS.textActive : VS.textMuted,
-                      cursor:"pointer", transition:"color 0.15s",
+                      position:"relative", display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center",
+                      gap:navExpanded ? 11 : 0, width:"100%", height:44, padding:navExpanded ? "0 14px" : 0,
+                      background:activity===id ? "rgba(0,120,212,0.08)" : "transparent", border:"none",
+                      borderLeft:`2px solid ${activity===id ? VS.accent : "transparent"}`,
+                      color: activity===id ? VS.textActive : VS.textMuted,
+                      cursor:"pointer", transition:"color 0.15s, background 0.15s",
                     }}
                   >
-                    <Icon size={22}/>
+                    <Icon size={20}/>
+                    {navExpanded && <span style={{ fontSize:12, fontWeight:activity===id ? 600 : 500 }}>{title}</span>}
                     {badge && (
                       <span style={{
-                        position:"absolute", top:6, right:6, minWidth:14, height:14, borderRadius:7,
+                        position:navExpanded ? "static" : "absolute", top:6, right:6, minWidth:14, height:14, borderRadius:7,
+                        marginLeft:navExpanded ? "auto" : 0,
                         background: badgeColor || VS.accent, color:"#fff",
                         fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center",
                         padding:"0 3px",
@@ -2004,14 +2022,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     )}
                   </button>
                 ))}
-                {/* Spacer + settings */}
                 <div style={{ flex:1 }}/>
                 <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  width:48, height:48, background:"transparent", border:"none",
-                  borderLeft:`2px solid ${activity === "settings" && sideOpen ? VS.accent : "transparent"}`, color: activity === "settings" && sideOpen ? VS.textActive : VS.textMuted, cursor:"pointer", marginBottom:4,
+                  display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center", gap:navExpanded ? 11 : 0,
+                  width:"100%", height:44, padding:navExpanded ? "0 14px" : 0, background:activity === "settings" ? "rgba(0,120,212,0.08)" : "transparent", border:"none",
+                  borderLeft:`2px solid ${activity === "settings" ? VS.accent : "transparent"}`, color: activity === "settings" ? VS.textActive : VS.textMuted, cursor:"pointer", marginBottom:4,
                 }}>
-                  <Settings size={22}/>
+                  <Settings size={20}/>{navExpanded && <span style={{ fontSize:12, fontWeight:activity === "settings" ? 600 : 500 }}>Settings</span>}
                 </button>
               </div>
             );
