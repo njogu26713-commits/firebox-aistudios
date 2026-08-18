@@ -13,6 +13,7 @@ import Build from "./models/Build.js";
 import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
 import gitRouter from "./routes/git.js";
+import authRouter from "./routes/auth.js";
 import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
@@ -23,6 +24,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use("/api/git", gitRouter);
+app.use("/api/auth", authRouter);
 
 /* ── POST /api/import/project — persist files from an external project source ── */
 app.post("/api/import/project", dbRequired, async (req, res) => {

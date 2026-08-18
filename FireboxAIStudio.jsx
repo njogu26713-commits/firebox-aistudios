@@ -603,7 +603,18 @@ export default function FireboxAIStudio() {
   const [currentProjectMeta, setCurrentProjectMeta] = useState({ fileCount: 0, framework: null, packageManager: null });
   const [projectOpenStatus, setProjectOpenStatus] = useState(null);
   const [buildPlan, setBuildPlan] = useState(null);
-  const [planning, setPlanning] = useState(false);
+    const [planning,       setPlanning]       = useState(false);
+  const [authUser, setAuthUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [preHomeVisible, setPreHomeVisible] = useState(() => {
+    try { return localStorage.getItem("firebox-prehome-complete") !== "true"; } catch { return true; }
+  });
+  const [authMode, setAuthMode] = useState("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [preHomeTypewriter, setPreHomeTypewriter] = useState("");
 
   /* edit state */
   const [editingFiles,     setEditingFiles]     = useState(false);
@@ -656,6 +667,41 @@ export default function FireboxAIStudio() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me").then(async response => {
+      const data = await response.json().catch(() => ({}));
+      if (!cancelled && response.ok && data.user) {
+        setAuthUser(data.user);
+        setPreHomeVisible(false);
+        try { localStorage.setItem("firebox-prehome-complete", "true"); } catch {}
+      }
+    }).catch(() => {}).finally(() => { if (!cancelled) setAuthChecked(true); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!preHomeVisible) { setPreHomeTypewriter(""); return undefined; }
+    const phrases = ["Build the future with Firebox.", "Turn your ideas into real software.", "Create. Code. Ship with confidence."];
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let deleting = false;
+    let timer;
+    const tick = () => {
+      const phrase = phrases[phraseIndex];
+      if (!deleting) {
+        charIndex = Math.min(charIndex + 1, phrase.length);
+        setPreHomeTypewriter(phrase.slice(0, charIndex));
+        if (charIndex === phrase.length) { deleting = true; timer = setTimeout(tick, 1600); return; }
+      } else {
+        charIndex = Math.max(charIndex - 1, 0);
+        setPreHomeTypewriter(phrase.slice(0, charIndex));
+        if (charIndex === 0) { deleting = false; phraseIndex = (phraseIndex + 1) % phrases.length; timer = setTimeout(tick, 350); return; }
+      }
+      timer = setTimeout(tick, deleting ? 28 : 52);
+    };
+    timer = setTimeout(tick, 500);
+    return () => clearTimeout(timer);
+  }, [preHomeVisible]);
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {
       setTypewriterText("");
@@ -2064,7 +2110,68 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
     }
   }
 
+  const submitAuth = async (event) => {
+    event?.preventDefault();
+    setAuthBusy(true); setAuthMessage("");
+    try {
+      const response = await fetch(`/api/auth/${authMode === "register" ? "register" : "login"}`, {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ email:authEmail, password:authPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Authentication failed");
+      setAuthUser(data.user); setAuthPassword(""); setAuthMessage(""); setPreHomeVisible(false);
+      try { localStorage.setItem("firebox-prehome-complete", "true"); } catch {}
+    } catch (error) { setAuthMessage(error.message); }
+    finally { setAuthBusy(false); }
+  };
+  const continueAsGuest = () => {
+    setPreHomeVisible(false);
+    try { localStorage.setItem("firebox-prehome-complete", "true"); } catch {}
+  };
+  const handleOAuth = async (provider) => {
+    setAuthBusy(true); setAuthMessage("");
+    try {
+      const response = await fetch(`/api/auth/${provider}`);
+      const data = await response.json().catch(() => ({}));
+      if (response.redirected) { window.location.assign(response.url); return; }
+      if (!response.ok) throw new Error(data.error || `${provider} sign-in is not configured yet`);
+      if (data.url) window.location.assign(data.url);
+    } catch (error) { setAuthMessage(error.message); }
+    finally { setAuthBusy(false); }
+  };
   /* ════════════════════════════════════════════════════════════════════════ */
+  if (preHomeVisible) return (
+    <>
+      <style>{`@keyframes firebox-auth-caret { 0%,45%{opacity:1} 46%,100%{opacity:0} } @keyframes firebox-auth-glow { 0%,100%{opacity:.42;transform:scale(.96)} 50%{opacity:.8;transform:scale(1.04)} }`}</style>
+      <div style={{ minHeight:"100vh", width:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:isMobile ? 18 : 32, background:palette.editorBg, color:palette.text, fontFamily:FONT_UI, position:"relative", overflow:"auto" }}>
+        <div style={{ position:"absolute", inset:"12% 18% auto", height:260, background:"radial-gradient(circle, rgba(0,122,204,.16), transparent 68%)", filter:"blur(30px)", pointerEvents:"none", animation:"firebox-auth-glow 5s ease-in-out infinite" }}/>
+        <div style={{ width:"min(460px, 100%)", position:"relative", zIndex:1 }}>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}><FireboxAgentMark size={68} animated/></div>
+          <div style={{ textAlign:"center", marginBottom:22 }}>
+            <div style={{ fontSize:isMobile ? 27 : 34, fontWeight:750, letterSpacing:"-0.04em", color:palette.textActive, minHeight:42 }}>{preHomeTypewriter}<span style={{ display:"inline-block", width:2, height:"1em", marginLeft:3, verticalAlign:"-0.12em", background:palette.accent, animation:"firebox-auth-caret 1s steps(1) infinite" }}/></div>
+            <div style={{ marginTop:9, color:palette.textMuted, fontSize:13, lineHeight:1.6 }}>Your autonomous coding workbench for turning ideas and existing projects into working software.</div>
+          </div>
+          <div style={{ padding:isMobile ? 20 : 26, border:`1px solid ${palette.border}`, borderRadius:16, background:palette.panelBg, boxShadow:"0 24px 80px rgba(0,0,0,.28)" }}>
+            <div style={{ textAlign:"center", marginBottom:18 }}><div style={{ fontSize:17, fontWeight:700, color:palette.textActive }}>{authMode === "register" ? "Create your Firebox account" : "Welcome to Firebox"}</div><div style={{ fontSize:11, color:palette.textMuted, marginTop:5 }}>{authMode === "register" ? "Start building with your own workspace." : "Sign in to continue to your workspace."}</div></div>
+            <div style={{ display:"grid", gap:8 }}>
+              <button type="button" disabled={authBusy} onClick={() => handleOAuth("google")} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:9, padding:"10px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI, fontSize:12, fontWeight:600 }}><span style={{ width:18, height:18, display:"grid", placeItems:"center", borderRadius:4, background:"#fff", color:"#4285F4", fontWeight:800, fontSize:13 }}>G</span> Continue with Google</button>
+              <button type="button" disabled={authBusy} onClick={() => handleOAuth("github")} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:9, padding:"10px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI, fontSize:12, fontWeight:600 }}><Github size={17}/> Continue with GitHub</button>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:10, margin:"17px 0", color:palette.textFaint, fontSize:10 }}><span style={{ flex:1, height:1, background:palette.border }}/><span>OR CONTINUE WITH EMAIL</span><span style={{ flex:1, height:1, background:palette.border }}/></div>
+            <form onSubmit={submitAuth} style={{ display:"grid", gap:10 }}>
+              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email address" autoComplete="email" style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, outline:"none", fontFamily:FONT_UI, fontSize:12 }}/>
+              <input type="password" required minLength={8} value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Password (8+ characters)" autoComplete={authMode === "register" ? "new-password" : "current-password"} style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, outline:"none", fontFamily:FONT_UI, fontSize:12 }}/>
+              <button type="submit" disabled={authBusy} style={{ width:"100%", padding:"11px 12px", marginTop:2, border:"none", borderRadius:8, background:palette.accent, color:"#fff", cursor:authBusy ? "wait" : "pointer", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>{authBusy ? "Please wait…" : authMode === "register" ? "Create account" : "Sign in"}</button>
+            </form>
+            {authMessage && <div style={{ marginTop:12, padding:"9px 10px", border:`1px solid ${palette.error}55`, borderRadius:7, background:`${palette.error}12`, color:palette.error, fontSize:11, lineHeight:1.45 }}>{authMessage}</div>}
+            <div style={{ textAlign:"center", marginTop:15, color:palette.textMuted, fontSize:11 }}>{authMode === "register" ? "Already have an account?" : "New to Firebox?"} <button type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setAuthMessage(""); }} style={{ border:"none", background:"transparent", color:palette.accent, cursor:"pointer", fontSize:11, fontWeight:700 }}>{authMode === "register" ? "Sign in" : "Create an account"}</button></div>
+          </div>
+          <button type="button" onClick={continueAsGuest} style={{ display:"block", margin:"16px auto 0", border:"none", background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI, fontSize:11 }}>Get started without signing in</button>
+        </div>
+      </div>
+    </>
+  );
   return (
     <>
       <style>{`
