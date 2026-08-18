@@ -122,7 +122,20 @@ async function runBuild(job, res, signal) {
   await fs.mkdir(projectDir, { recursive: true });
   const outputs = {};
   const emit = (event, data) => send(res, event, data);
-  const tools = createProjectTools({ root: projectDir, emit });
+  const tools = createProjectTools({
+    root: projectDir,
+    emit,
+    startPreview: async () => {
+      const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
+      const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
+      if (!script) throw new Error("Project has no dev or start script");
+      return startPreviewProcess(projectDir, job.projectName, script);
+    },
+    getPreviewStatus: async () => {
+      const preview = previews.get(job.projectName);
+      return preview ? { running: true, projectName: job.projectName, port: preview.port, url: `http://127.0.0.1:${preview.port}` } : { running: false, projectName: job.projectName };
+    },
+  });
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
   const inspectedProject = await tools.inspect_project();
   send(res, "project-inspected", { files: inspectedProject.files, packageJson: inspectedProject.packageJson ? { name: inspectedProject.packageJson.name, scripts: inspectedProject.packageJson.scripts || {}, dependencies: Object.keys(inspectedProject.packageJson.dependencies || {}) } : null });

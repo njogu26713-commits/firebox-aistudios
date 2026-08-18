@@ -29,7 +29,7 @@ async function runAllowlisted(command, args, cwd, onOutput = () => {}) {
   });
 }
 
-export function createProjectTools({ root, emit = () => {} }) {
+export function createProjectTools({ root, emit = () => {}, startPreview = null, getPreviewStatus = null }) {
   const resolve = (relativePath) => safeWorkspacePath(relativePath, root);
   const withTool = async (name, input, action) => {
     emit("tool-start", { tool: name, input });
@@ -104,5 +104,8 @@ export function createProjectTools({ root, emit = () => {} }) {
     run_command: (command, args = [], onOutput) => withTool("run_command", { command, args }, () => runAllowlisted(command, args, root, onOutput)),
     run_tests: () => withTool("run_tests", {}, () => runAllowlisted(process.platform === "win32" ? "npm.cmd" : "npm", ["test", "--", "--runInBand"], root, (output) => emit("tool-output", { tool: "run_tests", output: output.slice(-4000) }))),
     run_build: () => withTool("run_build", {}, () => runAllowlisted(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], root, (output) => emit("tool-output", { tool: "run_build", output: output.slice(-4000) }))),
+    install_package: (packageName) => withTool("install_package", { package: packageName }, () => runAllowlisted(process.platform === "win32" ? "npm.cmd" : "npm", ["install", String(packageName)], root, (output) => emit("tool-output", { tool: "install_package", output: output.slice(-4000) }))),
+    start_preview: () => withTool("start_preview", {}, async () => startPreview ? startPreview() : { running: false, message: "Preview callback is not configured" }),
+    get_preview_status: () => withTool("get_preview_status", {}, async () => getPreviewStatus ? getPreviewStatus() : { running: false }),
   };
 }
