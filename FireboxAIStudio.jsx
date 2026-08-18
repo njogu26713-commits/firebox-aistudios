@@ -326,12 +326,14 @@ function FireboxAgentMark({ size = 28, animated = false, state = "idle" }) {
         <defs>
           <linearGradient id={gradientId} x1="12" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse"><stop stopColor={accent}/><stop offset="1" stopColor="#A78BFA"/></linearGradient>
         </defs>
+        <circle className="firebox-agent-halo" cx="32" cy="32" r="26" stroke={`url(#${gradientId})`} strokeWidth="1.2" strokeDasharray="1 8" strokeLinecap="round" opacity="0.7"/>
+        <g className="firebox-agent-orbit"><circle cx="32" cy="6" r="2.2" fill={accent}/><circle cx="58" cy="32" r="1.4" fill="#A78BFA"/></g>
         <path d="M32 5C25 14 15 20 15 35c0 12 7.5 22 17 24 9.5-2 17-12 17-24 0-8-3.7-14.7-9.4-20.1-1.2 6.1-4.5 9.6-8.8 11.4 1.1-7.4-1.8-14-8.8-21.3Z" fill={`url(#${gradientId})`} opacity="0.96"/>
         <path d="M32 25c-3.4 5.2-7.5 8.1-7.5 14 0 5.6 3.1 10 7.5 12 4.4-2 7.5-6.4 7.5-12 0-3.4-1.5-6.3-4.2-8.8-.5 2.3-1.5 3.8-3.3 4.8.4-3.4-.8-6.4-4.1-10Z" fill="#181818" opacity="0.9"/>
         <path d="M18 23h6M40 23h6M20 43h6M38 43h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
         <path d="M24 23v5M40 23v5M26 43v-5M38 43v-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.85"/>
         <circle cx="18" cy="23" r="2.6" fill="currentColor"/><circle cx="46" cy="23" r="2.6" fill="currentColor"/><circle cx="20" cy="43" r="2.6" fill="currentColor"/><circle cx="44" cy="43" r="2.6" fill="currentColor"/>
-        <path d="m32 30 1.6 3.3 3.4 1.7-3.4 1.7L32 40l-1.6-3.3-3.4-1.7 3.4-1.7L32 30Z" fill="#fff"/>
+        <g className="firebox-agent-core"><path d="m32 30 1.6 3.3 3.4 1.7-3.4 1.7L32 40l-1.6-3.3-3.4-1.7 3.4-1.7L32 30Z" fill="#fff"/><circle cx="32" cy="35" r="2" fill="#fff" opacity="0.55"/></g>
       </svg>
     </span>
   );
@@ -1883,8 +1885,14 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
         @keyframes spin        { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
         @keyframes dotBounce   { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
         @keyframes avatarPulse { 0%,100%{box-shadow:0 0 0 0 transparent} 50%{box-shadow:0 0 8px 2px rgba(255,255,255,0.08)} }
-        @keyframes fireboxMarkPulse { 0%,100%{transform:scale(1) rotate(0deg);filter:drop-shadow(0 0 0 transparent)} 45%{transform:scale(1.08) rotate(-3deg);filter:drop-shadow(0 0 11px rgba(56,189,248,0.55))} 70%{transform:scale(0.98) rotate(3deg)} }
-        .firebox-agent-mark.is-animated { animation:fireboxMarkPulse 1.65s ease-in-out infinite; transform-origin:center; }
+        @keyframes fireboxMarkPulse { 0%,100%{transform:scale(1);filter:drop-shadow(0 0 2px rgba(56,189,248,0.12))} 42%{transform:scale(1.055);filter:drop-shadow(0 0 14px rgba(56,189,248,0.45))} 70%{transform:scale(0.99)} }
+        @keyframes fireboxMarkOrbit { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes fireboxMarkHalo { 0%,100%{opacity:0.34;stroke-width:1} 50%{opacity:0.92;stroke-width:1.8} }
+        @keyframes fireboxMarkCore { 0%,100%{transform:scale(0.94);opacity:0.72} 50%{transform:scale(1.12);opacity:1} }
+        .firebox-agent-mark.is-animated { animation:fireboxMarkPulse 1.9s cubic-bezier(.45,0,.2,1) infinite; transform-origin:center; }
+        .firebox-agent-mark.is-animated .firebox-agent-orbit { animation:fireboxMarkOrbit 2.7s linear infinite; transform-origin:32px 32px; transform-box:fill-box; }
+        .firebox-agent-mark.is-animated .firebox-agent-halo { animation:fireboxMarkHalo 1.9s ease-in-out infinite; }
+        .firebox-agent-mark.is-animated .firebox-agent-core { animation:fireboxMarkCore 1.9s ease-in-out infinite; transform-origin:32px 35px; transform-box:fill-box; }
         .tree-item:hover  { background:#2A2D2E !important; }
         .tab-item:hover   { background:#2D2D2D !important; }
         .act-btn:hover    { background:#444 !important; }
