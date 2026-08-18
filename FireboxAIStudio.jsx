@@ -174,6 +174,16 @@ const AGENT_META = [
   { name: "Deployment", Icon: Rocket,       color: VS.agentColors.Deployment },
 ];
 
+const AI_PROVIDER_CARDS = [
+  { id:"cloud", Icon:Zap, title:"Cloud AI / Groq", subtitle:"Current default", description:"Fast, optimized AI for building and coding with Firebox.", color:"#38BDF8", action:"Select", enabled:true },
+  { id:"local", Icon:Server, title:"Local AI / Ollama", subtitle:"Your local model", description:"Use any Ollama or OpenAI-compatible model through your local setup.", color:"#4EC994", action:"Configure", enabled:true },
+  { id:"openai", Icon:Brain, title:"OpenAI", subtitle:"GPT models", description:"Powerful general-purpose models for coding, reasoning, and creativity.", color:"#4EC994", action:"Coming soon", enabled:false },
+  { id:"anthropic", Icon:Sparkles, title:"Anthropic", subtitle:"Claude models", description:"Advanced reasoning, large context understanding, and safe-by-design models.", color:"#F3A65B", action:"Coming soon", enabled:false },
+  { id:"google", Icon:Globe, title:"Google", subtitle:"Gemini models", description:"Multimodal capabilities with long context and strong performance.", color:"#60A5FA", action:"Coming soon", enabled:false },
+  { id:"openrouter", Icon:GitBranch, title:"OpenRouter", subtitle:"Multiple providers", description:"Access multiple model providers through one unified interface.", color:"#A78BFA", action:"Coming soon", enabled:false },
+  { id:"custom", Icon:Settings, title:"Custom OpenAI-compatible", subtitle:"Your endpoint", description:"Use your own compatible provider endpoint and API key.", color:"#94A3B8", action:"Configure", enabled:false },
+];
+
 /* ─── Agent sub-steps (shown as collapsible actions) ─────────────────────── */
 const AGENT_STEPS = {
   Architect:  [
@@ -3379,16 +3389,40 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               </div>
             ) : activity === "agents" ? (
               <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
-                <div style={{ maxWidth:1120, margin:"0 auto", padding:isMobile ? "24px 16px 44px" : "38px 42px 58px" }}>
+                <div style={{ width:"100%", margin:0, padding:isMobile ? "24px 16px 44px" : "30px 20px 58px", boxSizing:"border-box" }}>
                   <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:20, marginBottom:28 }}>
                     <div>
                       <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
-                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 25 : 32, letterSpacing:"-0.03em", fontWeight:700 }}>Build with your agents.</h1>
-                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.6 }}>Describe a product and Firebox will coordinate the full build pipeline.</p>
+                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Choose your AI engine</h1>
+                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>Your agent can handle the complete development workflow.</p>
                     </div>
                     <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}>
                       <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent, boxShadow:`0 0 8px ${phase === "error" ? VS.error : VS.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
                     </div>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap:14, marginBottom:24 }}>
+                    {AI_PROVIDER_CARDS.map(({ id, Icon, title, subtitle, description, color, action, enabled }) => {
+                      const selected = aiProvider === id;
+                      const handleSelect = () => {
+                        if (!enabled) { setErrorMsg(`${title} provider is not enabled yet. Cloud AI and Local AI remain available.`); return; }
+                        setErrorMsg("");
+                        if (id === "local") { setAiProvider("local"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); setActivity("settings"); setSideOpen(true); }
+                        else { setAiProvider("cloud"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }
+                      };
+                      return (
+                        <div key={id} style={{ position:"relative", minHeight:245, display:"flex", flexDirection:"column", padding:18, border:`1px solid ${selected ? VS.accent : VS.border}`, borderRadius:12, background:selected ? "linear-gradient(180deg, rgba(0,120,212,0.10), rgba(255,255,255,0.025))" : "rgba(255,255,255,0.025)", boxShadow:selected ? `0 0 0 1px ${VS.accent}44, 0 16px 40px rgba(0,0,0,0.18)` : "none" }}>
+                          {selected && <span style={{ position:"absolute", top:14, right:14, padding:"5px 8px", borderRadius:999, background:"rgba(0,120,212,0.22)", color:VS.accent, fontSize:9, fontWeight:800, letterSpacing:"0.08em" }}>SELECTED</span>}
+                          <div style={{ width:64, height:64, margin:"4px auto 15px", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, background:`${color}22`, color, boxShadow:`inset 0 0 0 1px ${color}55` }}><Icon size={32} strokeWidth={1.8}/></div>
+                          <div style={{ textAlign:"center", color:VS.textActive, fontSize:18, fontWeight:700, letterSpacing:"-0.02em" }}>{title}</div>
+                          <div style={{ textAlign:"center", color, fontSize:12, fontWeight:600, marginTop:6 }}>{subtitle}</div>
+                          <div style={{ flex:1, textAlign:"center", color:VS.textMuted, fontSize:12, lineHeight:1.5, margin:"10px 8px 15px" }}>{description}</div>
+                          <button onClick={handleSelect} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 12px", border:`1px solid ${selected ? VS.accent : VS.borderLight}`, borderRadius:8, background:selected ? "rgba(0,120,212,0.14)" : "transparent", color:selected ? VS.accent : enabled ? color : VS.textMuted, cursor:enabled ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>
+                            {selected ? <Check size={15}/> : <span>{action}</span>}{!selected && enabled && <ChevronRight size={15}/>} {selected && <span>Selected</span>}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(4, 1fr)", gap:10, marginBottom:22 }}>
