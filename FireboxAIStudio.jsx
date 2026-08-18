@@ -3583,7 +3583,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, color:palette.textActive, fontSize:12, fontWeight:700 }}><Layers3 size={15} color={palette.accent}/><span>Start with an idea</span></div>
                     <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr 1fr" : "repeat(5, minmax(0, 1fr))", gap:12 }}>
                       {BUILD_LAUNCHER_TYPES.map(({ Icon, label, description, prompt }) => (
-                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minHeight:122, padding:"15px 14px", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:6, textAlign:"left", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
+                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minHeight:0, aspectRatio:"1 / 1", padding:"18px 16px", display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"flex-start", gap:8, textAlign:"left", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
                           <Icon size={17} color={palette.accent}/><span style={{ fontSize:11, fontWeight:700 }}>{label}</span><span style={{ color:palette.textMuted, fontSize:10, lineHeight:1.45 }}>{description}</span>
                         </button>
                       ))}
