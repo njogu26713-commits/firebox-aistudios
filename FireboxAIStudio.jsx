@@ -117,34 +117,42 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
     fileContext +
     "\n\nFor explicit build requests, produce a professional production-quality result: use a coherent architecture, polished responsive UI, accessible semantic markup, strong visual hierarchy, complete user flows, loading/empty/error states, validated inputs, secure handling of secrets, maintainable components, realistic content, and no placeholders or TODOs. Implement the requested functionality end-to-end and ensure the generated app is testable, buildable, and ready to run.\n\nOnly append one [ACTION:build] tag for an explicit request to build/create a project, or one [ACTION:edit] tag for an explicit request to change/fix/add existing files. Never repeat action tags. Never add an action tag for questions or brainstorming. Put the single action tag on the final line. Do not output internal reasoning.";
 
-  logLocalAiDebug("POST", chatUrl, "model", config.model, "direct browser chat");
-  const response = await fetchLocalAi(chatUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.map((message, index) => ({
-          role: message.role === "ai" ? "assistant" : "user",
-          content: index === messages.length - 1 && message.role === "user"
-            ? `${message.text}\n/no_think`
-            : message.text,
-        })),
-      ],
-      think: false,
-      stream: false,
-      max_tokens: 256,
-      temperature: 0.5,
-    }),
-  });
-  logLocalAiDebug("POST", chatUrl, "HTTP", response.status, "direct browser chat");
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
+  const buildMessages = retry => [
+    { role: "system", content: retry
+      ? `${systemPrompt}\n\nThis is a retry. Return one concise final answer immediately. Do not think aloud. Do not return reasoning_content.`
+      : systemPrompt },
+    ...messages.map((message, index) => ({
+      role: message.role === "ai" ? "assistant" : "user",
+      content: index === messages.length - 1 && message.role === "user"
+        ? `${message.text}\n/no_think`
+        : message.text,
+    })),
+  ];
 
-  const { content } = extractLocalAiReply(data);
-  if (!content) throw new Error("Local AI returned no final assistant content; thinking output was suppressed");
-  return cleanLocalAiChatReply(content);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    logLocalAiDebug("POST", chatUrl, "model", config.model, "direct browser chat", { attempt: attempt + 1 });
+    const response = await fetchLocalAi(chatUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        messages: buildMessages(attempt === 1),
+        think: false,
+        stream: false,
+        max_tokens: 256,
+        temperature: 0.5,
+      }),
+    });
+    logLocalAiDebug("POST", chatUrl, "HTTP", response.status, "direct browser chat", { attempt: attempt + 1 });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
+
+    const { content } = extractLocalAiReply(data);
+    if (content) return cleanLocalAiChatReply(content);
+    logLocalAiDebug("No final content returned; retrying without visible reasoning", { attempt: attempt + 1 });
+  }
+
+  throw new Error("Local AI returned no final assistant content after retry");
 }
 
 /* ─── Agent metadata ─────────────────────────────────────────────────────── */
