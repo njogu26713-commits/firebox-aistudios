@@ -647,6 +647,7 @@ export default function FireboxAIStudio() {
   /* layout state */
   const [activity,    setActivity]    = useState("home");        // "home"|"workspace"|"explorer"|"agents"|"search"|"git"|"projects"
   const [sideOpen,    setSideOpen]    = useState(false);
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [navExpanded, setNavExpanded] = useState(() => {
     try { return localStorage.getItem("firebox-nav-expanded") !== "false"; } catch { return true; }
   });
@@ -2214,6 +2215,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               )}
             </div>
 
+            {!isMobile && (
+              <button onClick={() => { setActivity("explorer"); setSideOpen(false); setExplorerOpen(p => !p); }} title={explorerOpen ? "Hide Explorer" : "Show Explorer"} style={{
+                display:"flex", alignItems:"center", gap:5, padding:"2px 8px",
+                background:explorerOpen ? "#3D3D3D" : "transparent",
+                border:`1px solid ${explorerOpen ? palette.accent : palette.border}`,
+                color:explorerOpen ? palette.accent : palette.textMuted, fontSize:11, borderRadius:4, cursor:"pointer",
+              }}>
+                <PanelLeftOpen size={11} style={{ transform:"rotate(180deg)" }}/><span>Explorer</span>
+              </button>
+            )}
             <button onClick={() => setHistoryOpen(p=>!p)} style={{
               display:"flex", alignItems:"center", gap:5, padding: isMobile ? "4px 8px" : "2px 8px",
               background: historyOpen ? "#3D3D3D" : "transparent",
@@ -2335,7 +2346,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     key={id}
                     className="act-btn"
                     title={title}
-                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else if (id === "workspace") { setActivity("workspace"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); setExplorerOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); setExplorerOpen(false); } else if (id === "workspace") { setActivity("workspace"); setSideOpen(false); setExplorerOpen(false); } else if (id === "explorer") { setActivity("explorer"); setSideOpen(false); setExplorerOpen(p => !p); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); setExplorerOpen(false); } }}
                     style={{
                       position:"relative", display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center",
                       gap:navExpanded ? 11 : 0, width:"100%", height:44, padding:navExpanded ? "0 14px" : 0,
@@ -4349,7 +4360,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 orientation="horizontal"
                 style={{ flex:1, overflow:"hidden" }}
               >
-                {sideOpen && activity !== "home" && activity !== "agents" && (
+                {sideOpen && activity !== "home" && activity !== "agents" && activity !== "explorer" && (
                   <>
                     <Panel
                       defaultSize="20%"
@@ -4366,13 +4377,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       {sideContent}
                     </Panel>
                     <PanelResizeHandle
-                      style={{
-                        width: 4,
-                        background: palette.border,
-                        cursor: "col-resize",
-                        flexShrink: 0,
-                        transition: "background 0.15s",
-                      }}
+                      style={{ width: 4, background: palette.border, cursor: "col-resize", flexShrink: 0, transition: "background 0.15s" }}
                     />
                   </>
                 )}
@@ -4385,6 +4390,27 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 >
                   {editorContent}
                 </Panel>
+                {explorerOpen && (
+                  <>
+                    <PanelResizeHandle
+                      style={{ width: 4, background: palette.border, cursor: "col-resize", flexShrink: 0, transition: "background 0.15s" }}
+                    />
+                    <Panel
+                      defaultSize="22%"
+                      minSize="16%"
+                      maxSize="38%"
+                      style={{
+                        background: palette.sideBar,
+                        borderLeft: `1px solid ${palette.border}`,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {sideContent}
+                    </Panel>
+                  </>
+                )}
               </PanelGroup>
             );
           })()}
