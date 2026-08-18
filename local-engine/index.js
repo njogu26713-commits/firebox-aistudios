@@ -18,6 +18,8 @@ const OLLAMA_ENDPOINT = String(process.env.OLLAMA_ENDPOINT || "http://127.0.0.1:
 const OLLAMA_MODEL = String(process.env.OLLAMA_MODEL || "").trim();
 const OLLAMA_API_KEY = String(process.env.OLLAMA_API_KEY || "").trim();
 const jobs = new Map();
+const previews = new Map();
+const PREVIEW_PORT = Number(process.env.FIREBOX_PREVIEW_PORT || 5173);
 
 if (TOKEN.length < 24) {
   console.error("FIREBOX_ENGINE_TOKEN must be set to a random value of at least 24 characters.");
@@ -57,6 +59,24 @@ async function getStreamWithRepair({ config, messages, maxTokens, temperature, r
     }
   }
   throw new Error("Provider retry limit reached");
+}
+
+function startPreviewProcess(projectDir, projectName, script = "dev", port = PREVIEW_PORT) {
+  const existing = previews.get(projectName);
+  if (existing && !existing.child.killed) return { projectName, port: existing.port, url: `http://127.0.0.1:${existing.port}` };
+  const command = process.platform === "win32" ? "npm.cmd" : "npm";
+  const child = spawn(command, ["run", script, "--", "--host", "0.0.0.0", "--port", String(port)], { cwd: projectDir, shell: false, windowsHide: true });
+  child.on("exit", () => { if (previews.get(projectName)?.child === child) previews.delete(projectName); });
+  previews.set(projectName, { child, port, script });
+  return { projectName, port, url: `http://127.0.0.1:${port}` };
+}
+
+function stopPreviewProcess(projectName) {
+  const preview = previews.get(projectName);
+  if (!preview) return false;
+  preview.child.kill();
+  previews.delete(projectName);
+  return true;
 }
 
 function runCommand(command, args, cwd, onOutput) {
@@ -139,7 +159,13 @@ async function runBuild(job, res, signal) {
   } catch (error) {
     send(res, "tool-error", { message: error.message });
   }
-  send(res, "build-complete", { projectName: job.projectName, workspace: projectDir });
+  let preview = null;
+  try {
+    const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
+    const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
+    if (script) preview = startPreviewProcess(projectDir, job.projectName, script);
+  } catch { /* preview is optional */ }
+  send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview });
 }
 
 const app = express();
@@ -204,6 +230,29 @@ app.post("/api/test-ollama", auth, async (req, res) => {
       endpoint: OLLAMA_ENDPOINT,
     });
   }
+});
+
+app.post("/api/preview/start", auth, async (req, res) => {
+  try {
+    const projectName = String(req.body?.projectName || "").trim();
+    if (!projectName) return res.status(400).json({ error: "Project name is required" });
+    const projectDir = safeWorkspacePath(projectName);
+    const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
+    const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
+    if (!script) return res.status(400).json({ error: "Project has no dev or start script" });
+    res.json({ ok: true, preview: startPreviewProcess(projectDir, projectName, script, Number(req.body?.port || PREVIEW_PORT)) });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.post("/api/preview/stop", auth, (req, res) => {
+  const projectName = String(req.body?.projectName || "").trim();
+  res.json({ ok: true, stopped: stopPreviewProcess(projectName) });
+});
+
+app.get("/api/preview/status", auth, (req, res) => {
+  const projectName = String(req.query?.projectName || "").trim();
+  const preview = previews.get(projectName);
+  res.json({ ok: true, running: Boolean(preview), preview: preview ? { projectName, port: preview.port, url: `http://127.0.0.1:${preview.port}` } : null });
 });
 
 app.post("/api/build", auth, async (req, res) => {

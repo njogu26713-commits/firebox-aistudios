@@ -559,6 +559,7 @@ export default function FireboxAIStudio() {
   const [lineCol,     setLineCol]     = useState({ line:1, col:1 });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   /* AI provider settings — Cloud remains the default and unchanged */
   const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
@@ -848,6 +849,7 @@ export default function FireboxAIStudio() {
     setOpenTabs([]);
     setActiveTabPath(null);
     setTabContents({});
+    setPreviewUrl(null);
     setActiveAgent(null);
     setWorkflowStage(null);
     setActivity("workspace");
@@ -998,7 +1000,10 @@ export default function FireboxAIStudio() {
       setErrorMsg(`${agent}: ${message}`);
     });
 
-    es.addEventListener("build-complete", () => {
+    es.addEventListener("build-complete", e => {
+      let completion = {};
+      try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
+      setPreviewUrl(completion.preview?.url || null);
       setPhase("complete");
       setActiveAgent(null);
       setWorkflowStage({ stage:"preview", label:"Preview", activity:"Build complete — preview is ready", completed:true });
@@ -4039,10 +4044,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </button>
                   </div>
 
-                  {previewContent ? (
+                  {previewUrl || previewContent ? (
                     <iframe
-                      key={activeFile.path}
-                      srcDoc={previewContent}
+                      key={previewUrl || activeFile.path}
+                      src={previewUrl || undefined}
+                      srcDoc={previewUrl ? undefined : previewContent}
                       title="Live preview"
                       sandbox="allow-scripts allow-modals allow-forms allow-popups"
                       style={{ flex:1, border:"none", width:"100%", background:"#fff" }}
