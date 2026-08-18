@@ -1405,13 +1405,15 @@ export default function FireboxAIStudio() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
       setBuildPlan({ ...data.plan, request:text });
-      setChatHistory(prev => [...prev, { role:"ai", text:`${data.plan.summary}\n\n${data.plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nReview the plan above, then choose Start building.` }]);
+      setChatHistory(prev => [...prev, { role:"ai", text:`${data.plan.summary}\n\n${data.plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nStarting the Firebox Agent now…` }]);
+      setBuildPlan(null);
+      await startBuild(text);
     } catch (error) {
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
     } finally {
       setPlanning(false);
     }
-  }, [planning, aiProvider, localEngineUrl, localEngineToken, localAiConfig, allFiles]);
+  }, [planning, aiProvider, localEngineUrl, localEngineToken, localAiConfig, allFiles, startBuild]);
 
   const confirmBuildPlan = useCallback((override = false) => {
     if (!buildPlan?.request || (buildPlan.needsConfirmation && !override)) return;
@@ -1429,6 +1431,11 @@ export default function FireboxAIStudio() {
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
+    if (activity === "home" && allFiles.length === 0) {
+      setChatInput("");
+      await startBuild(text);
+      return;
+    }
     const userMsg = { role: "user", text };
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput("");
@@ -1523,7 +1530,7 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
     }
-  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
 
   const stopBuild = useCallback(() => {
     esRef.current?.close();
@@ -3972,8 +3979,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       const handleSelect = () => {
                         if (!enabled) { setErrorMsg(`${title} provider is not enabled yet. Cloud AI and Local AI remain available.`); return; }
                         setErrorMsg("");
-                        if (id === "local") { setAiProvider("local"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); setActivity("settings"); setSideOpen(true); }
-                        else { setAiProvider("cloud"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }
+                        setAiProvider(id);
+                        setLocalAiTestState("idle");
+                        setLocalAiTestMessage("");
+                        if (id !== "cloud") { setActivity("settings"); setSettingsSection("providers"); setSideOpen(false); }
                       };
                       return (
                         <div key={id} style={{ position:"relative", minHeight:245, display:"flex", flexDirection:"column", padding:18, border:`1px solid ${selected ? palette.accent : palette.border}`, borderRadius:12, background:selected ? "linear-gradient(180deg, rgba(0,120,212,0.10), rgba(255,255,255,0.025))" : "rgba(255,255,255,0.025)", boxShadow:selected ? `0 0 0 1px ${palette.accent}44, 0 16px 40px rgba(0,0,0,0.18)` : "none" }}>
