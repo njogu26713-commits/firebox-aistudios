@@ -2263,10 +2263,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               return (
                 <div style={{
                   position:"absolute", bottom:0, left:0, right:0, zIndex:200,
-                  height:52, flexShrink:0, background:palette.activityBar,
+                  height:58, flexShrink:0, background:palette.activityBar,
                   borderTop:`1px solid ${palette.border}`,
                   display:"flex", flexDirection:"row", alignItems:"center",
-                  justifyContent:"space-around",
+                  justifyContent:"flex-start", overflowX:"auto", overflowY:"hidden",
+                  scrollbarWidth:"none", padding:"0 4px",
                 }}>
                   {navItems.map(({ id, Icon, title, badge, badgeColor }) => (
                     <button
@@ -2277,7 +2278,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       style={{
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
-                        flex:1, height:52, background:"transparent", border:"none",
+                        flex:"0 0 64px", minWidth:64, height:58, background:"transparent", border:"none",
                         borderTop:`2px solid ${activity===id && sideOpen ? palette.accent : "transparent"}`,
                         color: activity===id && sideOpen ? palette.textActive : palette.textMuted,
                         cursor:"pointer", transition:"color 0.15s", gap:3,
@@ -2297,7 +2298,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   ))}
                   <button className="act-btn" title="Settings" onClick={() => { setActivity("settings"); setSideOpen(true); }} style={{
                     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                    flex:1, height:52, background:"transparent", border:"none",
+                    flex:"0 0 64px", minWidth:64, height:58, background:"transparent", border:"none",
                     borderTop:`2px solid ${activity === "settings" && sideOpen ? palette.accent : "transparent"}`, color: activity === "settings" && sideOpen ? palette.textActive : palette.textMuted, cursor:"pointer", gap:3,
                   }}>
                     <Settings size={18}/>
@@ -4018,11 +4019,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <div style={{ fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", marginBottom:14 }}>
                           RECENT PROJECTS
                         </div>
-                        <div style={{
-                          display:"grid",
-                          gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",
-                          gap:14,
-                        }}>
+                          <div style={{
+                            display:"grid",
+                            gridTemplateColumns:isMobile ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))",
+                            gap:isMobile ? 10 : 12,
+                          }}>
                           {recentBuilds.map(build => {
                             const isLoading = loadingProjectId === build._id;
                             const isOk      = build.status === "complete";
@@ -4323,7 +4324,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   {sideOpen && activity !== "home" && activity !== "agents" && (
                     <div style={{
                       position:"absolute", top:0, left:0, right:0,
-                      bottom:52, zIndex:100,
+                      bottom:58, zIndex:100,
                       background:palette.sideBar,
                       borderBottom:`1px solid ${palette.border}`,
                       display:"flex", flexDirection:"column", overflow:"hidden",
@@ -4331,7 +4332,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       {sideContent}
                     </div>
                   )}
-                  <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom:52 }}>
+                  <div style={{                     flex:1, display:"flex", flexDirection:"column", overflow:"hidden", paddingBottom:58 }}>
                     {editorContent}
                   </div>
                 </>
