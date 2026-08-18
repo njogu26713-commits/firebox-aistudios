@@ -51,6 +51,41 @@ const VS = {
 const FONT_UI   = "'Inter', 'Segoe UI', system-ui, sans-serif";
 const FONT_MONO = "'Cascadia Code', 'Fira Code', 'IBM Plex Mono', Menlo, monospace";
 
+function getLocalAiUrls(endpoint) {
+  const normalized = String(endpoint || "").trim().replace(/\/+$/, "");
+  if (!normalized) throw new Error("Local AI endpoint is required");
+
+  const baseUrl = normalized.endsWith("/models")
+    ? normalized.slice(0, -"/models".length)
+    : normalized.endsWith("/chat/completions")
+      ? normalized.slice(0, -"/chat/completions".length)
+      : normalized;
+
+  return {
+    modelsUrl: `${baseUrl}/models`,
+    chatUrl: `${baseUrl}/chat/completions`,
+  };
+}
+
+function logLocalAiDebug(...args) {
+  if (import.meta.env.DEV) console.debug("[Local AI]", ...args);
+}
+
+async function fetchLocalAi(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Request timed out after 15 seconds: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /* ─── Agent metadata ─────────────────────────────────────────────────────── */
 const AGENT_META = [
   { name: "Architect",  Icon: Brain,        color: VS.agentColors.Architect },
@@ -612,19 +647,58 @@ export default function FireboxAIStudio() {
   const testLocalAi = useCallback(async () => {
     setLocalAiTestState("testing");
     setLocalAiTestMessage("");
+    let modelsUrl = "";
+    let chatUrl = "";
+
     try {
-      const res = await fetch("/api/test-local-ai", {
+      const urls = getLocalAiUrls(localAiConfig.endpoint);
+      modelsUrl = urls.modelsUrl;
+      chatUrl = urls.chatUrl;
+      const headers = {};
+      if (localAiConfig.apiKey) headers.Authorization = `Bearer ${localAiConfig.apiKey}`;
+
+      logLocalAiDebug("GET", modelsUrl);
+      const modelsRes = await fetchLocalAi(modelsUrl, { headers });
+      logLocalAiDebug("GET", modelsUrl, "HTTP", modelsRes.status);
+      const modelsData = await modelsRes.json().catch(() => ({}));
+      if (!modelsRes.ok) {
+        throw new Error(`GET ${modelsUrl} failed with HTTP ${modelsRes.status}`);
+      }
+
+      const availableModels = Array.isArray(modelsData.data)
+        ? modelsData.data.map(model => model.id).filter(Boolean)
+        : [];
+      if (availableModels.length && !availableModels.includes(localAiConfig.model)) {
+        throw new Error(`Model "${localAiConfig.model}" was not returned by ${modelsUrl}. Available: ${availableModels.join(", ")}`);
+      }
+
+      logLocalAiDebug("POST", chatUrl, "model", localAiConfig.model);
+      const chatRes = await fetchLocalAi(chatUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(localAiConfig),
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          model: localAiConfig.model,
+          messages: [{ role: "user", content: "Reply with exactly: Firebox Local AI connection OK" }],
+          stream: false,
+          max_tokens: 32,
+          temperature: 0,
+        }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.error || `Error ${res.status}`);
+      logLocalAiDebug("POST", chatUrl, "HTTP", chatRes.status);
+      const chatData = await chatRes.json().catch(() => ({}));
+      if (!chatRes.ok) {
+        throw new Error(`POST ${chatUrl} failed with HTTP ${chatRes.status}`);
+      }
+
+      const reply = chatData.choices?.[0]?.message?.content || chatData.choices?.[0]?.text || "";
+      if (!reply) throw new Error("Local AI returned no assistant content");
+
       setLocalAiTestState("success");
-      setLocalAiTestMessage(data.reply || "Connection works.");
+      setLocalAiTestMessage(`Connection works. ${reply.trim()}`);
     } catch (err) {
+      if (import.meta.env.DEV) console.error("[Local AI] request failed", { modelsUrl, chatUrl, error: err });
       setLocalAiTestState("error");
-      setLocalAiTestMessage(err.message);
+      setLocalAiTestMessage(err.message || "Local AI request failed");
     }
   }, [localAiConfig]);
 
@@ -1835,7 +1909,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         </label>
                         <input
                           value={localAiEndpoint}
-                          onChange={e => setLocalAiEndpoint(e.target.value)}
+                          onChange={e => { setLocalAiEndpoint(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder="http://127.0.0.1:11434/v1"
                           spellCheck="false"
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
@@ -1846,7 +1920,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         </label>
                         <input
                           value={localAiModel}
-                          onChange={e => setLocalAiModel(e.target.value)}
+                          onChange={e => { setLocalAiModel(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder="Enter any compatible local model"
                           spellCheck="false"
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
@@ -1858,7 +1932,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <input
                           type="password"
                           value={localAiApiKey}
-                          onChange={e => setLocalAiApiKey(e.target.value)}
+                          onChange={e => { setLocalAiApiKey(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
                           placeholder="Leave blank if not required"
                           autoComplete="off"
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
