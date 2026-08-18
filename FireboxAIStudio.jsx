@@ -2184,6 +2184,10 @@ export default function FireboxAIStudio() {
   const previewContent = useMemo(() => {
     if (!activeFile || !activeContent) return null;
     const ext = activeFile.path.split(".").pop().toLowerCase();
+    if (activeFile.isBinary && ["png", "jpg", "jpeg", "gif", "webp", "avif"].includes(ext)) {
+      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+      return `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1e1e1e"><img src="data:${mime};base64,${activeContent}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`;
+    }
     if (ext === "html" || ext === "htm") return activeContent;
     if (ext === "css") return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
@@ -2200,6 +2204,12 @@ console.log=(...a)=>{out.textContent+=a.map(x=>typeof x==="object"?JSON.stringif
 try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 </script></html>`;
     if (ext === "svg") return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1e1e1e;}</style></head><body>${activeContent}</body></html>`;
+    if (ext === "json") {
+      let formatted = activeContent;
+      try { formatted = JSON.stringify(JSON.parse(activeContent), null, 2); } catch {}
+      const escaped = formatted.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:20px 28px;font-family:monospace;font-size:13px;line-height:1.6;background:#1e1e1e;color:#d4d4d4;white-space:pre-wrap;}pre{white-space:pre-wrap;}</style></head><body><pre>${escaped}</pre></body></html>`;
+    }
     if (ext === "md") {
       const escaped = activeContent.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:20px 28px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;max-width:800px;background:#fff;color:#333;}pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow:auto;}code{background:#f4f4f4;padding:1px 5px;border-radius:3px;font-size:13px;}</style></head><body><pre style="white-space:pre-wrap;font-family:inherit">${escaped}</pre></body></html>`;
@@ -4587,7 +4597,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           .{activeFile.path.split(".").pop()}
                         </code> files.
                         <br/>
-                        Open an <strong>.html</strong>, <strong>.css</strong>, <strong>.js</strong>, <strong>.svg</strong>, or <strong>.md</strong> file.
+                        Open an <strong>.html</strong>, <strong>.css</strong>, <strong>.js</strong>, <strong>.json</strong>, <strong>.svg</strong>, <strong>.md</strong>, or image file.
                       </div>
                     </div>
                   )}

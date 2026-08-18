@@ -319,10 +319,16 @@ app.post("/api/edit-files", dbRequired, requireAuth, async (req, res) => {
   res.flushHeaders();
   const sse = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-  // Build a compact snapshot of all files to send to the model
-  const fileSummary = build.files.map(f =>
-    `### FILE: ${f.path}\n\`\`\`${f.language || ""}\n${f.content}\n\`\`\``
-  ).join("\n\n");
+  // Build a bounded, editable snapshot. Binary assets and generated dependency/build folders are not useful to the text editor model.
+  const editableFiles = build.files.filter((file) => {
+    const path = String(file.path || "");
+    return !file.isBinary && !/^node_modules\//.test(path) && !/^(dist|build|coverage)\//.test(path);
+  });
+  const fileSummary = editableFiles.map((file) => {
+    const content = String(file.content || "");
+    const bounded = content.length > 14000 ? `${content.slice(0, 14000)}\n/* Firebox truncated this file for context; use the exact visible section only. */` : content;
+    return `### FILE: ${file.path}\n\`\`\`${file.language || ""}\n${bounded}\n\`\`\``;
+  }).join("\n\n").slice(0, 220000);
 
   sse("edit-start", { filesCount: build.files.length });
 
@@ -351,7 +357,7 @@ Rules:
       config: aiConfig,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user",   content: `Current project files:\n\n${fileSummary}\n\nEdit instruction: ${instruction}\n\nApply the minimal changes:` },
+        { role: "user",   content: `Current project files (binary and generated folders omitted; some very large files may be truncated):\n\n${fileSummary}\n\nEdit instruction: ${instruction}\n\nApply the minimal changes. If the requested file is not present in the supplied context, first explain that it needs to be inspected rather than inventing SEARCH text:` },
       ],
       maxTokens: 4000,
       temperature: 0.2,

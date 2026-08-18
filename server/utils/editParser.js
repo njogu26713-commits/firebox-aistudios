@@ -22,8 +22,8 @@ export function parseEditOutput(aiOutput) {
   for (const section of sections) {
     const fileMatch = section.match(/###\s+FILE:\s+([^\n]+)/);
     if (!fileMatch) continue;
-    const filePath = fileMatch[1].trim();
-    if (!filePath) continue;
+    const filePath = fileMatch[1].trim().replace(/^[`"']|[`"']$/g, "").replace(/^\/+/, "").replace(/\\/g, "/");
+    if (!filePath || filePath.includes("\0")) continue;
 
     // Try search/replace hunks first
     const hunks = [];
@@ -37,7 +37,7 @@ export function parseEditOutput(aiOutput) {
       results[filePath] = { hunks };
     } else {
       // Fall back: whole file in a fenced block
-      const fenceMatch = section.match(/```(?:[a-zA-Z]*)\r?\n([\s\S]*?)```/);
+      const fenceMatch = section.match(/```(?:[^\r\n`]*)\r?\n([\s\S]*?)```/);
       if (fenceMatch && fenceMatch[1].trim()) {
         results[filePath] = { fullContent: fenceMatch[1] };
       }
@@ -56,9 +56,10 @@ export function applyEdits(originalContent, edits) {
     return { content: edits.fullContent, applied: 1, failed: 0 };
   }
 
-  let content = originalContent;
+  let content = String(originalContent ?? "");
   let applied = 0;
   let failed = 0;
+  const normalizeNewlines = (value) => String(value ?? "").replace(/\r\n?/g, "\n");
 
   for (const { search, replace } of (edits.hunks || [])) {
     if (content.includes(search)) {
@@ -66,14 +67,26 @@ export function applyEdits(originalContent, edits) {
       content = content.replace(search, replace);
       applied++;
     } else {
-      // Try with normalised line endings
-      const norm = search.replace(/\r\n/g, "\n");
-      if (content.includes(norm)) {
-        content = content.replace(norm, replace);
+      // Try with normalized line endings, which is common when the project uses CRLF but the model emits LF.
+      const normContent = normalizeNewlines(content);
+      const normSearch = normalizeNewlines(search);
+      if (normContent.includes(normSearch)) {
+        content = normContent.replace(normSearch, String(replace ?? ""));
         applied++;
       } else {
-        console.warn(`[editParser] Hunk not found (first 80 chars): ${search.slice(0, 80).replace(/\n/g, "↵")}`);
-        failed++;
+        // Last resort: compare trimmed line endings and trailing whitespace without changing unrelated text.
+        const softSearch = normSearch.split("\n").map(line => line.trimEnd()).join("\n");
+        const softContent = normContent.split("\n").map(line => line.trimEnd()).join("\n");
+        const softIndex = softContent.indexOf(softSearch);
+        if (softIndex !== -1) {
+          const before = softContent.slice(0, softIndex);
+          const after = softContent.slice(softIndex + softSearch.length);
+          content = `${before}${String(replace ?? "")}${after}`;
+          applied++;
+        } else {
+          console.warn(`[editParser] Hunk not found (first 80 chars): ${search.slice(0, 80).replace(/\n/g, "↵")}`);
+          failed++;
+        }
       }
     }
   }
