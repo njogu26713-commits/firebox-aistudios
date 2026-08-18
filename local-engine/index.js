@@ -88,7 +88,7 @@ async function runProjectChecks(projectDir, emit) {
   }
 }
 
-async function runBuild(job, res) {
+async function runBuild(job, res, signal) {
   const projectDir = safeWorkspacePath(job.projectName);
   await fs.mkdir(projectDir, { recursive: true });
   const outputs = {};
@@ -99,6 +99,7 @@ async function runBuild(job, res) {
   send(res, "project-inspected", { files: inspectedProject.files, packageJson: inspectedProject.packageJson ? { name: inspectedProject.packageJson.name, scripts: inspectedProject.packageJson.scripts || {}, dependencies: Object.keys(inspectedProject.packageJson.dependencies || {}) } : null });
 
   for (const agent of AGENT_DEFS) {
+    if (signal?.aborted) throw new Error("Build stopped by user");
     const capability = AGENT_CAPABILITIES[agent.name] || { id: agent.name.toLowerCase(), label: agent.task, activity: agent.task };
     send(res, "workflow-stage-start", { stage: capability.id, label: capability.label, activity: capability.activity, agent: agent.name });
     send(res, "agent-start", { agent: agent.name, task: agent.task, capability });
@@ -218,8 +219,10 @@ app.post("/api/build", auth, async (req, res) => {
 app.get("/api/build/:id/events", auth, async (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: "Build job not found" });
+  const controller = new AbortController();
+  req.on("close", () => controller.abort());
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-  try { await runBuild(job, res); } catch (error) { send(res, "build-error", { message: error.message }); }
+  try { await runBuild(job, res, controller.signal); } catch (error) { if (!controller.signal.aborted) send(res, "build-error", { message: error.message }); }
   jobs.delete(job.id);
   res.end();
 });
