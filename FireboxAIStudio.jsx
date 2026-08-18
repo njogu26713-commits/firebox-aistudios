@@ -2197,11 +2197,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               )}
 
               {/* Panel: Agent pipeline — conversational activity feed */}
-              {(activity === "agents" || activity === "home") && (
+              {activity === "agents" && (
                 <>
                   <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:VS.textMuted, letterSpacing:"0.1em", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span>{activity === "home" ? "HOME" : "AGENT PIPELINE"}</span>
-                    {activity === "agents" && phase !== "idle" && (
+                    <span>AGENT PIPELINE</span>
+                    {phase !== "idle" && (
                       <span style={{ fontSize:10, color: phase==="complete" ? VS.success : VS.textMuted, fontWeight:500, letterSpacing:0 }}>
                         {phase==="complete" ? `✓ ${doneCount}/${AGENT_META.length} done` : `${doneCount}/${AGENT_META.length}`}
                       </span>
@@ -3320,7 +3320,84 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             );
 
             /* editor inner content — shared by mobile & desktop Panel */
-            const editorContent = (
+            const editorContent = activity === "home" ? (
+              <div style={{ flex:1, overflowY:"auto", background:"#1a1a1a", color:VS.text, fontFamily:FONT_UI }}>
+                <div style={{ maxWidth:1040, margin:"0 auto", padding:isMobile ? "28px 18px 44px" : "52px 54px 64px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:24, marginBottom:34 }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:9, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:12 }}>
+                        <Zap size={14}/> FIREBOX AI STUDIO
+                      </div>
+                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 28 : 38, lineHeight:1.08, letterSpacing:"-0.03em", fontWeight:750 }}>
+                        Build something<br/><span style={{ color:VS.accent }}>remarkable.</span>
+                      </h1>
+                      <p style={{ margin:"14px 0 0", maxWidth:540, color:VS.textMuted, fontSize:14, lineHeight:1.65 }}>
+                        Create, refine, and ship full-stack applications with your AI agents. Start a new project, open recent work, or import a repository.
+                      </p>
+                    </div>
+                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, background:"rgba(255,255,255,0.025)", color:VS.textMuted, fontSize:11 }}>
+                      <span style={{ width:7, height:7, borderRadius:"50%", background:VS.success, boxShadow:`0 0 8px ${VS.success}` }}/>
+                      {aiProvider === "cloud" ? "Cloud AI ready" : "Local AI selected"}
+                    </div>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1.35fr 1fr", gap:14, marginBottom:28 }}>
+                    <button
+                      onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 100); }}
+                      style={{ textAlign:"left", padding:"22px 22px 20px", minHeight:148, border:"none", borderRadius:14, color:"#fff", background:"linear-gradient(135deg,#0078D4 0%,#1559a8 100%)", cursor:"pointer", boxShadow:"0 10px 28px rgba(0,120,212,0.22)", fontFamily:FONT_UI }}
+                      onMouseEnter={e => { e.currentTarget.style.transform="translateY(-2px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; }}
+                    >
+                      <Sparkles size={22} style={{ marginBottom:18 }}/>
+                      <div style={{ fontSize:18, fontWeight:700, marginBottom:6 }}>Start with AI</div>
+                      <div style={{ fontSize:12, opacity:0.82, lineHeight:1.5 }}>Describe an app and let the agents build it end to end.</div>
+                    </button>
+                    <button
+                      onClick={() => { setActivity("git"); setSideOpen(true); }}
+                      style={{ textAlign:"left", padding:"22px 22px 20px", minHeight:148, border:`1px solid ${VS.border}`, borderRadius:14, color:VS.text, background:"#252526", cursor:"pointer", fontFamily:FONT_UI }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.transform="translateY(-2px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor=VS.border; e.currentTarget.style.transform="translateY(0)"; }}
+                    >
+                      <Github size={22} color={VS.textMuted} style={{ marginBottom:18 }}/>
+                      <div style={{ fontSize:18, fontWeight:700, marginBottom:6 }}>Import a repository</div>
+                      <div style={{ fontSize:12, color:VS.textMuted, lineHeight:1.5 }}>Bring an existing GitHub project into Firebox.</div>
+                    </button>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginBottom:34 }}>
+                    {[
+                      ["PROJECTS", recentBuilds.length, Package],
+                      ["FILES IN OPEN PROJECT", allFiles.length, Files],
+                      ["AI PROVIDER", aiProvider === "cloud" ? "CLOUD" : "LOCAL", aiProvider === "cloud" ? Globe : Home],
+                    ].map(([label, value, Icon]) => (
+                      <div key={label} style={{ padding:"14px 15px", border:`1px solid ${VS.border}`, borderRadius:10, background:"rgba(255,255,255,0.025)" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:7, color:VS.textFaint, fontSize:9, letterSpacing:"0.1em", fontWeight:700, marginBottom:9 }}><Icon size={12}/>{label}</div>
+                        <div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:13 }}>
+                    <div style={{ color:VS.textActive, fontSize:14, fontWeight:700 }}>Recent projects</div>
+                    <button onClick={() => { setActivity("projects"); setSideOpen(true); }} style={{ display:"flex", alignItems:"center", gap:4, border:"none", background:"transparent", color:VS.accent, fontSize:11, cursor:"pointer" }}>View all <ChevronRight size={13}/></button>
+                  </div>
+                  {recentBuilds.length === 0 ? (
+                    <div style={{ padding:"28px 20px", border:`1px dashed ${VS.border}`, borderRadius:12, color:VS.textMuted, textAlign:"center", fontSize:12, lineHeight:1.6 }}>
+                      Your projects will appear here after your first build.
+                    </div>
+                  ) : (
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, 1fr)", gap:12 }}>
+                      {recentBuilds.slice(0, 6).map(build => (
+                        <button key={build._id} onClick={() => loadProjectFiles(build)} style={{ textAlign:"left", padding:"14px", minHeight:100, border:`1px solid ${VS.border}`, borderRadius:10, background:"#252526", color:VS.text, cursor:"pointer", fontFamily:FONT_UI }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}><FolderOpen size={16} color={VS.accent}/><span style={{ fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{build.description}</span></div>
+                          <div style={{ display:"flex", justifyContent:"space-between", color:VS.textFaint, fontSize:10 }}><span>{build.status}</span><span>{new Date(build.createdAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
               <React.Fragment>
 
             {/* Tab bar */}
