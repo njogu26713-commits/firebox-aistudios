@@ -3328,7 +3328,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{ color:VS.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
                   </div>
 
-                  <div style={{ border:`1px solid ${VS.accent}`, borderRadius:13, background:"#242426", boxShadow:"0 0 0 3px rgba(0,120,212,0.10), 0 12px 30px rgba(0,0,0,0.28)", padding:"13px 14px 10px", margin:"0 auto 28px", maxWidth:800 }}>
+                  <div style={{ border:`1px solid ${VS.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:800 }}>
                     <textarea
                       ref={chatInputRef}
                       value={chatInput}
@@ -3344,7 +3344,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <span style={{ padding:"6px 9px", border:`1px solid ${VS.border}`, borderRadius:6, color:VS.textMuted }}>{aiProvider === "cloud" ? "Cloud AI" : "Local AI"}</span>
                         <span style={{ display:isMobile ? "none" : "inline", color:VS.textFaint }}>Enter to build · Shift+Enter for a new line</span>
                       </div>
-                      <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, borderRadius:8, border:"none", display:"flex", alignItems:"center", justifyContent:"center", background:chatInput.trim() ? VS.accent : "#3a3a3c", color:chatInput.trim() ? "#fff" : VS.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
+                      <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, borderRadius:8, border:"none", display:"flex", alignItems:"center", justifyContent:"center",                         background:"transparent", color:chatInput.trim() ? VS.text : VS.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
                     </div>
                   </div>
 
@@ -3858,7 +3858,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             if (isMobile) {
               return (
                 <>
-                  {sideOpen && (
+                  {sideOpen && activity !== "home" && (
                     <div style={{
                       position:"absolute", top:0, left:0, right:0,
                       bottom:52, zIndex:100,
@@ -3882,7 +3882,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 orientation="horizontal"
                 style={{ flex:1, overflow:"hidden" }}
               >
-                {sideOpen && (
+                {sideOpen && activity !== "home" && (
                   <>
                     <Panel
                       defaultSize="20%"
