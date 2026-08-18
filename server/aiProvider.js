@@ -35,6 +35,14 @@ function localCompletionUrl(endpoint) {
   return endpoint.endsWith("/chat/completions") ? endpoint : `${endpoint}/chat/completions`;
 }
 
+async function fetchProvider(url, options, label) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(`${label} connection failed at ${url}: ${error?.message || "fetch failed"}`);
+  }
+}
+
 async function readJson(response, label) {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -46,7 +54,8 @@ async function readJson(response, label) {
 async function* streamLocalCompletion({ config, messages, maxTokens, temperature, signal }) {
   const headers = { "Content-Type": "application/json" };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-  const response = await fetch(localCompletionUrl(config.endpoint), { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) });
+  const localUrl = localCompletionUrl(config.endpoint);
+  const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) }, "Local AI");
   if (!response.ok) throw new Error(`Local AI request failed (${response.status})`);
   if (!response.body) throw new Error("Local AI returned an empty response body");
   const reader = response.body.getReader();
@@ -118,16 +127,18 @@ function fromGemini(data) {
 async function providerCompletion({ config, messages, tools = [], toolChoice = "auto", maxTokens, temperature, signal }) {
   const tokenField = /^gpt-5(?:[.-]|$)/i.test(config.model || "") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
   if (config.provider === "openai" || config.provider === "openrouter" || config.provider === "custom") {
-    const response = await fetch(`${config.endpoint}/chat/completions`, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, ...tokenField, temperature }) });
+    const providerUrl = `${config.endpoint}/chat/completions`;
+    const response = await fetchProvider(providerUrl, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, ...tokenField, temperature }) }, config.provider);
     return readJson(response, config.provider);
   }
   if (config.provider === "anthropic") {
     const system = messages.find((message) => message.role === "system")?.content;
-    const response = await fetch(`${config.endpoint}/messages`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": config.apiKey, "anthropic-version": "2023-06-01" }, signal, body: JSON.stringify({ model: config.model, system, messages: toAnthropicMessages(messages), tools: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, input_schema: tool.function.parameters })), tool_choice: tools.length ? (toolChoice === "required" ? { type: "any" } : { type: "auto" }) : undefined, max_tokens: maxTokens || 1024, temperature }) });
+    const providerUrl = `${config.endpoint}/messages`;
+    const response = await fetchProvider(providerUrl, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": config.apiKey, "anthropic-version": "2023-06-01" }, signal, body: JSON.stringify({ model: config.model, system, messages: toAnthropicMessages(messages), tools: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, input_schema: tool.function.parameters })), tool_choice: tools.length ? (toolChoice === "required" ? { type: "any" } : { type: "auto" }) : undefined, max_tokens: maxTokens || 1024, temperature }) }, "anthropic");
     return fromAnthropic(await readJson(response, "anthropic"));
   }
   const url = `${config.endpoint}/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ contents: toGeminiContents(messages), tools: tools.length ? [{ functionDeclarations: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters })) }] : undefined, toolConfig: tools.length && toolChoice === "required" ? { functionCallingConfig: { mode: "ANY" } } : undefined, generationConfig: { maxOutputTokens: maxTokens, temperature } }) });
+  const response = await fetchProvider(url, { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ contents: toGeminiContents(messages), tools: tools.length ? [{ functionDeclarations: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters })) }] : undefined, toolConfig: tools.length && toolChoice === "required" ? { functionCallingConfig: { mode: "ANY" } } : undefined, generationConfig: { maxOutputTokens: maxTokens, temperature } }) }, "google");
   return fromGemini(await readJson(response, "google"));
 }
 
@@ -136,7 +147,8 @@ export async function getStructuredCompletion({ config, messages, tools = [], to
   if (normalized.provider === "local") {
     const headers = { "Content-Type": "application/json" };
     if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
-    const response = await fetch(localCompletionUrl(normalized.endpoint), { method: "POST", headers, signal, body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", think: false, stream: false, max_tokens: maxTokens, temperature }) });
+    const localUrl = localCompletionUrl(normalized.endpoint);
+    const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", think: false, stream: false, max_tokens: maxTokens, temperature }) }, "Local AI");
     return readJson(response, "Local AI");
   }
   if (normalized.provider !== "cloud") return providerCompletion({ config: normalized, messages, tools, toolChoice, maxTokens, temperature, signal });

@@ -1505,6 +1505,15 @@ export default function FireboxAIStudio() {
       await startBuild(text);
       return;
     }
+    if (currentBuildId && allFiles.length > 0) {
+      const userMsg = { role: "user", text };
+      setChatHistory(prev => [...prev, userMsg]);
+      setChatInput("");
+      setActivity("workspace");
+      setSideOpen(false);
+      await startEditFiles(text);
+      return;
+    }
     const userMsg = { role: "user", text };
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput("");

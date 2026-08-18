@@ -292,7 +292,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 });
 
 /* ── POST /api/edit-files — targeted AI edit of existing build files ──────── */
-app.post("/api/edit-files", dbRequired, async (req, res) => {
+app.post("/api/edit-files", dbRequired, requireAuth, async (req, res) => {
   const { buildId, instruction, provider = "cloud", localAi = {} } = req.body;
   let aiConfig;
   try {
