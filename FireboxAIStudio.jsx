@@ -10,7 +10,7 @@ import {
   FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
   Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen, Workflow, Flame, Sun, Moon,
-  ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole,
+  ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole, LogOut,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -2129,6 +2129,17 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
     setPreHomeVisible(false);
     try { localStorage.setItem("firebox-prehome-complete", "true"); } catch {}
   };
+  const logout = async () => {
+    try { await fetch("/api/auth/logout", { method:"POST" }); } catch {}
+    setAuthUser(null);
+    setAuthEmail("");
+    setAuthPassword("");
+    setAuthMessage("");
+    setAuthMode("login");
+    setPreHomeVisible(true);
+    try { localStorage.removeItem("firebox-prehome-complete"); } catch {}
+    reset();
+  };
   const handleOAuth = async (provider) => {
     setAuthBusy(true); setAuthMessage("");
     try {
@@ -2507,6 +2518,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         {isLightMode ? <Sun size={15} color={palette.accent}/> : <Moon size={15} color={palette.accent}/>}<span style={{ fontSize:11, fontWeight:650 }}>{isLightMode ? "Light Mode" : "Dark Mode"}</span>
                       </span>
                       <span style={{ fontSize:10, color:palette.textMuted }}>Switch to {isLightMode ? "dark" : "light"}</span>
+                    </button>
+                  </div>
+                  <div style={{ padding:"10px 12px 12px", borderBottom:`1px solid ${palette.border}` }}>
+                    <button onClick={logout} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"9px 11px", border:`1px solid ${palette.error}66`, borderRadius:7, background:`${palette.error}10`, color:palette.error, cursor:"pointer", fontFamily:FONT_UI, fontSize:11, fontWeight:650 }}>
+                      <LogOut size={14}/> Log out{authUser?.email ? ` (${authUser.email})` : ""}
                     </button>
                   </div>
                   <div style={{ padding:"8px 12px 6px", fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", flexShrink:0 }}>
