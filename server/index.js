@@ -29,8 +29,6 @@ app.post("/api/import/project", dbRequired, async (req, res) => {
   const { projectName = "firebox-project", description = "Imported project", source = "upload", sourceMeta = {}, files } = req.body;
   if (!Array.isArray(files) || files.length === 0)
     return res.status(400).json({ error: "At least one project file is required" });
-  if (files.length > 200)
-    return res.status(400).json({ error: "Imported projects are limited to 200 files" });
   const normalizedFiles = files
     .filter(file => file && typeof file.path === "string" && typeof file.content === "string")
     .map(file => ({
@@ -38,10 +36,15 @@ app.post("/api/import/project", dbRequired, async (req, res) => {
       path: file.path.replace(/^\/+/, "").replace(/\\/g, "/"),
       content: file.content,
       language: file.language || "plaintext",
+      encoding: file.encoding === "base64" ? "base64" : "utf8",
+      isBinary: Boolean(file.isBinary),
     }))
-    .filter(file => file.path && file.path.length <= 500 && file.content.length <= 300_000);
+    .filter(file => file.path && file.path.length <= 500);
   if (!normalizedFiles.length)
     return res.status(400).json({ error: "No readable project files were supplied" });
+  const estimatedBytes = normalizedFiles.reduce((total, file) => total + Buffer.byteLength(file.content, "utf8"), 0);
+  if (estimatedBytes > 14 * 1024 * 1024)
+    return res.status(413).json({ error: "This project is too large to store as one Firebox project. Remove generated dependencies or build output and try again." });
   const build = await Build.create({
     description: String(description || "Imported project").trim().slice(0, 500),
     projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",

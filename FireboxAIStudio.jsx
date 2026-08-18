@@ -82,6 +82,11 @@ const BUILD_TYPEWRITER_PROMPTS = [
   "Build an AI-powered customer support application with team workspaces.",
 ];
 
+const IMPORT_BINARY_EXTENSIONS = new Set(["png","jpg","jpeg","gif","webp","ico","bmp","avif","svg","woff","woff2","ttf","eot","otf","pdf","zip","gz","tar","7z","mp4","webm","mov","mp3","wav","ogg","flac","exe","dll","so","dylib"]);
+function isImportBinaryPath(path) {
+  const ext = String(path || "").split(".").pop().toLowerCase();
+  return IMPORT_BINARY_EXTENSIONS.has(ext);
+}
 const BUILD_IDEA_EXAMPLES = [
   { Icon: ShoppingCart, label: "E-commerce", prompt: "Build an e-commerce platform where customers can browse products, add items to a cart, and complete purchases." },
   { Icon: GraduationCap, label: "School Management", prompt: "Build a school management platform with students, teachers, payments, attendance, and reports." },
@@ -834,8 +839,7 @@ export default function FireboxAIStudio() {
   const persistImportedProject = useCallback(async ({ files, projectName, description, source, sourceMeta = {} }) => {
     const normalizedFiles = files
       .filter(file => file?.path && typeof file.content === "string")
-      .map(file => ({ ...file, agent: file.agent || (source === "github" ? "GitHub Import" : "ZIP Import"), language: file.language || "plaintext" }))
-      .slice(0, 200);
+      .map(file => ({ ...file, agent: file.agent || (source === "github" ? "GitHub Import" : "ZIP Import"), language: file.language || "plaintext", encoding: file.encoding || "utf8", isBinary: Boolean(file.isBinary) }));
     if (!normalizedFiles.length) throw new Error("No readable project files found");
     const response = await fetch("/api/import/project", {
       method: "POST",
@@ -866,10 +870,14 @@ export default function FireboxAIStudio() {
       const files = [];
       async function readDir(handle, prefix) {
         for await (const [name, entry] of handle.entries()) {
-          if (name.startsWith(".") || name === "node_modules") continue;
+          if (name === "node_modules" || name === ".git") continue;
           const path = prefix ? `${prefix}/${name}` : name;
           if (entry.kind === "file") {
-            try { files.push({ path, content: await (await entry.getFile()).text(), agent: "Folder Import", language: "" }); } catch {}
+            try {
+              const file = await entry.getFile();
+              const isBinary = isImportBinaryPath(path);
+              files.push({ path, content: await (isBinary ? new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => { const bytes = new Uint8Array(reader.result); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); resolve(btoa(binary)); }; reader.onerror = reject; reader.readAsArrayBuffer(file); }) : file.text()), agent: "Folder Import", language: "", encoding: isBinary ? "base64" : "utf8", isBinary });
+            } catch {}
           } else await readDir(entry, path);
         }
       }
@@ -889,8 +897,11 @@ export default function FireboxAIStudio() {
       for (const [path, entry] of Object.entries(zip.files)) {
         if (entry.dir) continue;
         const seg = path.split("/");
-        if (seg.some(s => s.startsWith(".") || s === "node_modules")) continue;
-        try { files.push({ path, content: await entry.async("string"), agent: "ZIP Import", language: "" }); } catch {}
+        if (seg.some(s => s === "node_modules" || s === ".git")) continue;
+        try {
+          const isBinary = isImportBinaryPath(path);
+          files.push({ path, content: await entry.async(isBinary ? "base64" : "string"), agent: "ZIP Import", language: "", encoding: isBinary ? "base64" : "utf8", isBinary });
+        } catch {}
       }
       const rawName = zipFile.name.replace(/\.zip$/i, "").trim() || "firebox-project";
       await persistImportedProject({ files, projectName: rawName, description: `Imported ZIP: ${zipFile.name}`, source: "zip", sourceMeta: { fileName: zipFile.name, size: zipFile.size } });
@@ -4392,7 +4403,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 {importing ? <><Flame size={34} color={palette.accent} style={{ animation:"pulse 1.2s ease-in-out infinite" }}/><div style={{ marginTop:12, color:palette.text, fontSize:13, fontWeight:600 }}>Importing project…</div><div style={{ marginTop:4, color:palette.textMuted, fontSize:11 }}>Saving files and preparing Workspace</div></> : <><Upload size={30} color={palette.accent}/><div style={{ marginTop:12, color:palette.text, fontSize:14, fontWeight:600 }}>{zipDragActive ? "Drop ZIP to import" : "Drop your ZIP here"}</div><div style={{ marginTop:5, color:palette.textMuted, fontSize:11 }}>or click to browse · .zip supported</div></>}
                 <input ref={zipInputRef} type="file" accept=".zip,application/zip" style={{ display:"none" }} onChange={e => processZipFile(e.target.files?.[0])}/>
               </div>
-              <div style={{ padding:"0 18px 16px", color:palette.textFaint, fontSize:10, lineHeight:1.5 }}>Hidden folders and node_modules are skipped. After import, the Agent can inspect, edit, run, preview, and continue working on this project.</div>
+              <div style={{ padding:"0 18px 16px", color:palette.textFaint, fontSize:10, lineHeight:1.5 }}>Generated dependencies and the .git folder are skipped; project dotfiles such as .env and .github are preserved. After import, the Agent can inspect, edit, run, preview, and continue working on this project.</div>
             </div>
           </div>
         )}

@@ -247,30 +247,19 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
   if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
     return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
 
-  const SKIP_EXT = new Set([
-    "png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot","otf",
-    "pdf","zip","gz","tar","mp4","webm","mp3","wav","ogg","exe","dll","so",
-    "lock","map","min.js","min.css",
-  ]);
+  // Preserve every repository file except generated dependencies and build output.
+  // Source assets, lockfiles, maps, configs, fonts, and documentation are valid
+  // project files and must not be silently discarded during import.
   const SKIP_DIR = new Set([
     "node_modules",".git","dist","build",".next","coverage","vendor",
     "__pycache__",".cache","out",".turbo",
   ]);
-
-  const filteredFiles = fileTree.filter(f => {
-    const parts = f.path.split("/");
-    if (parts.some(p => SKIP_DIR.has(p))) return false;
-    const ext = f.path.split(".").pop().toLowerCase();
-    if (SKIP_EXT.has(ext)) return false;
-    if (f.size && f.size > 150_000) return false; // skip files > 150 KB
-    return true;
+  const BINARY_EXT = new Set(["png","jpg","jpeg","gif","webp","ico","bmp","avif","svg","woff","woff2","ttf","eot","otf","pdf","zip","gz","tar","7z","mp4","webm","mov","mp3","wav","ogg","flac","exe","dll","so","dylib"]);
+  const filesToFetch = fileTree.filter(f => {
+    const parts = String(f.path || "").split("/");
+    return f.path && !parts.some(p => SKIP_DIR.has(p));
   });
-
-  // Sort: smaller files first so we get maximum variety within the cap
-  filteredFiles.sort((a, b) => (a.size || 0) - (b.size || 0));
-
-  const MAX_FILES = 60;
-  const toFetch   = filteredFiles.slice(0, MAX_FILES);
+  const toFetch = filesToFetch;
 
   // Fetch files in parallel (batches of 10 to avoid rate-limits)
   const fetchedFiles = [];
@@ -278,9 +267,17 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
     const batch = toFetch.slice(i, i + 10);
     const results = await Promise.all(batch.map(async f => {
       try {
-        const data    = await ghFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(f.path)}?ref=${branch}`, token);
-        const content = Buffer.from(data.content, "base64").toString("utf8");
+        let data;
+        try {
+          data = await ghFetch(`/repos/${owner}/${repo}/contents/${f.path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(branch)}`, token);
+        } catch {
+          // Contents API has size limits; the Git Blob API can retrieve larger files.
+          data = await ghFetch(`/repos/${owner}/${repo}/git/blobs/${f.sha}`, token);
+        }
+        if (!data.content) throw new Error("GitHub returned no file content");
         const ext     = f.path.split(".").pop().toLowerCase();
+        const isBinary = BINARY_EXT.has(ext);
+        const content = isBinary ? data.content.replace(/\s/g, "") : Buffer.from(data.content, "base64").toString("utf8");
         const LANG_MAP = {
           js:"javascript", jsx:"javascript", ts:"typescript", tsx:"typescript",
           py:"python", json:"json", yml:"yaml", yaml:"yaml", md:"markdown",
@@ -289,7 +286,7 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
         };
         const base     = f.path.split("/").pop().toLowerCase();
         const language = base === "dockerfile" ? "dockerfile" : (LANG_MAP[ext] || "plaintext");
-        return { agent: "GitHub Import", path: f.path, content, language };
+        return { agent: "GitHub Import", path: f.path, content, language, encoding: isBinary ? "base64" : "utf8", isBinary };
       } catch { return null; }
     }));
     fetchedFiles.push(...results.filter(Boolean));

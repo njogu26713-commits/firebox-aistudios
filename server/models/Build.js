@@ -5,6 +5,8 @@ const fileSchema = new mongoose.Schema({
   path:     { type: String, required: true },
   content:  { type: String, default: "" },
   language: { type: String, default: "plaintext" },
+  encoding: { type: String, enum: ["utf8", "base64"], default: "utf8" },
+  isBinary: { type: Boolean, default: false },
 });
 
 const agentSchema = new mongoose.Schema({
