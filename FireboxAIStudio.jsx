@@ -548,8 +548,8 @@ export default function FireboxAIStudio() {
   const newProjRef = useRef(null);
 
   /* layout state */
-  const [activity,    setActivity]    = useState("agents");           // "explorer"|"agents"|"search"|"git"|"projects"
-  const [sideOpen,    setSideOpen]    = useState(true);
+  const [activity,    setActivity]    = useState("workspace");        // "home"|"workspace"|"explorer"|"agents"|"search"|"git"|"projects"
+  const [sideOpen,    setSideOpen]    = useState(false);
   const [navExpanded, setNavExpanded] = useState(() => {
     try { return localStorage.getItem("firebox-nav-expanded") !== "false"; } catch { return true; }
   });
