@@ -1960,7 +1960,11 @@ export default function FireboxAIStudio() {
   const filesByAgent = useMemo(() => {
     const m = {};
     AGENT_META.forEach(a => { m[a.name] = []; });
-    allFiles.forEach(f => { if (m[f.agent]) m[f.agent].push(f); });
+    allFiles.forEach(f => {
+      const group = f.agent || "Imported files";
+      if (!m[group]) m[group] = [];
+      m[group].push(f);
+    });
     return m;
   }, [allFiles]);
 
@@ -2489,9 +2493,10 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           <span>firebox-project</span>
                         </div>
                         {/* Per-agent groups */}
-                        {AGENT_META.map(({ name: agentName, Icon, color }) => {
-                          const agentFiles = filesByAgent[agentName] || [];
-                          if (!agentFiles.length) return null;
+                        {Object.entries(filesByAgent).map(([agentName, agentFiles]) => {
+                          const meta = AGENT_META.find(a => a.name === agentName);
+                          const Icon = meta?.Icon || (agentName === "GitHub Import" ? GitBranch : FolderOpen);
+                          const color = meta?.color || palette.accent;
                           const groupKey = `agent:${agentName}`;
                           const isOpen   = expandedDirs.has(groupKey);
                           const tree     = buildTree(agentFiles);
