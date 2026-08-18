@@ -1318,6 +1318,21 @@ export default function FireboxAIStudio() {
       setErrorMsg(`${agent}: ${message}`);
     });
 
+    es.addEventListener("preview-ready", e => {
+      try {
+        const preview = JSON.parse(e.data);
+        appendActivity({ kind:"preview", status:"done", label:"Preview", text:preview.url ? "Live preview is ready" : "Preview process completed without a URL" });
+        if (preview.url) { setPreviewUrl(preview.url); setPreviewOpen(true); }
+      } catch { /* ignore malformed preview event */ }
+    });
+    es.addEventListener("preview-error", e => {
+      try {
+        const preview = JSON.parse(e.data);
+        appendActivity({ kind:"preview", status:"error", label:"Preview", text:preview.message || "Preview could not be started" });
+        setWorkflowStage(prev => ({ ...(prev || {}), stage:"preview", label:"Preview", activity:preview.message || "Preview could not be started", error:true }));
+      } catch { /* ignore malformed preview event */ }
+    });
+
     es.addEventListener("build-complete", e => {
       streamTerminalRef.current = true;
       let completion = {};

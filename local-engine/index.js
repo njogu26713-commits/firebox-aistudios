@@ -209,8 +209,15 @@ async function runBuild(job, res, signal) {
   if (job.toolMode) {
     await waitForResume(job, res, signal);
     const result = await runAutonomousToolLoop(job, res, tools, config, signal);
+    let preview = null;
+    try {
+      preview = await tools.start_preview();
+      send(res, "preview-ready", preview);
+    } catch (error) {
+      send(res, "preview-error", { message: error.message });
+    }
     send(res, "agent-complete", { agent: "Firebox Agent", capability: { id: "autonomous", label: "Firebox Agent", activity: "Completed controlled tool workflow" }, output: result.content });
-    send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview: previews.get(job.projectName) ? { projectName: job.projectName, port: previews.get(job.projectName).port, url: `http://127.0.0.1:${previews.get(job.projectName).port}` } : null });
+    send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview: preview?.url ? preview : null });
     return;
   }
 
@@ -259,11 +266,12 @@ async function runBuild(job, res, signal) {
   }
   let preview = null;
   try {
-    const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
-    const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
-    if (script) preview = await startPreviewProcess(projectDir, job.projectName, script);
-  } catch { /* preview is optional */ }
-  send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview });
+    preview = await tools.start_preview();
+    send(res, "preview-ready", preview);
+  } catch (error) {
+    send(res, "preview-error", { message: error.message });
+  }
+  send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview: preview?.url ? preview : null });
 }
 
 const app = express();
