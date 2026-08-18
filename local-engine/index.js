@@ -121,7 +121,7 @@ async function startPreviewProcess(projectDir, projectName, script = null, port 
   const existing = previews.get(projectName);
   if (existing && existing.child.exitCode === null && !existing.child.killed) {
     const url = `http://127.0.0.1:${existing.port}`;
-    if (await probePreview(url)) return { projectName, port: existing.port, url, healthy: true, status:"running", framework:existing.framework, packageManager:existing.packageManager, script:existing.script, startedAt:existing.startedAt };
+    if (await probePreview(url)) return { projectName, port: existing.port, url, gatewayUrl:previewGatewayUrl(projectName), healthy: true, status:"running", framework:existing.framework, packageManager:existing.packageManager, script:existing.script, startedAt:existing.startedAt };
     stopPreviewProcess(projectName);
   }
   const command = packageManagerCommand(packageManager);
@@ -144,7 +144,12 @@ async function startPreviewProcess(projectDir, projectName, script = null, port 
   await waitForPreviewReady(url, child);
   preview.status = "running";
   preview.healthy = true;
-  return { projectName, port:allocatedPort, url, healthy: true, status:"running", framework, packageManager, script:selectedScript, startedAt:preview.startedAt };
+  return { projectName, port:allocatedPort, url, gatewayUrl:previewGatewayUrl(projectName), healthy: true, status:"running", framework, packageManager, script:selectedScript, startedAt:preview.startedAt };
+}
+
+function previewGatewayUrl(projectName, runtimePath = "") {
+  const suffix = runtimePath ? `/${String(runtimePath).replace(/^\/+/, "")}` : "/";
+  return `http://127.0.0.1:${PORT}/preview/${encodeURIComponent(projectName)}${suffix}?token=${encodeURIComponent(TOKEN)}`;
 }
 
 function stopPreviewProcess(projectName) {
@@ -395,6 +400,25 @@ app.post("/api/test-ollama", auth, async (req, res) => {
   }
 });
 
+app.all("/preview/:projectName/*", auth, async (req, res) => {
+  const projectName = String(req.params.projectName || "").trim();
+  const runtime = previews.get(projectName);
+  if (!runtime || runtime.child.exitCode !== null || runtime.child.killed) return res.status(404).send("Preview runtime is not running");
+  const runtimePath = String(req.params[0] || "").replace(/^\/+/, "");
+  const target = `http://127.0.0.1:${runtime.port}/${runtimePath}`;
+  try {
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers.authorization;
+    const response = await fetch(target, { method:req.method, headers, redirect:"manual" });
+    res.status(response.status);
+    response.headers.forEach((value, key) => { if (!["content-encoding", "content-length", "transfer-encoding"].includes(key)) res.setHeader(key, value); });
+    res.send(Buffer.from(await response.arrayBuffer()));
+  } catch (error) {
+    res.status(502).send(`Preview gateway error: ${error.message}`);
+  }
+});
+
 app.post("/api/preview/start", auth, async (req, res) => {
   try {
     const projectName = String(req.body?.projectName || "").trim();
@@ -420,7 +444,7 @@ app.get("/api/preview/status", auth, async (req, res) => {
   }
   const url = `http://127.0.0.1:${preview.port}`;
   const healthy = await probePreview(url);
-  res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url, framework:preview.framework, packageManager:preview.packageManager, script:preview.script, status:preview.status, healthy } : null, status:healthy ? "running" : (preview.status || "starting"), lastOutput: preview.lastOutput || null, error:preview.error || null });
+  res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url, gatewayUrl:previewGatewayUrl(projectName), framework:preview.framework, packageManager:preview.packageManager, script:preview.script, status:preview.status, healthy } : null, status:healthy ? "running" : (preview.status || "starting"), lastOutput: preview.lastOutput || null, error:preview.error || null });
 });
 
 app.post("/api/build", auth, async (req, res) => {

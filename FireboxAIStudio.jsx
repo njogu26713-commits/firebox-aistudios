@@ -672,6 +672,10 @@ export default function FireboxAIStudio() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewStatus, setPreviewStatus] = useState("stopped");
+  const [previewError, setPreviewError] = useState("");
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const refreshPreview = useCallback(() => setPreviewRefreshKey(value => value + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1321,13 +1325,18 @@ export default function FireboxAIStudio() {
     es.addEventListener("preview-ready", e => {
       try {
         const preview = JSON.parse(e.data);
-        appendActivity({ kind:"preview", status:"done", label:"Preview", text:preview.url ? "Live preview is ready" : "Preview process completed without a URL" });
-        if (preview.url) { setPreviewUrl(preview.url); setPreviewOpen(true); }
+        const browserPreviewUrl = preview.gatewayUrl || preview.url || null;
+        setPreviewStatus(browserPreviewUrl ? "running" : "error");
+        setPreviewError(browserPreviewUrl ? "" : "Preview process completed without a URL");
+        appendActivity({ kind:"preview", status:browserPreviewUrl ? "done" : "error", label:"Preview", text:browserPreviewUrl ? "Live preview is ready" : "Preview process completed without a URL" });
+        if (browserPreviewUrl) { setPreviewUrl(browserPreviewUrl); setPreviewOpen(true); }
       } catch { /* ignore malformed preview event */ }
     });
     es.addEventListener("preview-error", e => {
       try {
         const preview = JSON.parse(e.data);
+        setPreviewStatus("error");
+        setPreviewError(preview.message || "Preview could not be started");
         appendActivity({ kind:"preview", status:"error", label:"Preview", text:preview.message || "Preview could not be started" });
         setWorkflowStage(prev => ({ ...(prev || {}), stage:"preview", label:"Preview", activity:preview.message || "Preview could not be started", error:true }));
       } catch { /* ignore malformed preview event */ }
@@ -1337,8 +1346,10 @@ export default function FireboxAIStudio() {
       streamTerminalRef.current = true;
       let completion = {};
       try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
-      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:completion.preview?.url ? "Build complete — live preview is ready" : "Build complete — no live runtime preview was returned" });
-      const livePreviewUrl = completion.preview?.url || null;
+      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:(completion.preview?.gatewayUrl || completion.preview?.url) ? "Build complete — live preview is ready" : "Build complete — no live runtime preview was returned" });
+      const livePreviewUrl = completion.preview?.gatewayUrl || completion.preview?.url || null;
+      setPreviewStatus(livePreviewUrl ? "running" : "stopped");
+      setPreviewError(livePreviewUrl ? "" : "No live runtime preview was returned");
       setPreviewUrl(livePreviewUrl);
       setPhase("complete");
       setActiveAgent(null);
@@ -4566,19 +4577,25 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       <span style={{ fontSize:11, fontWeight:600, color:palette.text }}>
                         {activeFile.path.split("/").pop()} — Preview
                       </span>
+                      <span style={{ fontSize:10, color:previewStatus === "running" ? "#2ea043" : previewStatus === "error" ? "#f85149" : palette.textMuted }}>
+                        {previewStatus === "running" ? "● Running" : previewStatus === "error" ? "⚠ Error" : previewStatus === "starting" ? "◌ Starting" : "○ Stopped"}
+                      </span>
                     </div>
-                    <button
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <button onClick={refreshPreview} disabled={!previewUrl && !previewContent} style={{ background:"none", border:"none", cursor:previewUrl || previewContent ? "pointer" : "default", color:palette.textMuted, padding:2 }} title="Refresh preview"><RefreshCw size={12}/></button>
+                      <button
                       onClick={() => setPreviewOpen(false)}
                       style={{ background:"none", border:"none", cursor:"pointer", color:palette.textMuted, padding:2 }}
                       title="Close preview"
                     >
                       <X size={12}/>
-                    </button>
+                      </button>
+                    </div>
                   </div>
 
                   {previewUrl || previewContent ? (
                     <iframe
-                      key={previewUrl || activeFile.path}
+                      key={`${previewUrl || activeFile.path}-${previewRefreshKey}`}
                       src={previewUrl || undefined}
                       srcDoc={previewUrl ? undefined : previewContent}
                       title="Live preview"
