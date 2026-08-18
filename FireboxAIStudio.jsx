@@ -107,10 +107,14 @@ async function fetchLocalAi(url, options = {}) {
   return fetch(url, options);
 }
 
-async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
-  const { chatUrl } = getLocalAiUrls(config.endpoint);
+async function requestLocalChat({ config, messages, hasFiles, fileNames, engine }) {
+  const engineBase = String(engine?.url || "").trim().replace(/\/+$/, "");
+  const viaEngine = Boolean(engineBase && String(engine?.token || "").trim());
+  const { chatUrl: directChatUrl } = getLocalAiUrls(config.endpoint);
+  const chatUrl = viaEngine ? `${engineBase}/api/chat` : directChatUrl;
   const headers = { "Content-Type": "application/json" };
-  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  if (viaEngine) headers.Authorization = `Bearer ${String(engine.token).trim()}`;
+  else if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
   const fileContext = hasFiles && fileNames.length
     ? `\nThe user currently has a project open with these files: ${fileNames.slice(0, 20).join(", ")}.`
     : "\nThe user has no project files open yet.";
@@ -132,12 +136,14 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
   ];
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    logLocalAiDebug("POST", chatUrl, "model", config.model, "direct browser chat", { attempt: attempt + 1 });
+    logLocalAiDebug("POST", chatUrl, "model", config.model, viaEngine ? "local engine chat" : "direct browser chat", { attempt: attempt + 1 });
     const response = await fetchLocalAi(chatUrl, {
       method: "POST",
       headers,
       body: JSON.stringify({
+        endpoint: config.endpoint,
         model: config.model,
+        apiKey: config.apiKey,
         messages: buildMessages(attempt === 1),
         think: false,
         stream: false,
@@ -149,7 +155,7 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
 
-    const { content } = extractLocalAiReply(data);
+    const content = viaEngine ? readLocalAiText(data.text) : extractLocalAiReply(data).content;
     if (content) return cleanLocalAiChatReply(content);
     logLocalAiDebug("No final content returned; retrying without visible reasoning", { attempt: attempt + 1 });
   }
@@ -724,8 +730,23 @@ export default function FireboxAIStudio() {
     setLocalAiTestMessage("");
     let modelsUrl = "";
     let chatUrl = "";
+    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
 
     try {
+      if (engineBase && localEngineToken.trim()) {
+        const engineUrl = `${engineBase}/api/test-ollama`;
+        const engineResponse = await fetch(engineUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localEngineToken.trim()}` },
+          body: JSON.stringify(localAiConfig),
+        });
+        const engineData = await engineResponse.json().catch(() => ({}));
+        if (!engineResponse.ok || !engineData.ok) throw new Error(engineData.error || `Local Engine returned HTTP ${engineResponse.status}`);
+        const suffix = engineData.selectedModelAvailable === false ? ` Model was not listed by Ollama.` : "";
+        setLocalAiTestState("success");
+        setLocalAiTestMessage(`Connection works through Local Engine. ${engineData.models?.length || 0} model(s) available.${suffix}`);
+        return;
+      }
       const urls = getLocalAiUrls(localAiConfig.endpoint);
       modelsUrl = urls.modelsUrl;
       chatUrl = urls.chatUrl;
@@ -777,7 +798,7 @@ export default function FireboxAIStudio() {
       setLocalAiTestState("error");
       setLocalAiTestMessage(err.message || "Local AI request failed");
     }
-  }, [localAiConfig]);
+  }, [localAiConfig, localEngineUrl, localEngineToken]);
 
   const testLocalEngine = useCallback(async () => {
     setLocalAiTestState("testing");

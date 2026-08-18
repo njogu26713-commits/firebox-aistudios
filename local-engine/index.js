@@ -137,6 +137,20 @@ app.get("/health", auth, async (req, res) => {
   res.json({ ok: true, engine: "firebox-local", workspace: WORKSPACE, ollamaEndpoint: OLLAMA_ENDPOINT, model: OLLAMA_MODEL || null });
 });
 
+app.post("/api/chat", auth, async (req, res) => {
+  try {
+    const config = normalizeAiConfig({ provider: "local", endpoint: req.body?.endpoint || OLLAMA_ENDPOINT, model: req.body?.model || OLLAMA_MODEL, apiKey: req.body?.apiKey || OLLAMA_API_KEY });
+    const stream = await getCompletionStream({ config, messages: Array.isArray(req.body?.messages) ? req.body.messages : [], maxTokens: 256, temperature: 0.5 });
+    let text = "";
+    for await (const token of stream) {
+      text += typeof token === "string" ? token : token.choices?.[0]?.delta?.content || "";
+    }
+    res.json({ ok: true, text });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
 app.post("/api/test-ollama", auth, async (req, res) => {
   try {
     const config = normalizeAiConfig({ provider: "local", endpoint: req.body?.endpoint || OLLAMA_ENDPOINT, model: req.body?.model || OLLAMA_MODEL, apiKey: req.body?.apiKey || OLLAMA_API_KEY });
