@@ -64,20 +64,61 @@ async function getStreamWithRepair({ config, messages, maxTokens, temperature, r
   throw new Error("Provider retry limit reached");
 }
 
-function startPreviewProcess(projectDir, projectName, script = "dev", port = PREVIEW_PORT) {
+async function probePreview(url, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, redirect: "manual" });
+    return response.status >= 200 && response.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForPreviewReady(url, child, maxWaitMs = 15000) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.killed) throw new Error("Preview process exited before becoming ready");
+    if (await probePreview(url)) return true;
+    await sleep(250);
+  }
+  throw new Error(`Preview did not become healthy within ${maxWaitMs}ms`);
+}
+
+async function startPreviewProcess(projectDir, projectName, script = "dev", port = PREVIEW_PORT) {
   const existing = previews.get(projectName);
-  if (existing && !existing.child.killed) return { projectName, port: existing.port, url: `http://127.0.0.1:${existing.port}` };
+  if (existing && existing.child.exitCode === null && !existing.child.killed) {
+    const url = `http://127.0.0.1:${existing.port}`;
+    if (await probePreview(url)) return { projectName, port: existing.port, url, healthy: true };
+    stopPreviewProcess(projectName);
+  }
   const command = process.platform === "win32" ? "npm.cmd" : "npm";
   const child = spawn(command, ["run", script, "--", "--host", "0.0.0.0", "--port", String(port)], { cwd: projectDir, shell: false, windowsHide: true });
-  child.on("exit", () => { if (previews.get(projectName)?.child === child) previews.delete(projectName); });
-  previews.set(projectName, { child, port, script });
-  return { projectName, port, url: `http://127.0.0.1:${port}` };
+  const preview = { child, port, script, startedAt: new Date().toISOString(), lastOutput: "" };
+  child.stdout?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
+  child.stderr?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
+  child.on("error", (error) => { preview.error = error.message; });
+  child.on("exit", (code, signal) => {
+    preview.exitCode = code;
+    preview.signal = signal;
+    if (previews.get(projectName)?.child === child) previews.delete(projectName);
+  });
+  previews.set(projectName, preview);
+  const url = `http://127.0.0.1:${port}`;
+  await waitForPreviewReady(url, child);
+  return { projectName, port, url, healthy: true };
 }
 
 function stopPreviewProcess(projectName) {
   const preview = previews.get(projectName);
   if (!preview) return false;
-  preview.child.kill();
+  const child = preview.child;
+  if (child.exitCode === null && !child.killed) {
+    child.kill("SIGTERM");
+    setTimeout(() => { if (child.exitCode === null && !child.killed) child.kill("SIGKILL"); }, 2000).unref?.();
+  }
   previews.delete(projectName);
   return true;
 }
@@ -155,7 +196,10 @@ async function runBuild(job, res, signal) {
     },
     getPreviewStatus: async () => {
       const preview = previews.get(job.projectName);
-      return preview ? { running: true, projectName: job.projectName, port: preview.port, url: `http://127.0.0.1:${preview.port}` } : { running: false, projectName: job.projectName };
+      if (!preview || preview.child.exitCode !== null || preview.child.killed) return { running: false, projectName: job.projectName, error: preview?.error || null };
+      const url = `http://127.0.0.1:${preview.port}`;
+      const healthy = await probePreview(url);
+      return { running: healthy, healthy, projectName: job.projectName, port: preview.port, url, lastOutput: preview.lastOutput || null };
     },
   });
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
@@ -217,7 +261,7 @@ async function runBuild(job, res, signal) {
   try {
     const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
     const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
-    if (script) preview = startPreviewProcess(projectDir, job.projectName, script);
+    if (script) preview = await startPreviewProcess(projectDir, job.projectName, script);
   } catch { /* preview is optional */ }
   send(res, "build-complete", { projectName: job.projectName, workspace: projectDir, preview });
 }
