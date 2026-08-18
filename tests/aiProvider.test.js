@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { test } from "node:test";
-import { testLocalAi } from "../server/aiProvider.js";
+import { testLocalAi, normalizeAiConfig, getStructuredCompletion } from "../server/aiProvider.js";
 
 test("testLocalAi sends an OpenAI-compatible streaming request", async () => {
   let requestBody;
@@ -32,5 +32,37 @@ test("testLocalAi sends an OpenAI-compatible streaming request", async () => {
     assert.equal(requestBody.stream, true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+
+test("normalizes supported external providers with safe defaults", () => {
+  assert.equal(normalizeAiConfig({ provider: "openai", apiKey: "key" }).model, "gpt-4o-mini");
+  assert.equal(normalizeAiConfig({ provider: "anthropic", apiKey: "key" }).endpoint, "https://api.anthropic.com/v1");
+  assert.throws(() => normalizeAiConfig({ provider: "google" }), /API key is required/);
+});
+
+test("OpenAI-compatible provider preserves Firebox tool calls", async () => {
+  const originalFetch = global.fetch;
+  let requestUrl;
+  try {
+    global.fetch = async (url, options) => {
+      requestUrl = String(url);
+      const body = JSON.parse(options.body);
+      assert.equal(body.model, "gpt-test");
+      assert.equal(body.tools[0].function.name, "read_file");
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "", tool_calls: [{ id: "call-1", type: "function", arguments: JSON.stringify({ path: "package.json" }), function: { name: "read_file", arguments: JSON.stringify({ path: "package.json" }) } }] } }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const result = await getStructuredCompletion({
+      config: { provider: "openai", endpoint: "https://example.test/v1", model: "gpt-test", apiKey: "key" },
+      messages: [{ role: "user", content: "Inspect the project" }],
+      tools: [{ type: "function", function: { name: "read_file", description: "Read a file", parameters: { type: "object", properties: {} } } }],
+      maxTokens: 100,
+      temperature: 0,
+    });
+    assert.equal(requestUrl, "https://example.test/v1/chat/completions");
+    assert.equal(result.choices[0].message.tool_calls[0].function.name, "read_file");
+  } finally {
+    global.fetch = originalFetch;
   }
 });
