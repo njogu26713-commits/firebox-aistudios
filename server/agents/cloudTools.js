@@ -1,4 +1,4 @@
-import { Build } from "../models/Build.js";
+import Build from "../models/Build.js";
 
 const clip = (value, length = 12000) => String(value ?? "").slice(0, length);
 
