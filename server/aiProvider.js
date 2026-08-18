@@ -1,66 +1,54 @@
 import { callWithFallback } from "./groqPool.js";
 
 const DEFAULT_CLOUD_MODEL = "llama-3.3-70b-versatile";
+const PROVIDER_DEFAULTS = {
+  openai: { endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  anthropic: { endpoint: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
+  google: { endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.0-flash" },
+  openrouter: { endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
+};
+const SUPPORTED_EXTERNAL = new Set(Object.keys(PROVIDER_DEFAULTS));
 
 export function normalizeAiConfig(input = {}) {
-  const provider = input.provider === "local" ? "local" : "cloud";
-
+  const provider = String(input.provider || "cloud").toLowerCase();
   if (provider === "cloud") return { provider: "cloud" };
-
-  const endpoint = String(input.endpoint || "").trim().replace(/\/+$/, "");
-  const model = String(input.model || "").trim();
-  const apiKey = String(input.apiKey || "").trim();
-
-  if (!endpoint) throw new Error("Local AI endpoint is required");
-  if (!model) throw new Error("Local AI model identifier is required");
-
-  let parsed;
-  try {
-    parsed = new URL(endpoint);
-  } catch {
-    throw new Error("Local AI endpoint must be a valid http(s) URL");
+  if (provider === "local" || SUPPORTED_EXTERNAL.has(provider)) {
+    const defaults = provider === "local" ? {} : PROVIDER_DEFAULTS[provider];
+    const endpoint = String(input.endpoint || defaults.endpoint || "").trim().replace(/\/+$/, "");
+    const model = String(input.model || defaults.model || "").trim();
+    const apiKey = String(input.apiKey || "").trim();
+    if (!endpoint) throw new Error(`${provider === "local" ? "Local AI" : provider} endpoint is required`);
+    if (!model) throw new Error(`${provider === "local" ? "Local AI" : provider} model identifier is required`);
+    let parsed;
+    try { parsed = new URL(endpoint); } catch { throw new Error("AI endpoint must be a valid http(s) URL"); }
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("AI endpoint must use http or https");
+    if (provider !== "local" && !apiKey) throw new Error(`${provider} API key is required`);
+    return { provider, endpoint, model, apiKey };
   }
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Local AI endpoint must use http or https");
-  }
-
-  return { provider: "local", endpoint, model, apiKey };
+  throw new Error(`Unsupported AI provider: ${provider}`);
 }
 
 function localCompletionUrl(endpoint) {
-  return endpoint.endsWith("/chat/completions")
-    ? endpoint
-    : `${endpoint}/chat/completions`;
+  return endpoint.endsWith("/chat/completions") ? endpoint : `${endpoint}/chat/completions`;
+}
+
+async function readJson(response, label) {
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`${label} request failed (${response.status})${body ? `: ${body.slice(0, 500)}` : ""}`);
+  }
+  return response.json();
 }
 
 async function* streamLocalCompletion({ config, messages, maxTokens, temperature, signal }) {
   const headers = { "Content-Type": "application/json" };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-
-  const response = await fetch(localCompletionUrl(config.endpoint), {
-    method: "POST",
-    headers,
-    signal,
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      think: false,
-      stream: true,
-      max_tokens: maxTokens,
-      temperature,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Local AI request failed (${response.status})${body ? `: ${body.slice(0, 300)}` : ""}`);
-  }
+  const response = await fetch(localCompletionUrl(config.endpoint), { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) });
+  if (!response.ok) throw new Error(`Local AI request failed (${response.status})`);
   if (!response.body) throw new Error("Local AI returned an empty response body");
-
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -68,21 +56,57 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
       buffer += decoder.decode(value, { stream: true });
       const events = buffer.split("\n\n");
       buffer = events.pop() || "";
-
       for (const event of events) {
         const line = event.split("\n").find((entry) => entry.startsWith("data:"));
         if (!line) continue;
         const payload = line.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
-        let parsed;
-        try { parsed = JSON.parse(payload); } catch { continue; }
+        let parsed; try { parsed = JSON.parse(payload); } catch { continue; }
         const token = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || "";
         if (token) yield token;
       }
     }
-  } finally {
-    reader.releaseLock();
+  } finally { reader.releaseLock(); }
+}
+
+function openAiHeaders(config) {
+  return { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` };
+}
+
+function toAnthropicMessages(messages) {
+  return messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content || "" }));
+}
+
+function fromAnthropic(data) {
+  const content = (data.content || []).filter((part) => part.type === "text").map((part) => part.text).join("");
+  const toolCalls = (data.content || []).filter((part) => part.type === "tool_use").map((part) => ({ id: part.id, type: "function", function: { name: part.name, arguments: JSON.stringify(part.input || {}) } }));
+  return { choices: [{ message: { role: "assistant", content, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) } }] };
+}
+
+function toGeminiContents(messages) {
+  return messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: String(message.content || "") }] }));
+}
+
+function fromGemini(data) {
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = parts.filter((part) => part.text).map((part) => part.text).join("");
+  const toolCalls = parts.filter((part) => part.functionCall).map((part, index) => ({ id: `gemini-call-${index}`, type: "function", function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) } }));
+  return { choices: [{ message: { role: "assistant", content: text, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) } }] };
+}
+
+async function providerCompletion({ config, messages, tools = [], maxTokens, temperature, signal }) {
+  if (config.provider === "openai" || config.provider === "openrouter") {
+    const response = await fetch(`${config.endpoint}/chat/completions`, { method: "POST", headers: openAiHeaders(config), signal, body: JSON.stringify({ model: config.model, messages, tools, tool_choice: tools.length ? "auto" : "none", stream: false, max_tokens: maxTokens, temperature }) });
+    return readJson(response, config.provider);
   }
+  if (config.provider === "anthropic") {
+    const system = messages.find((message) => message.role === "system")?.content;
+    const response = await fetch(`${config.endpoint}/messages`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": config.apiKey, "anthropic-version": "2023-06-01" }, signal, body: JSON.stringify({ model: config.model, system, messages: toAnthropicMessages(messages), tools: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, input_schema: tool.function.parameters })), max_tokens: maxTokens || 1024, temperature }) });
+    return fromAnthropic(await readJson(response, "anthropic"));
+  }
+  const url = `${config.endpoint}/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ contents: toGeminiContents(messages), tools: tools.length ? [{ functionDeclarations: tools.map((tool) => ({ name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters })) }] : undefined, generationConfig: { maxOutputTokens: maxTokens, temperature } }) });
+  return fromGemini(await readJson(response, "google"));
 }
 
 export async function getStructuredCompletion({ config, messages, tools = [], maxTokens, temperature, signal }) {
@@ -90,60 +114,29 @@ export async function getStructuredCompletion({ config, messages, tools = [], ma
   if (normalized.provider === "local") {
     const headers = { "Content-Type": "application/json" };
     if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
-    const response = await fetch(localCompletionUrl(normalized.endpoint), {
-      method: "POST",
-      headers,
-      signal,
-      body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? "auto" : "none", think: false, stream: false, max_tokens: maxTokens, temperature }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Local AI request failed (${response.status})${body ? `: ${body.slice(0, 300)}` : ""}`);
-    }
-    return response.json();
+    const response = await fetch(localCompletionUrl(normalized.endpoint), { method: "POST", headers, signal, body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? "auto" : "none", think: false, stream: false, max_tokens: maxTokens, temperature }) });
+    return readJson(response, "Local AI");
   }
-  return callWithFallback((client) => client.chat.completions.create({
-    model: DEFAULT_CLOUD_MODEL,
-    messages,
-    tools,
-    tool_choice: tools.length ? "auto" : "none",
-    stream: false,
-    max_tokens: maxTokens,
-    temperature,
-    signal,
-  }));
+  if (normalized.provider !== "cloud") return providerCompletion({ config: normalized, messages, tools, maxTokens, temperature, signal });
+  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, tools, tool_choice: tools.length ? "auto" : "none", stream: false, max_tokens: maxTokens, temperature, signal }));
 }
 
 export async function getCompletionStream({ config, messages, maxTokens, temperature, signal }) {
   const normalized = normalizeAiConfig(config);
-  if (normalized.provider === "local") {
-    return streamLocalCompletion({ config: normalized, messages, maxTokens, temperature, signal });
+  if (normalized.provider === "local") return streamLocalCompletion({ config: normalized, messages, maxTokens, temperature, signal });
+  if (normalized.provider !== "cloud") {
+    const response = await providerCompletion({ config: normalized, messages, maxTokens, temperature, signal });
+    return (async function* () { const content = response.choices?.[0]?.message?.content || ""; if (content) yield content; })();
   }
-
-  return callWithFallback((client) => client.chat.completions.create({
-    model: DEFAULT_CLOUD_MODEL,
-    messages,
-    stream: true,
-    max_tokens: maxTokens,
-    temperature,
-    signal,
-  }));
+  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, stream: true, max_tokens: maxTokens, temperature, signal }));
 }
 
 export async function testLocalAi(config, signal) {
   const normalized = normalizeAiConfig({ ...config, provider: "local" });
-  const stream = await streamLocalCompletion({
-    config: normalized,
-    messages: [{ role: "user", content: "Reply with exactly: Firebox Local AI connection OK" }],
-    maxTokens: 32,
-    temperature: 0,
-    signal,
-  });
-
+  const stream = await streamLocalCompletion({ config: normalized, messages: [{ role: "user", content: "Reply with exactly: Firebox Local AI connection OK" }], maxTokens: 32, temperature: 0, signal });
   let reply = "";
-  for await (const token of stream) {
-    reply += token;
-    if (reply.length >= 300) break;
-  }
+  for await (const token of stream) { reply += token; if (reply.length >= 300) break; }
   return { ok: true, reply: reply.trim() };
 }
+
+export { PROVIDER_DEFAULTS };

@@ -19,7 +19,7 @@ const buildSchema = new mongoose.Schema({
   description: { type: String, required: true },
   provider: {
     type: String,
-    enum: ["cloud", "local"],
+    enum: ["cloud", "local", "openai", "anthropic", "google", "openrouter"],
     default: "cloud",
   },
   localAi: {

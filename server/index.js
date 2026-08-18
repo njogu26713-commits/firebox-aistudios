@@ -40,7 +40,7 @@ app.post("/api/build", dbRequired, async (req, res) => {
   const build = await Build.create({
     description: description.trim(),
     provider: aiConfig.provider,
-    localAi: aiConfig.provider === "local" ? aiConfig : undefined,
+    localAi: aiConfig.provider !== "cloud" ? aiConfig : undefined,
     status: "running",
     toolMode: Boolean(toolMode),
     agents: AGENT_DEFS.map((a) => ({ name: a.name, status: "idle" })),

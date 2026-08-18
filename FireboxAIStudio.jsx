@@ -177,10 +177,10 @@ const AGENT_META = [
 const AI_PROVIDER_CARDS = [
   { id:"cloud", Icon:Zap, title:"Cloud AI / Groq", subtitle:"Current default", description:"Fast, optimized AI for building and coding with Firebox.", color:"#38BDF8", action:"Select", enabled:true },
   { id:"local", Icon:Server, title:"Local AI / Ollama", subtitle:"Your local model", description:"Use any Ollama or OpenAI-compatible model through your local setup.", color:"#4EC994", action:"Configure", enabled:true },
-  { id:"openai", Icon:Brain, title:"OpenAI", subtitle:"GPT models", description:"Powerful general-purpose models for coding, reasoning, and creativity.", color:"#4EC994", action:"Coming soon", enabled:false },
-  { id:"anthropic", Icon:Sparkles, title:"Anthropic", subtitle:"Claude models", description:"Advanced reasoning, large context understanding, and safe-by-design models.", color:"#F3A65B", action:"Coming soon", enabled:false },
-  { id:"google", Icon:Globe, title:"Google", subtitle:"Gemini models", description:"Multimodal capabilities with long context and strong performance.", color:"#60A5FA", action:"Coming soon", enabled:false },
-  { id:"openrouter", Icon:GitBranch, title:"OpenRouter", subtitle:"Multiple providers", description:"Access multiple model providers through one unified interface.", color:"#A78BFA", action:"Coming soon", enabled:false },
+  { id:"openai", Icon:Brain, title:"OpenAI", subtitle:"GPT models", description:"Powerful general-purpose models for coding, reasoning, and creativity.", color:"#4EC994", action:"Configure", enabled:true },
+  { id:"anthropic", Icon:Sparkles, title:"Anthropic", subtitle:"Claude models", description:"Advanced reasoning, large context understanding, and safe-by-design models.", color:"#F3A65B", action:"Configure", enabled:true },
+  { id:"google", Icon:Globe, title:"Google", subtitle:"Gemini models", description:"Multimodal capabilities with long context and strong performance.", color:"#60A5FA", action:"Configure", enabled:true },
+  { id:"openrouter", Icon:GitBranch, title:"OpenRouter", subtitle:"Multiple providers", description:"Access multiple model providers through one unified interface.", color:"#A78BFA", action:"Configure", enabled:true },
   { id:"custom", Icon:Settings, title:"Custom OpenAI-compatible", subtitle:"Your endpoint", description:"Use your own compatible provider endpoint and API key.", color:"#94A3B8", action:"Configure", enabled:false },
 ];
 
@@ -752,6 +752,14 @@ export default function FireboxAIStudio() {
     const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
 
     try {
+      if (aiProvider !== "local") {
+        const response = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: aiProvider, localAi: localAiConfig, description: `Reply with exactly: Firebox ${aiProvider} connection OK`, fileNames: [] }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.plan) throw new Error(data.error || `${aiProvider} connection test failed`);
+        setLocalAiTestState("success");
+        setLocalAiTestMessage(`Connection works. ${data.plan.summary || "Provider returned a valid response."}`);
+        return;
+      }
       if (engineBase && localEngineToken.trim()) {
         const engineUrl = `${engineBase}/api/test-ollama`;
         const engineResponse = await fetch(engineUrl, {
@@ -820,7 +828,7 @@ export default function FireboxAIStudio() {
       setLocalAiTestState("error");
       setLocalAiTestMessage(err.message || "Local AI request failed");
     }
-  }, [localAiConfig, localEngineUrl, localEngineToken]);
+  }, [aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
 
   const testLocalEngine = useCallback(async () => {
     setLocalAiTestState("testing");
@@ -887,7 +895,7 @@ export default function FireboxAIStudio() {
         } : {
           description: buildDesc,
           provider: aiProvider,
-          localAi: aiProvider === "local" ? localAiConfig : undefined,
+          localAi: aiProvider !== "cloud" ? localAiConfig : undefined,
           toolMode: true,
         }),
       });
@@ -2174,7 +2182,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                     <div style={{ fontSize:10, color:VS.textMuted, fontWeight:700, letterSpacing:"0.08em", marginBottom:6 }}>AI PROVIDER</div>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
-                      {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }].map(({ id, label }) => (
+                      {[{ id:"cloud", label:"Cloud AI" }, { id:"local", label:"Local AI" }, { id:"openai", label:"OpenAI" }, { id:"anthropic", label:"Anthropic" }, { id:"google", label:"Gemini" }, { id:"openrouter", label:"OpenRouter" }].map(({ id, label }) => (
                         <button
                           key={id}
                           onClick={() => { setAiProvider(id); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
@@ -2189,15 +2197,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       ))}
                     </div>
 
-                    {aiProvider === "local" && (
+                    {aiProvider !== "cloud" && (
                       <>
                         <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
-                          OLLAMA / OPENAI-COMPATIBLE ENDPOINT
+                          {aiProvider === "local" ? "OLLAMA / OPENAI-COMPATIBLE ENDPOINT" : `${aiProvider.toUpperCase()} API ENDPOINT`}
                         </label>
                         <input
                           value={localAiEndpoint}
                           onChange={e => { setLocalAiEndpoint(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
-                          placeholder="http://127.0.0.1:11434/v1"
+                          placeholder={aiProvider === "local" ? "http://127.0.0.1:11434/v1" : "Provider default endpoint"}
                           spellCheck="false"
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
@@ -2208,7 +2216,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         <input
                           value={localAiModel}
                           onChange={e => { setLocalAiModel(e.target.value); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }}
-                          placeholder="Enter any compatible local model"
+                          placeholder={aiProvider === "local" ? "Enter any compatible local model" : "Enter provider model identifier"}
                           spellCheck="false"
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
@@ -2225,6 +2233,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
+                        {aiProvider === "local" && <>
                         <label style={{ display:"block", fontSize:10, color:VS.textMuted, fontWeight:700, marginBottom:5 }}>
                           LOCAL FIREBOX ENGINE URL
                         </label>
@@ -2248,21 +2257,24 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           style={{ width:"100%", boxSizing:"border-box", padding:"8px 9px", marginBottom:12, background:VS.editorBg, border:`1px solid ${VS.border}`, borderRadius:4, color:VS.text, fontFamily:FONT_MONO, fontSize:11, outline:"none" }}
                         />
 
+                        </>}
+
                         <button
                           onClick={testLocalAi}
                           disabled={localAiTestState === "testing"}
                           style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", borderRadius:4, border:`1px solid ${VS.borderLight}`, background:localAiTestState === "testing" ? "rgba(255,255,255,0.05)" : VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
                         >
-                          {localAiTestState === "testing" ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Zap size={13}/>} Test Local AI
+                          {localAiTestState === "testing" ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Zap size={13}/>} Test {aiProvider === "local" ? "Local AI" : aiProvider}
                         </button>
 
-                        <button
+                        {aiProvider === "local" && <button
                           onClick={testLocalEngine}
                           disabled={localAiTestState === "testing"}
                           style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"8px 10px", marginTop:7, borderRadius:4, border:`1px solid ${VS.borderLight}`, background:VS.activityBar, color:VS.text, cursor:localAiTestState === "testing" ? "wait" : "pointer", fontSize:11, fontWeight:600 }}
                         >
                           <Server size={13}/> Test Local Engine
-                        </button>
+                        </button>}
+
 
                         {localAiTestState !== "idle" && (
                           <div style={{ marginTop:9, padding:"8px 9px", borderRadius:4, fontSize:10, lineHeight:1.45, color:localAiTestState === "success" ? VS.success : localAiTestState === "error" ? VS.error : VS.textMuted, background:"rgba(255,255,255,0.04)", border:`1px solid ${localAiTestState === "success" ? "rgba(78,201,148,0.35)" : localAiTestState === "error" ? "rgba(244,135,113,0.35)" : VS.border}` }}>
