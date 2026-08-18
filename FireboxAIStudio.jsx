@@ -1935,7 +1935,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             const navItems = [
               { id:"home",     Icon:Home,      title:"Home" },
               { id:"explorer", Icon:Files,     title:"Explorer",    badge: allFiles.length || null },
-              { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
+              { id:"agents",   Icon:Workflow, title:"Workspace",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
               { id:"search",   Icon:Search,    title:"Search"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
@@ -1954,7 +1954,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       key={id}
                       className="act-btn"
                       title={title}
-                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(true); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                       style={{
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
@@ -2011,7 +2011,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     key={id}
                     className="act-btn"
                     title={title}
-                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(true); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                     style={{
                       position:"relative", display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center",
                       gap:navExpanded ? 11 : 0, width:"100%", height:44, padding:navExpanded ? "0 14px" : 0,
@@ -2251,56 +2251,30 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   {/* ── Scrollable feed ──────────────────────────────────── */}
                   <div ref={terminalRef} style={{ flex:1, overflowY:"auto", padding:"8px 10px" }}>
 
-                    {/* Empty-state: prompt suggestion cards */}
+                    {/* Idle workspace: show the full agent roster before work begins */}
                     {chatHistory.length === 0 && phase === "idle" && (
-                      <div style={{ padding:"16px 2px 8px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14 }}>
-                          <Sparkles size={14} color={VS.accent} style={{ opacity:0.85 }}/>
-                          <span style={{ fontSize:12, fontWeight:700, color:VS.textActive }}>
-                            What would you like to build?
-                          </span>
+                      <div style={{ padding:"14px 2px 8px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:12 }}>
+                          <Workflow size={14} color={VS.accent}/>
+                          <span style={{ fontSize:12, fontWeight:700, color:VS.textActive }}>Agent workspace</span>
                         </div>
-                        <div style={{
-                          display:"grid",
-                          gridTemplateColumns:"1fr 1fr",
-                          gap:7,
-                        }}>
-                          {PROMPT_SUGGESTIONS.map(({ icon, label, prompt }) => (
-                            <button
-                              key={label}
-                              onClick={() => {
-                                setChatInput(prompt);
-                                setTimeout(() => chatInputRef.current?.focus(), 0);
-                              }}
-                              style={{
-                                display:"flex", flexDirection:"column", alignItems:"flex-start",
-                                gap:4, padding:"10px 10px 9px",
-                                background:"rgba(255,255,255,0.04)",
-                                border:"1px solid rgba(255,255,255,0.09)",
-                                borderRadius:10, cursor:"pointer",
-                                textAlign:"left", transition:"all 0.15s",
-                                fontFamily:FONT_UI,
-                              }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.background = "rgba(0,120,212,0.12)";
-                                e.currentTarget.style.borderColor = "rgba(0,120,212,0.45)";
-                                e.currentTarget.style.transform = "translateY(-1px)";
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-                                e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
-                                e.currentTarget.style.transform = "translateY(0)";
-                              }}
-                            >
-                              <span style={{ fontSize:16, lineHeight:1 }}>{icon}</span>
-                              <span style={{ fontSize:11, fontWeight:600, color:VS.textActive, lineHeight:1.3 }}>
-                                {label}
-                              </span>
-                            </button>
-                          ))}
+                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                          {AGENT_META.map(({ name, Icon, color }) => {
+                            const state = agentStates.find(a => a.name === name);
+                            const status = state?.status || "idle";
+                            const statusText = status === "working" ? "Working now" : status === "done" ? "Completed" : status === "error" ? "Needs attention" : "Waiting to start";
+                            const statusColor = status === "working" ? color : status === "done" ? VS.success : status === "error" ? VS.error : VS.textFaint;
+                            return (
+                              <div key={name} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 8px", borderRadius:8, background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.06)" }}>
+                                <span style={{ width:25, height:25, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", background:`${color}18`, color, flexShrink:0 }}><Icon size={13}/></span>
+                                <span style={{ flex:1, color:VS.text, fontSize:11, fontWeight:600 }}>{name}</span>
+                                <span style={{ color:statusColor, fontSize:10 }}>{statusText}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                         <div style={{ fontSize:10, color:VS.textFaint, marginTop:12, textAlign:"center", lineHeight:1.6 }}>
-                          Click a card to use it as your prompt, or type your own below
+                          Start a build below to watch each agent plan, code, test, and deploy.
                         </div>
                       </div>
                     )}
@@ -3395,54 +3369,21 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:20, marginBottom:28 }}>
                     <div>
                       <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
-                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Choose your AI engine</h1>
-                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Select the AI provider that will power your Firebox Agent.<br/>Your agent can handle the complete development workflow.</p>
+                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 26 : 34, letterSpacing:"-0.035em", fontWeight:700 }}>Build with your agents</h1>
+                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.65 }}>Describe what you want to build. Firebox will coordinate the complete development workflow.</p>
                     </div>
                     <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}>
                       <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent, boxShadow:`0 0 8px ${phase === "error" ? VS.error : VS.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
                     </div>
                   </div>
 
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap:14, marginBottom:24 }}>
-                    {AI_PROVIDER_CARDS.map(({ id, Icon, title, subtitle, description, color, action, enabled }) => {
-                      const selected = aiProvider === id;
-                      const handleSelect = () => {
-                        if (!enabled) { setErrorMsg(`${title} provider is not enabled yet. Cloud AI and Local AI remain available.`); return; }
-                        setErrorMsg("");
-                        if (id === "local") { setAiProvider("local"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); setActivity("settings"); setSideOpen(true); }
-                        else { setAiProvider("cloud"); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }
-                      };
-                      return (
-                        <div key={id} style={{ position:"relative", minHeight:245, display:"flex", flexDirection:"column", padding:18, border:`1px solid ${selected ? VS.accent : VS.border}`, borderRadius:12, background:selected ? "linear-gradient(180deg, rgba(0,120,212,0.10), rgba(255,255,255,0.025))" : "rgba(255,255,255,0.025)", boxShadow:selected ? `0 0 0 1px ${VS.accent}44, 0 16px 40px rgba(0,0,0,0.18)` : "none" }}>
-                          {selected && <span style={{ position:"absolute", top:14, right:14, padding:"5px 8px", borderRadius:999, background:"rgba(0,120,212,0.22)", color:VS.accent, fontSize:9, fontWeight:800, letterSpacing:"0.08em" }}>SELECTED</span>}
-                          <div style={{ width:64, height:64, margin:"4px auto 15px", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, background:`${color}22`, color, boxShadow:`inset 0 0 0 1px ${color}55` }}><Icon size={32} strokeWidth={1.8}/></div>
-                          <div style={{ textAlign:"center", color:VS.textActive, fontSize:18, fontWeight:700, letterSpacing:"-0.02em" }}>{title}</div>
-                          <div style={{ textAlign:"center", color, fontSize:12, fontWeight:600, marginTop:6 }}>{subtitle}</div>
-                          <div style={{ flex:1, textAlign:"center", color:VS.textMuted, fontSize:12, lineHeight:1.5, margin:"10px 8px 15px" }}>{description}</div>
-                          <button onClick={handleSelect} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 12px", border:`1px solid ${selected ? VS.accent : VS.borderLight}`, borderRadius:8, background:selected ? "rgba(0,120,212,0.14)" : "transparent", color:selected ? VS.accent : enabled ? color : VS.textMuted, cursor:enabled ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>
-                            {selected ? <Check size={15}/> : <span>{action}</span>}{!selected && enabled && <ChevronRight size={15}/>} {selected && <span>Selected</span>}
-                          </button>
-                        </div>
-                      );
-                    })}
+                  <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:18, padding:"11px 13px", border:`1px solid ${VS.border}`, borderRadius:9, background:"rgba(255,255,255,0.025)", color:VS.textMuted, fontSize:12 }}>
+                    <Workflow size={16} color={VS.accent}/>
+                    <span>Open <strong style={{ color:VS.textActive }}>Workspace</strong> in the sidebar to watch each agent work in real time.</span>
                   </div>
 
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(4, 1fr)", gap:10, marginBottom:22 }}>
-                    {[
-                      ["AGENTS", AGENT_META.length],
-                      ["COMPLETED", doneCount],
-                      ["PROGRESS", `${Math.round(progress)}%`],
-                      ["PROVIDER", aiProvider === "cloud" ? "CLOUD" : "LOCAL"],
-                    ].map(([label,value]) => (
-                      <div key={label} style={{ padding:"13px 14px", border:`1px solid ${VS.border}`, borderRadius:9, background:"rgba(255,255,255,0.025)" }}>
-                        <div style={{ color:VS.textFaint, fontSize:9, fontWeight:700, letterSpacing:"0.1em", marginBottom:7 }}>{label}</div>
-                        <div style={{ color:VS.textActive, fontSize:17, fontWeight:700 }}>{value}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1.1fr 0.9fr", gap:16, alignItems:"start" }}>
-                    <div style={{ border:`1px solid ${VS.border}`, borderRadius:12, background:"#222223", overflow:"hidden" }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:16, alignItems:"start" }}>
+                    <div style={{ display:"none" }}>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 15px", borderBottom:`1px solid ${VS.border}` }}>
                         <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textActive, fontSize:12, fontWeight:700 }}><Workflow size={15} color={VS.accent}/> Agent pipeline</div>
                         <span style={{ color:phase === "complete" ? VS.success : VS.textMuted, fontSize:10 }}>{doneCount}/{AGENT_META.length}</span>
@@ -3977,7 +3918,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             if (isMobile) {
               return (
                 <>
-                  {sideOpen && activity !== "home" && activity !== "agents" && (
+                  {sideOpen && activity !== "home" && (
                     <div style={{
                       position:"absolute", top:0, left:0, right:0,
                       bottom:52, zIndex:100,
@@ -4001,7 +3942,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 orientation="horizontal"
                 style={{ flex:1, overflow:"hidden" }}
               >
-                {sideOpen && activity !== "home" && activity !== "agents" && (
+                {sideOpen && activity !== "home" && (
                   <>
                     <Panel
                       defaultSize="20%"
