@@ -93,12 +93,14 @@ function extractLocalAiReply(data) {
 
 function cleanLocalAiChatReply(text) {
   const source = String(text || "").trim();
-  const finalAction = source.match(/\[ACTION:(build|edit)\]\s*$/i)?.[1]?.toLowerCase() || null;
+  const actionPattern = /\[?\s*ACTION\s*:\s*(build|edit)\s*\]?/gi;
+  const actionMatches = [...source.matchAll(actionPattern)];
+  const action = actionMatches[0]?.[1]?.toLowerCase() || null;
   const cleaned = source
-    .replace(/\s*\[ACTION:(build|edit)\]\s*/gi, "\n")
+    .replace(actionPattern, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return { text: cleaned, action: finalAction };
+  return { text: cleaned, action };
 }
 
 async function fetchLocalAi(url, options = {}) {
