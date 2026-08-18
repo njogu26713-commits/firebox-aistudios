@@ -1320,14 +1320,15 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("build-complete", e => {
       streamTerminalRef.current = true;
-      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:"Build complete — preview is ready" });
       let completion = {};
       try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
-      setPreviewUrl(completion.preview?.url || null);
+      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:completion.preview?.url ? "Build complete — live preview is ready" : "Build complete — no live runtime preview was returned" });
+      const livePreviewUrl = completion.preview?.url || null;
+      setPreviewUrl(livePreviewUrl);
       setPhase("complete");
       setActiveAgent(null);
-      setWorkflowStage({ stage:"preview", label:"Preview", activity:"Build complete — preview is ready", completed:true });
-      setPreviewOpen(true);
+      setWorkflowStage({ stage:"preview", label:"Preview", activity:livePreviewUrl ? "Build complete — live preview is ready" : "Build complete — connect the Local Engine for a live project preview", completed:true });
+      setPreviewOpen(Boolean(livePreviewUrl || previewContent));
       es.close();
       fetch("/api/builds").then(r=>r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
     });
@@ -1344,7 +1345,7 @@ export default function FireboxAIStudio() {
       setErrorMsg("Connection lost before the Agent returned a result. Check the provider response and Railway logs.");
       es.close();
     };
-  }, [updateAgent, appendActivity, aiProvider, providerConfig, localAiConfig, localEngineUrl, localEngineToken]);
+  }, [updateAgent, appendActivity, aiProvider, providerConfig, localAiConfig, localEngineUrl, localEngineToken, previewContent]);
 
   const setBuildExecutionState = useCallback(async (nextState) => {
     if (!currentBuildId) return;

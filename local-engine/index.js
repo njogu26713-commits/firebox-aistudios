@@ -338,7 +338,8 @@ app.post("/api/preview/start", auth, async (req, res) => {
     const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
     const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
     if (!script) return res.status(400).json({ error: "Project has no dev or start script" });
-    res.json({ ok: true, preview: startPreviewProcess(projectDir, projectName, script, Number(req.body?.port || PREVIEW_PORT)) });
+    const preview = await startPreviewProcess(projectDir, projectName, script, Number(req.body?.port || PREVIEW_PORT));
+    res.json({ ok: true, preview });
   } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
 });
 
@@ -347,10 +348,15 @@ app.post("/api/preview/stop", auth, (req, res) => {
   res.json({ ok: true, stopped: stopPreviewProcess(projectName) });
 });
 
-app.get("/api/preview/status", auth, (req, res) => {
+app.get("/api/preview/status", auth, async (req, res) => {
   const projectName = String(req.query?.projectName || "").trim();
   const preview = previews.get(projectName);
-  res.json({ ok: true, running: Boolean(preview), preview: preview ? { projectName, port: preview.port, url: `http://127.0.0.1:${preview.port}` } : null });
+  if (!preview || preview.child.exitCode !== null || preview.child.killed) {
+    return res.json({ ok: true, running: false, preview: null });
+  }
+  const url = `http://127.0.0.1:${preview.port}`;
+  const healthy = await probePreview(url);
+  res.json({ ok: true, running: healthy, preview: healthy ? { projectName, port: preview.port, url } : null, lastOutput: preview.lastOutput || null });
 });
 
 app.post("/api/build", auth, async (req, res) => {
