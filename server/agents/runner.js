@@ -2,6 +2,9 @@ import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
 import { getCompletionStream, normalizeAiConfig } from "../aiProvider.js";
+import { FIREBOX_TOOL_DEFINITIONS } from "./toolContract.js";
+import { runFireboxToolLoop } from "./toolLoop.js";
+import { createCloudProjectTools } from "./cloudTools.js";
 import { AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "./workflow.js";
 
 function sse(res, event, data) {
@@ -27,6 +30,32 @@ async function waitForResume(buildId, res, signal) {
   return null;
 }
 
+async function runCloudToolMode(build, res, aiConfig, signal) {
+  const emit = (event, data) => sse(res, event, { ...data, agent: "Firebox Agent" });
+  const tools = createCloudProjectTools({ build, emit });
+  emit("workflow-stage-start", { stage: "autonomous", label: "Firebox Agent", activity: "Choosing the next controlled project action" });
+  const result = await runFireboxToolLoop({
+    config: aiConfig,
+    messages: [
+      { role: "system", content: "You are the Firebox Agent. Use only the provided Firebox tools. Inspect the current project before major edits, preserve its architecture, use tool results to decide what to do next, and verify changes before preview. Do not output source-code fences instead of using tools." },
+      { role: "user", content: build.description },
+    ],
+    toolDefinitions: FIREBOX_TOOL_DEFINITIONS,
+    signal,
+    emit,
+    executeTool: (name, args) => {
+      if (!tools[name]) throw new Error(`Firebox tool is not available: ${name}`);
+      if (name === "run_command") return tools[name](args.command, args.args || []);
+      if (["read_file", "search_project", "create_file", "write_file", "delete_file", "edit_file", "install_package"].includes(name)) return tools[name](...(name === "edit_file" ? [args.path, args.search, args.replacement] : name === "create_file" || name === "write_file" ? [args.path, args.content] : name === "install_package" ? [args.package] : name === "read_file" || name === "delete_file" ? [args.path] : [args.term]));
+      return tools[name]();
+    },
+  });
+  await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+  emit("agent-complete", { output: result.content });
+  emit("workflow-stage-complete", { stage: "autonomous", label: "Firebox Agent" });
+  sse(res, "build-complete", { buildId: build._id.toString() });
+}
+
 async function getStreamWithRepair({ config, messages, maxTokens, temperature, signal, res, agent }) {
   for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
     try {
@@ -45,6 +74,16 @@ export async function runAgentPipeline(build, res, signal) {
     provider: build.provider || "cloud",
     ...(build.localAi?.toObject?.() || build.localAi || {}),
   });
+
+  if (build.toolMode) {
+    try {
+      await runCloudToolMode(build, res, aiConfig, signal);
+    } catch (error) {
+      await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
+      sse(res, "agent-error", { agent: "Firebox Agent", message: error.message });
+    }
+    return;
+  }
 
   for (let i = 0; i < AGENT_DEFS.length; i++) {
     if (signal?.aborted) break;

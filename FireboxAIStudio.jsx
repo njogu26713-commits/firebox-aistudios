@@ -888,6 +888,7 @@ export default function FireboxAIStudio() {
           description: buildDesc,
           provider: aiProvider,
           localAi: aiProvider === "local" ? localAiConfig : undefined,
+          toolMode: true,
         }),
       });
       const data = await res.json();

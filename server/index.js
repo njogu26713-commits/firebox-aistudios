@@ -26,7 +26,7 @@ app.use("/api/git", gitRouter);
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", dbRequired, async (req, res) => {
-  const { description, provider = "cloud", localAi = {} } = req.body;
+  const { description, provider = "cloud", localAi = {}, toolMode = false } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
 
@@ -42,10 +42,11 @@ app.post("/api/build", dbRequired, async (req, res) => {
     provider: aiConfig.provider,
     localAi: aiConfig.provider === "local" ? aiConfig : undefined,
     status: "running",
+    toolMode: Boolean(toolMode),
     agents: AGENT_DEFS.map((a) => ({ name: a.name, status: "idle" })),
     files: [],
   });
-  res.json({ buildId: build._id });
+  res.json({ buildId: build._id, projectName: "firebox-project" });
 });
 
 /* ── GET /api/build/:id/events — SSE stream ─────────────────────────────── */

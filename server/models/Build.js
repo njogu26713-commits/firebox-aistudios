@@ -29,6 +29,7 @@ const buildSchema = new mongoose.Schema({
   },
   status:      { type: String, enum: ["running","complete","failed"], default: "running" },
   executionState: { type: String, enum: ["running", "paused", "stopping", "stopped"], default: "running" },
+  toolMode: { type: Boolean, default: false },
   agents:      [agentSchema],
   files:       [fileSchema],
   createdAt:   { type: Date, default: Date.now },
