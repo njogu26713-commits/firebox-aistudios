@@ -3419,6 +3419,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </div>
                     <div style={{ flex:1, minHeight:220 }}>{activeTabPath ? <MonacoEditor height="100%" language={getMonacoLang(activeTabPath)} theme="vs-dark" value={activeContent} onChange={value => { if (activeTabPath) setTabContents(prev => ({ ...prev, [activeTabPath]: value ?? "" })); }} options={{ minimap:{ enabled:false }, fontSize:13, automaticLayout:true, wordWrap:"on", padding:{ top:12 } }} /> : <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:VS.textFaint, fontSize:12 }}>Generated files will appear here after an agent opens a project file.</div>}</div>
                   </div>
+                  <div style={{ flexShrink:0, padding:"12px 16px 14px", borderTop:`1px solid ${VS.border}`, background:"#202020" }}>
+                    <div style={{ maxWidth:900, margin:"0 auto" }}>
+                      <div style={{ color:VS.textMuted, fontSize:10, marginBottom:6 }}>DESCRIBE WHAT YOU WANT TO BUILD</div>
+                      <div style={{ display:"flex", alignItems:"flex-end", gap:8, padding:"8px 9px", border:`1px solid ${VS.borderLight}`, borderRadius:9, background:"#181818" }}>
+                        <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Describe the app you want Firebox to build…" rows={1} style={{ flex:1, minHeight:30, maxHeight:120, resize:"none", border:"none", outline:"none", background:"transparent", color:VS.textActive, fontFamily:FONT_UI, fontSize:12, lineHeight:1.5 }} />
+                        <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", border:"none", borderRadius:7, background:chatInput.trim() ? VS.accent : "#38383a", color:chatInput.trim() ? "#fff" : VS.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
+                      </div>
+                      <div style={{ color:VS.textFaint, fontSize:10, marginTop:5 }}>Press Enter to send · Shift+Enter for a new line</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : activity === "agents" ? (
