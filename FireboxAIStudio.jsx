@@ -1942,7 +1942,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       key={id}
                       className="act-btn"
                       title={title}
-                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                      onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                       style={{
                         position:"relative", display:"flex", flexDirection:"column",
                         alignItems:"center", justifyContent:"center",
@@ -1999,7 +1999,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     key={id}
                     className="act-btn"
                     title={title}
-                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
+                    onClick={() => { if (id === "home") { reset(); setActivity("home"); setSideOpen(false); } else if (id === "agents") { setActivity("agents"); setSideOpen(false); } else { setActivity(id); setSideOpen(p => activity===id ? !p : true); } }}
                     style={{
                       position:"relative", display:"flex", flexDirection:"row", alignItems:"center", justifyContent:navExpanded ? "flex-start" : "center",
                       gap:navExpanded ? 11 : 0, width:"100%", height:44, padding:navExpanded ? "0 14px" : 0,
@@ -3377,6 +3377,72 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                 </div>
               </div>
+            ) : activity === "agents" ? (
+              <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
+                <div style={{ maxWidth:1120, margin:"0 auto", padding:isMobile ? "24px 16px 44px" : "38px 42px 58px" }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:20, marginBottom:28 }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:9 }}><Cpu size={14}/> AI AGENTS</div>
+                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 25 : 32, letterSpacing:"-0.03em", fontWeight:700 }}>Build with your agents.</h1>
+                      <p style={{ margin:"9px 0 0", color:VS.textMuted, fontSize:13, lineHeight:1.6 }}>Describe a product and Firebox will coordinate the full build pipeline.</p>
+                    </div>
+                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, color:VS.textMuted, fontSize:11 }}>
+                      <span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent, boxShadow:`0 0 8px ${phase === "error" ? VS.error : VS.accent}` }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Pipeline running" : phase === "complete" ? "Build complete" : "Needs attention"}
+                    </div>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(4, 1fr)", gap:10, marginBottom:22 }}>
+                    {[
+                      ["AGENTS", AGENT_META.length],
+                      ["COMPLETED", doneCount],
+                      ["PROGRESS", `${Math.round(progress)}%`],
+                      ["PROVIDER", aiProvider === "cloud" ? "CLOUD" : "LOCAL"],
+                    ].map(([label,value]) => (
+                      <div key={label} style={{ padding:"13px 14px", border:`1px solid ${VS.border}`, borderRadius:9, background:"rgba(255,255,255,0.025)" }}>
+                        <div style={{ color:VS.textFaint, fontSize:9, fontWeight:700, letterSpacing:"0.1em", marginBottom:7 }}>{label}</div>
+                        <div style={{ color:VS.textActive, fontSize:17, fontWeight:700 }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1.1fr 0.9fr", gap:16, alignItems:"start" }}>
+                    <div style={{ border:`1px solid ${VS.border}`, borderRadius:12, background:"#222223", overflow:"hidden" }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 15px", borderBottom:`1px solid ${VS.border}` }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textActive, fontSize:12, fontWeight:700 }}><Workflow size={15} color={VS.accent}/> Agent pipeline</div>
+                        <span style={{ color:phase === "complete" ? VS.success : VS.textMuted, fontSize:10 }}>{doneCount}/{AGENT_META.length}</span>
+                      </div>
+                      <div style={{ height:3, background:"rgba(255,255,255,0.06)" }}><div style={{ height:"100%", width:`${progress}%`, background:phase === "complete" ? VS.success : VS.accent, transition:"width .3s ease" }}/></div>
+                      <div style={{ padding:10 }}>
+                        {AGENT_META.map(({name:agentName, Icon, color}) => {
+                          const state = agentStates.find(a => a.name === agentName);
+                          const status = state?.status || "pending";
+                          const active = activeAgent === agentName || status === "running";
+                          return (
+                            <div key={agentName} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 9px", borderRadius:8, background:active ? "rgba(0,120,212,0.09)" : "transparent", marginBottom:3 }}>
+                              <span style={{ width:28, height:28, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", background:`${color}18`, color, flexShrink:0 }}><Icon size={15}/></span>
+                              <div style={{ flex:1, minWidth:0 }}><div style={{ color:VS.textActive, fontSize:12, fontWeight:active || status === "done" ? 650 : 500 }}>{agentName}</div><div style={{ color:VS.textFaint, fontSize:10, marginTop:2 }}>{active ? "Working now…" : status === "done" ? "Completed" : status === "error" ? "Needs attention" : "Waiting"}</div></div>
+                              <span style={{ fontSize:10, color:active ? VS.accent : status === "done" ? VS.success : status === "error" ? VS.error : VS.textFaint }}>{active ? "●" : status === "done" ? "✓" : "○"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ border:`1px solid ${VS.border}`, borderRadius:12, background:"#222223", overflow:"hidden", minHeight:300, display:"flex", flexDirection:"column" }}>
+                      <div style={{ padding:"13px 15px", borderBottom:`1px solid ${VS.border}`, color:VS.textActive, fontSize:12, fontWeight:700 }}>Conversation</div>
+                      <div style={{ flex:1, maxHeight:330, overflowY:"auto", padding:12 }}>
+                        {chatHistory.length === 0 ? <div style={{ padding:"28px 10px", color:VS.textMuted, fontSize:12, lineHeight:1.6, textAlign:"center" }}>Tell the agents what you want to build. Your request and pipeline updates will appear here.</div> : chatHistory.slice(-8).map((msg,i) => <div key={i} style={{ display:"flex", justifyContent:msg.role === "user" ? "flex-end" : "flex-start", marginBottom:8 }}><div style={{ maxWidth:"92%", padding:"8px 10px", borderRadius:msg.role === "user" ? "9px 9px 2px 9px" : "9px 9px 9px 2px", background:msg.role === "user" ? VS.accent : "rgba(255,255,255,0.06)", color:msg.role === "user" ? "#fff" : VS.text, fontSize:11, lineHeight:1.5, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{msg.text}</div></div>)}
+                      </div>
+                      <div style={{ padding:10, borderTop:`1px solid ${VS.border}` }}>
+                        <div style={{ display:"flex", gap:7, alignItems:"flex-end", border:`1px solid ${VS.border}`, borderRadius:8, padding:"7px 8px", background:"#1c1c1d" }}>
+                          <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,100)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Describe an app to build…" rows={1} style={{ flex:1, minHeight:28, maxHeight:100, resize:"none", border:"none", outline:"none", background:"transparent", color:VS.textActive, fontFamily:FONT_UI, fontSize:12, lineHeight:1.45 }}/><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Send to agents" style={{ width:30, height:30, borderRadius:6, border:"none", background:chatInput.trim() ? VS.accent : "#38383a", color:chatInput.trim() ? "#fff" : VS.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={14}/></button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {errorMsg && <div style={{ marginTop:14, padding:"10px 12px", border:`1px solid ${VS.error}55`, borderRadius:8, color:VS.error, background:`${VS.error}12`, fontSize:11 }}>{errorMsg}</div>}
+                </div>
+              </div>
             ) : (
               <React.Fragment>
 
@@ -3875,7 +3941,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             if (isMobile) {
               return (
                 <>
-                  {sideOpen && activity !== "home" && (
+                  {sideOpen && activity !== "home" && activity !== "agents" && (
                     <div style={{
                       position:"absolute", top:0, left:0, right:0,
                       bottom:52, zIndex:100,
@@ -3899,7 +3965,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 orientation="horizontal"
                 style={{ flex:1, overflow:"hidden" }}
               >
-                {sideOpen && activity !== "home" && (
+                {sideOpen && activity !== "home" && activity !== "agents" && (
                   <>
                     <Panel
                       defaultSize="20%"
