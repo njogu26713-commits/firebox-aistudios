@@ -3553,13 +3553,13 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             /* editor inner content — shared by mobile & desktop Panel */
             const editorContent = activity === "home" ? (
               <div style={{ flex:1, overflowY:"auto", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
-                <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:isMobile ? "28px 16px 44px" : "52px 28px 70px", boxSizing:"border-box" }}>
+                <div style={{ width:"100%", maxWidth:"none", margin:0, padding:isMobile ? "28px 16px 44px" : "42px 18px 60px", boxSizing:"border-box" }}>
                   <div style={{ textAlign:"center", marginBottom:24 }}>
                     <div style={{ color:palette.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
                     <div style={{ color:palette.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
                   </div>
 
-                  <div style={{ border:`1px solid ${palette.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:800 }}>
+                  <div style={{ border:`1px solid ${palette.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:"none" }}>
                     <textarea
                       ref={chatInputRef}
                       value={chatInput}
@@ -3579,27 +3579,27 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </div>
                   </div>
 
-                  <div style={{ maxWidth:800, margin:"0 auto 22px" }}>
+                  <div style={{ maxWidth:"none", margin:"0 auto 22px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, color:palette.textActive, fontSize:12, fontWeight:700 }}><Layers3 size={15} color={palette.accent}/><span>Start with an idea</span></div>
-                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap:8 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr 1fr" : "repeat(5, minmax(0, 1fr))", gap:12 }}>
                       {BUILD_LAUNCHER_TYPES.map(({ Icon, label, description, prompt }) => (
-                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minHeight:86, padding:"10px 8px", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:6, textAlign:"left", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
-                          <Icon size={17} color={palette.accent}/><span style={{ fontSize:11, fontWeight:700 }}>{label}</span><span style={{ color:palette.textMuted, fontSize:9, lineHeight:1.35 }}>{description}</span>
+                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minHeight:122, padding:"15px 14px", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:6, textAlign:"left", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
+                          <Icon size={17} color={palette.accent}/><span style={{ fontSize:11, fontWeight:700 }}>{label}</span><span style={{ color:palette.textMuted, fontSize:10, lineHeight:1.45 }}>{description}</span>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ maxWidth:800, margin:"0 auto 18px" }}>
+                  <div style={{ maxWidth:"none", margin:"0 auto 18px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, color:palette.textActive, fontSize:12, fontWeight:700 }}><Boxes size={15} color={palette.accent}/><span>Build from an existing idea</span></div>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
                       {BUILD_IDEA_EXAMPLES.map(({ Icon, label, prompt }) => (
-                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 10px", border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI, fontSize:10 }}><Icon size={13} color={palette.accent}/>{label}</button>
+                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 14px", border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI, fontSize:11 }}><Icon size={15} color={palette.accent}/>{label}</button>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ maxWidth:800, margin:"0 auto 22px", padding:"11px 13px", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg }}>
+                  <div style={{ maxWidth:"none", margin:"0 auto 22px", padding:"11px 13px", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.textMuted, fontSize:11 }}><Bot size={15} color={palette.accent}/><span>Firebox automatically handles architecture, code, database, dependencies, testing, and preview.</span></div>
                       <button onClick={() => setAdvancedOptionsOpen(prev => !prev)} style={{ flexShrink:0, display:"inline-flex", alignItems:"center", gap:5, border:"none", background:"transparent", color:palette.accent, cursor:"pointer", fontFamily:FONT_UI, fontSize:10, fontWeight:700 }}><SlidersHorizontal size={13}/>{advancedOptionsOpen ? "Hide options" : "Advanced options"}<ChevronDown size={12} style={{ transform:advancedOptionsOpen ? "rotate(180deg)" : "none", transition:"transform 0.15s" }}/></button>
