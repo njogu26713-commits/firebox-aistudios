@@ -91,19 +91,8 @@ function extractLocalAiReply(data) {
   };
 }
 
-async function fetchLocalAi(url, options = {}, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds: ${url}`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+async function fetchLocalAi(url, options = {}) {
+  return fetch(url, options);
 }
 
 async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
@@ -135,7 +124,7 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
       max_tokens: 256,
       temperature: 0.5,
     }),
-  }, 120000);
+  });
   logLocalAiDebug("POST", chatUrl, "HTTP", response.status, "direct browser chat");
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
