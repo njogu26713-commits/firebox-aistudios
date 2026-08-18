@@ -3321,80 +3321,59 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
             /* editor inner content — shared by mobile & desktop Panel */
             const editorContent = activity === "home" ? (
-              <div style={{ flex:1, overflowY:"auto", background:"#1a1a1a", color:VS.text, fontFamily:FONT_UI }}>
-                <div style={{ maxWidth:1040, margin:"0 auto", padding:isMobile ? "28px 18px 44px" : "52px 54px 64px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:24, marginBottom:34 }}>
-                    <div>
-                      <div style={{ display:"flex", alignItems:"center", gap:9, color:VS.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:12 }}>
-                        <Zap size={14}/> FIREBOX AI STUDIO
-                      </div>
-                      <h1 style={{ margin:0, color:VS.textActive, fontSize:isMobile ? 28 : 38, lineHeight:1.08, letterSpacing:"-0.03em", fontWeight:750 }}>
-                        Build something<br/><span style={{ color:VS.accent }}>remarkable.</span>
-                      </h1>
-                      <p style={{ margin:"14px 0 0", maxWidth:540, color:VS.textMuted, fontSize:14, lineHeight:1.65 }}>
-                        Create, refine, and ship full-stack applications with your AI agents. Start a new project, open recent work, or import a repository.
-                      </p>
-                    </div>
-                    <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:8, padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:8, background:"rgba(255,255,255,0.025)", color:VS.textMuted, fontSize:11 }}>
-                      <span style={{ width:7, height:7, borderRadius:"50%", background:VS.success, boxShadow:`0 0 8px ${VS.success}` }}/>
-                      {aiProvider === "cloud" ? "Cloud AI ready" : "Local AI selected"}
+              <div style={{ flex:1, overflowY:"auto", background:"#1b1b1c", color:VS.text, fontFamily:FONT_UI }}>
+                <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:isMobile ? "28px 16px 44px" : "52px 28px 70px", boxSizing:"border-box" }}>
+                  <div style={{ height:isMobile ? 142 : 164, border:`1px solid ${VS.border}`, borderRadius:18, overflow:"hidden", position:"relative", background:"linear-gradient(115deg,#242528 0%,#202124 55%,#292227 100%)", marginBottom:isMobile ? 34 : 42 }}>
+                    <div style={{ position:"absolute", inset:0, opacity:0.5, background:"radial-gradient(circle at 78% 20%, rgba(0,120,212,0.35), transparent 35%), radial-gradient(circle at 25% 100%, rgba(155,89,182,0.22), transparent 42%)" }}/>
+                    <div style={{ position:"absolute", right:isMobile ? 18 : 56, top:18, width:isMobile ? 82 : 114, height:isMobile ? 104 : 134, borderRadius:"10px 10px 4px 4px", border:"1px solid rgba(255,255,255,0.2)", background:"linear-gradient(145deg,#174e73,#0d1d2b 60%,#9c6b48)", transform:"rotate(5deg)", boxShadow:"0 15px 28px rgba(0,0,0,0.32)" }}/>
+                    <div style={{ position:"absolute", right:isMobile ? 44 : 88, top:35, width:isMobile ? 58 : 80, height:isMobile ? 76 : 100, borderRadius:"7px 7px 2px 2px", border:"1px solid rgba(255,255,255,0.32)", background:"linear-gradient(160deg,#d59b6b,#f1c29b 45%,#65514f 46%,#2d2e36)", transform:"rotate(-2deg)", boxShadow:"0 9px 18px rgba(0,0,0,0.3)" }}/>
+                    <div style={{ position:"relative", zIndex:1, padding:isMobile ? "22px 18px" : "27px 28px", maxWidth:isMobile ? "68%" : 470 }}>
+                      <div style={{ color:VS.textActive, fontWeight:700, fontSize:isMobile ? 15 : 18, marginBottom:7 }}>Build with Firebox</div>
+                      <div style={{ color:VS.textMuted, fontSize:isMobile ? 11 : 12, lineHeight:1.55 }}>Turn a rough idea into a working product with AI agents, tools, and a live preview.</div>
+                      <button onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 100); }} style={{ marginTop:13, padding:"7px 12px", borderRadius:6, border:"none", background:VS.accent, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Explore the studio <ChevronRight size={12} style={{ verticalAlign:"-2px" }}/></button>
                     </div>
                   </div>
 
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1.35fr 1fr", gap:14, marginBottom:28 }}>
-                    <button
-                      onClick={() => { setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 100); }}
-                      style={{ textAlign:"left", padding:"22px 22px 20px", minHeight:148, border:"none", borderRadius:14, color:"#fff", background:"linear-gradient(135deg,#0078D4 0%,#1559a8 100%)", cursor:"pointer", boxShadow:"0 10px 28px rgba(0,120,212,0.22)", fontFamily:FONT_UI }}
-                      onMouseEnter={e => { e.currentTarget.style.transform="translateY(-2px)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; }}
-                    >
-                      <Sparkles size={22} style={{ marginBottom:18 }}/>
-                      <div style={{ fontSize:18, fontWeight:700, marginBottom:6 }}>Start with AI</div>
-                      <div style={{ fontSize:12, opacity:0.82, lineHeight:1.5 }}>Describe an app and let the agents build it end to end.</div>
-                    </button>
-                    <button
-                      onClick={() => { setActivity("git"); setSideOpen(true); }}
-                      style={{ textAlign:"left", padding:"22px 22px 20px", minHeight:148, border:`1px solid ${VS.border}`, borderRadius:14, color:VS.text, background:"#252526", cursor:"pointer", fontFamily:FONT_UI }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor=VS.accent; e.currentTarget.style.transform="translateY(-2px)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor=VS.border; e.currentTarget.style.transform="translateY(0)"; }}
-                    >
-                      <Github size={22} color={VS.textMuted} style={{ marginBottom:18 }}/>
-                      <div style={{ fontSize:18, fontWeight:700, marginBottom:6 }}>Import a repository</div>
-                      <div style={{ fontSize:12, color:VS.textMuted, lineHeight:1.5 }}>Bring an existing GitHub project into Firebox.</div>
-                    </button>
+                  <div style={{ textAlign:"center", marginBottom:24 }}>
+                    <div style={{ color:VS.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
+                    <div style={{ color:VS.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
                   </div>
 
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginBottom:34 }}>
-                    {[
-                      ["PROJECTS", recentBuilds.length, Package],
-                      ["FILES IN OPEN PROJECT", allFiles.length, Files],
-                      ["AI PROVIDER", aiProvider === "cloud" ? "CLOUD" : "LOCAL", aiProvider === "cloud" ? Globe : Home],
-                    ].map(([label, value, Icon]) => (
-                      <div key={label} style={{ padding:"14px 15px", border:`1px solid ${VS.border}`, borderRadius:10, background:"rgba(255,255,255,0.025)" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:7, color:VS.textFaint, fontSize:9, letterSpacing:"0.1em", fontWeight:700, marginBottom:9 }}><Icon size={12}/>{label}</div>
-                        <div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>{value}</div>
+                  <div style={{ border:`1px solid ${VS.accent}`, borderRadius:13, background:"#242426", boxShadow:"0 0 0 3px rgba(0,120,212,0.10), 0 12px 30px rgba(0,0,0,0.28)", padding:"13px 14px 10px", margin:"0 auto 28px", maxWidth:800 }}>
+                    <textarea
+                      ref={chatInputRef}
+                      value={chatInput}
+                      onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,130)+"px"; }}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }}
+                      placeholder="Describe what you want to create..."
+                      rows={2}
+                      style={{ width:"100%", minHeight:46, maxHeight:130, resize:"none", display:"block", background:"transparent", border:"none", outline:"none", color:VS.textActive, fontFamily:FONT_UI, fontSize:14, lineHeight:1.55 }}
+                    />
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:8 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:7, color:VS.textMuted, fontSize:11 }}>
+                        <button onClick={() => { setActivity("agents"); setSideOpen(true); }} title="Open AI Agents" style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:`1px solid ${VS.border}`, borderRadius:6, background:"transparent", color:VS.textMuted, cursor:"pointer" }}><Plus size={14}/></button>
+                        <span style={{ padding:"6px 9px", border:`1px solid ${VS.border}`, borderRadius:6, color:VS.textMuted }}>{aiProvider === "cloud" ? "Cloud AI" : "Local AI"}</span>
+                        <span style={{ display:isMobile ? "none" : "inline", color:VS.textFaint }}>Enter to build · Shift+Enter for a new line</span>
                       </div>
+                      <button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Start building" style={{ width:34, height:34, borderRadius:8, border:"none", display:"flex", alignItems:"center", justifyContent:"center", background:chatInput.trim() ? VS.accent : "#3a3a3c", color:chatInput.trim() ? "#fff" : VS.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={15}/></button>
+                    </div>
+                  </div>
+
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:isMobile ? 10 : 22, flexWrap:"wrap", marginBottom:26 }}>
+                    {[[Globe,"Website","Build a web app"],[Code2,"Mobile","Build a mobile app"],[Package,"Dashboard","Create a dashboard"],[Server,"API","Create a backend"],[Sparkles,"Landing page","Design a landing page"]].map(([Icon,label,prompt]) => (
+                      <button key={label} onClick={() => { setChatInput(prompt); setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minWidth:82, display:"flex", flexDirection:"column", alignItems:"center", gap:7, border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontFamily:FONT_UI }}>
+                        <span style={{ width:48, height:48, border:`1px solid ${VS.border}`, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.035)" }}><Icon size={19}/></span>
+                        <span style={{ fontSize:11 }}>{label}</span>
+                      </button>
                     ))}
                   </div>
 
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:13 }}>
-                    <div style={{ color:VS.textActive, fontSize:14, fontWeight:700 }}>Recent projects</div>
-                    <button onClick={() => { setActivity("projects"); setSideOpen(true); }} style={{ display:"flex", alignItems:"center", gap:4, border:"none", background:"transparent", color:VS.accent, fontSize:11, cursor:"pointer" }}>View all <ChevronRight size={13}/></button>
+                  <div style={{ textAlign:"center", color:VS.textFaint, fontSize:11, marginBottom:10 }}>Try an example prompt <RefreshCw size={12} style={{ verticalAlign:"-2px", marginLeft:4 }}/></div>
+                  <div style={{ display:"flex", justifyContent:"center", gap:8, flexWrap:"wrap" }}>
+                    {["Sales pipeline tracker","B2B project management app","Student budget tracker"].map(prompt => (
+                      <button key={prompt} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ padding:"8px 11px", border:`1px solid ${VS.border}`, borderRadius:6, background:"#252526", color:VS.textMuted, fontSize:11, cursor:"pointer", fontFamily:FONT_UI }}>{prompt}</button>
+                    ))}
                   </div>
-                  {recentBuilds.length === 0 ? (
-                    <div style={{ padding:"28px 20px", border:`1px dashed ${VS.border}`, borderRadius:12, color:VS.textMuted, textAlign:"center", fontSize:12, lineHeight:1.6 }}>
-                      Your projects will appear here after your first build.
-                    </div>
-                  ) : (
-                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, 1fr)", gap:12 }}>
-                      {recentBuilds.slice(0, 6).map(build => (
-                        <button key={build._id} onClick={() => loadProjectFiles(build)} style={{ textAlign:"left", padding:"14px", minHeight:100, border:`1px solid ${VS.border}`, borderRadius:10, background:"#252526", color:VS.text, cursor:"pointer", fontFamily:FONT_UI }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}><FolderOpen size={16} color={VS.accent}/><span style={{ fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{build.description}</span></div>
-                          <div style={{ display:"flex", justifyContent:"space-between", color:VS.textFaint, fontSize:10 }}><span>{build.status}</span><span>{new Date(build.createdAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
