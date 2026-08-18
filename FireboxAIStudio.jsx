@@ -594,6 +594,7 @@ export default function FireboxAIStudio() {
   );
   const [activeAgent,    setActiveAgent]    = useState(null);
   const [workflowStage,  setWorkflowStage]  = useState(null);
+  const [liveActivity,   setLiveActivity]   = useState([]);
   const [buildPaused,    setBuildPaused]    = useState(false);
   const [allFiles,       setAllFiles]       = useState([]);
   const [errorMsg,       setErrorMsg]       = useState("");
@@ -888,6 +889,9 @@ export default function FireboxAIStudio() {
 
   const updateAgent = useCallback((name, patch) =>
     setAgentStates(prev => prev.map(a => a.name===name ? {...a,...patch} : a)), []);
+  const appendActivity = useCallback((entry) => {
+    setLiveActivity(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80));
+  }, []);
 
   /* ── Shared external-project persistence ──────────────────────────────── */
   const persistImportedProject = useCallback(async ({ files, projectName, description, source, sourceMeta = {} }) => {
@@ -1093,6 +1097,7 @@ export default function FireboxAIStudio() {
     setPreviewUrl(null);
     setActiveAgent(null);
     setWorkflowStage(null);
+    setLiveActivity([]);
     setActivity("workspace");
     setAgentStartTimes({});
     setAgentElapsed({});
@@ -1146,38 +1151,64 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("workflow-stage-start", e => {
       setBuildPaused(false);
-      try { setWorkflowStage(JSON.parse(e.data)); } catch { /* ignore malformed activity event */ }
+      try {
+        const stage = JSON.parse(e.data);
+        setWorkflowStage(stage);
+        appendActivity({ kind:"stage", status:"working", label:stage.label || stage.stage || "Workflow", text:stage.activity || "Started workflow stage" });
+      } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-stage-complete", e => {
-      try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), completed:true })); } catch { /* ignore malformed activity event */ }
+      try {
+        const stage = JSON.parse(e.data);
+        setWorkflowStage(prev => ({ ...(prev || {}), ...stage, completed:true }));
+        appendActivity({ kind:"stage", status:"done", label:stage.label || stage.stage || "Workflow", text:"Stage completed" });
+      } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-paused", e => {
       setBuildPaused(true);
       setWorkflowStage(prev => ({ ...(prev || {}), activity:"Paused at a safe checkpoint", paused:true }));
+      appendActivity({ kind:"status", status:"paused", label:"Workflow", text:"Paused at a safe checkpoint" });
     });
     es.addEventListener("workflow-resumed", e => {
       setBuildPaused(false);
       setWorkflowStage(prev => ({ ...(prev || {}), activity:"Resuming workflow", paused:false }));
+      appendActivity({ kind:"status", status:"working", label:"Workflow", text:"Resuming workflow" });
     });
     es.addEventListener("workflow-stage-error", e => {
-      try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), error:true })); } catch { /* ignore malformed activity event */ }
+      try {
+        const stage = JSON.parse(e.data);
+        setWorkflowStage(prev => ({ ...(prev || {}), ...stage, error:true }));
+        appendActivity({ kind:"stage", status:"error", label:stage.label || stage.stage || "Workflow", text:stage.message || "Stage failed" });
+      } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-repair", e => {
       try {
         const repair = JSON.parse(e.data);
         setChatHistory(prev => [...prev, { role:"ai", text:`Build step failed. I’m investigating and retrying (${repair.attempt}/${repair.maxAttempts})…` }]);
+        appendActivity({ kind:"repair", status:"working", label:repair.agent || "Firebox Agent", text:`Retrying provider request (${repair.attempt}/${repair.maxAttempts})` });
       } catch { /* ignore malformed repair event */ }
     });
     es.addEventListener("project-inspected", e => {
       try {
         const project = JSON.parse(e.data);
         setChatHistory(prev => [...prev, { role:"ai", text:`I inspected the project before editing it${project.files?.length ? ` (${project.files.length} files found)` : ""}.` }]);
+        appendActivity({ kind:"inspection", status:"done", label:"Firebox Agent", text:`Inspected project${project.files?.length ? ` (${project.files.length} files)` : ""}` });
       } catch { /* ignore malformed inspection event */ }
+    });
+    es.addEventListener("tool-start", e => {
+      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"working", label:"Firebox Tool", text:`Running ${data.tool || "controlled operation"}` }); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("tool-complete", e => {
+      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"done", label:"Firebox Tool", text:`Completed ${data.tool || "controlled operation"}` }); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("tool-error", e => {
+      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"error", label:"Firebox Tool", text:`${data.tool || "Controlled operation"} failed: ${data.message || "unknown error"}` }); } catch { /* ignore malformed activity event */ }
     });
 
     es.addEventListener("agent-start", e => {
-      const { agent } = JSON.parse(e.data);
+      const { agent, capability, task } = JSON.parse(e.data);
       setActiveAgent(agent);
+      appendActivity({ kind:"agent", status:"working", label:agent || "Firebox Agent", text:capability?.activity || task || "Agent started working" });
       updateAgent(agent, { status:"working", streaming:"" });
       streamingRef.current[agent] = "";
 
@@ -1207,12 +1238,19 @@ export default function FireboxAIStudio() {
       const { agent, token } = JSON.parse(e.data);
       streamingRef.current[agent] = (streamingRef.current[agent]||"") + token;
       updateAgent(agent, { streaming: streamingRef.current[agent] });
+      setLiveActivity(prev => {
+        const label = agent || "Firebox Agent";
+        const last = prev[prev.length - 1];
+        if (last?.kind === "token" && last.label === label) return [...prev.slice(0, -1), { ...last, text:`${last.text}${token}`.slice(-360), time:new Date() }];
+        return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), kind:"token", status:"working", label, text:String(token || "") }].slice(-80);
+      });
     });
 
     es.addEventListener("files-updated", async e => {
       try {
         const { files = [] } = JSON.parse(e.data);
         if (!files.length) return;
+        appendActivity({ kind:"files", status:"done", label:"Firebox Agent", text:`Updated ${files.length} project file${files.length === 1 ? "" : "s"}` });
         const response = await fetch(`/api/build/${buildId}`);
         const project = await response.json();
         if (!response.ok || !Array.isArray(project.files)) return;
@@ -1228,6 +1266,7 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("agent-complete", e => {
       const { agent, files } = JSON.parse(e.data);
+      appendActivity({ kind:"agent", status:"done", label:agent || "Firebox Agent", text:`Finished${files?.length ? ` and produced ${files.length} file${files.length === 1 ? "" : "s"}` : ""}` });
       // Stop timers and show all steps
       if (agentTimerRefs.current[agent]) {
         clearInterval(agentTimerRefs.current[agent].elapsed);
@@ -1262,6 +1301,7 @@ export default function FireboxAIStudio() {
     es.addEventListener("agent-error", e => {
       streamTerminalRef.current = true;
       const { agent, message } = JSON.parse(e.data);
+      appendActivity({ kind:"agent", status:"error", label:agent || "Firebox Agent", text:message || "Agent failed" });
       if (agentTimerRefs.current[agent]) {
         clearInterval(agentTimerRefs.current[agent].elapsed);
         agentTimerRefs.current[agent].steps.forEach(clearTimeout);
@@ -1274,6 +1314,7 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("build-complete", e => {
       streamTerminalRef.current = true;
+      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:"Build complete — preview is ready" });
       let completion = {};
       try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
       setPreviewUrl(completion.preview?.url || null);
@@ -1297,7 +1338,7 @@ export default function FireboxAIStudio() {
       setErrorMsg("Connection lost before the Agent returned a result. Check the provider response and Railway logs.");
       es.close();
     };
-  }, [updateAgent, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
+  }, [updateAgent, appendActivity, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
 
   const setBuildExecutionState = useCallback(async (nextState) => {
     if (!currentBuildId) return;
@@ -3973,7 +4014,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${palette.border}`, background:palette.sideBar }}>
                     <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ color:palette.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:palette.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><FireboxAgentMark size={15} animated state="working"/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:palette.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:palette.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>
-                     <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"12px 10px" }}><div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, color:palette.textActive, fontSize:11, fontWeight:700 }}><FireboxAgentMark size={17} animated={phase === "building" || aiThinking} state={phase === "error" ? "error" : phase === "complete" ? "complete" : "working"}/><span>Firebox Agent</span>{(phase === "building" || aiThinking) && <ThinkingDots/>}</div>{agentStates.every(state => state.status === "idle") && !chatHistory.length && !editingFiles ? <div style={{ padding:"14px 8px", color:palette.textFaint, fontSize:11, lineHeight:1.6 }}>The Agent’s live activity will appear here after you send a request.</div> : <>{chatHistory.filter(message => message.role === "user").slice(-3).map((message, index) => <div key={`request-${index}`} style={{ marginBottom:10, padding:"8px 9px", borderRadius:7, background:"rgba(0,120,212,0.10)", border:"1px solid rgba(0,120,212,0.22)", color:palette.text, fontSize:11, lineHeight:1.45 }}><div style={{ color:palette.textFaint, fontSize:9, marginBottom:3 }}>REQUEST</div>{message.text}</div>)}{AGENT_META.map(({ name, Icon, color }) => { const state = agentStates.find(item => item.name === name); if (!state || state.status === "idle") return null; const active = state.status === "working"; const done = state.status === "done"; const failed = state.status === "error"; const steps = AGENT_STEPS[name] || []; const visible = agentVisSteps[name] || 0; return <div key={name} style={{ marginBottom:8, padding:"8px 9px", borderRadius:7, background:active ? `${color}10` : "rgba(255,255,255,0.025)", border:`1px solid ${active ? `${color}55` : "rgba(255,255,255,0.08)"}` }}><div style={{ display:"flex", alignItems:"center", gap:7 }}><span style={{ color:active ? color : done ? palette.success : failed ? palette.error : palette.textMuted, fontSize:12 }}>{active ? "●" : done ? "✓" : failed ? "✕" : "○"}</span><Icon size={13} color={active ? color : done ? palette.success : failed ? palette.error : palette.textMuted}/><span style={{ color:active ? palette.textActive : palette.text, fontSize:11, fontWeight:650 }}>{active ? "Working" : done ? "Completed" : failed ? "Failed" : "Waiting"}</span><span style={{ color:palette.textMuted, fontSize:10 }}>{name}</span>{active && <ThinkingDots/>}</div>{visible > 0 && <div style={{ marginTop:6, paddingLeft:20 }}>{steps.slice(0, visible).map((step, stepIndex) => <div key={`${name}-${stepIndex}`} style={{ display:"flex", alignItems:"center", gap:6, color:stepIndex === visible - 1 && active ? palette.text : palette.textMuted, fontSize:10, lineHeight:1.45, marginTop:3 }}><span>{step.icon}</span><span>{step.text}</span>{stepIndex === visible - 1 && active && <span style={{ width:4, height:4, borderRadius:"50%", background:color, animation:"pulse 0.9s ease-in-out infinite" }}/>}</div>)}</div>}{state.streaming && <div style={{ marginTop:6, paddingLeft:20, color:palette.textFaint, fontSize:9, lineHeight:1.4, maxHeight:42, overflow:"hidden" }}>{state.streaming.slice(-280)}</div>}</div>})}{(editingFiles || editChangedFiles.length > 0 || editError) && <div style={{ padding:"8px 9px", borderRadius:7, background:"rgba(255,255,255,0.025)", border:`1px solid ${editError ? `${palette.error}55` : `${palette.success}44`}`, color:editError ? palette.error : palette.textMuted, fontSize:10 }}>{editingFiles ? "● Editing files…" : editError ? `✕ ${editError}` : `✓ ${editChangedFiles.length} file${editChangedFiles.length === 1 ? "" : "s"} updated`}</div>}{workflowStage?.activity && <div style={{ marginTop:8, color:palette.textFaint, fontSize:10 }}>● {workflowStage.activity}</div>}</>}</div>
+                     <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"12px 10px" }}><div style={{ marginBottom:12, paddingBottom:10, borderBottom:`1px solid ${palette.border}` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:7 }}><span style={{ color:palette.textMuted, fontSize:9, fontWeight:800, letterSpacing:"0.1em" }}>LIVE ACTIVITY</span>{phase === "building" && <span style={{ color:palette.accent, fontSize:9 }}>Streaming</span>}</div>{liveActivity.length === 0 ? <div style={{ color:palette.textFaint, fontSize:10 }}>Agent activity will appear here as Firebox works.</div> : <div style={{ display:"flex", flexDirection:"column", gap:5 }}>{liveActivity.slice(-12).map(item => <div key={item.id} style={{ display:"flex", alignItems:"flex-start", gap:6, color:item.status === "error" ? palette.error : item.status === "done" ? palette.success : palette.textMuted, fontSize:10, lineHeight:1.4 }}><span style={{ flexShrink:0, width:6, height:6, marginTop:4, borderRadius:"50%", background:item.status === "error" ? palette.error : item.status === "done" ? palette.success : palette.accent, boxShadow:item.status === "working" ? `0 0 7px ${palette.accent}` : "none" }}/><span><strong style={{ color:palette.text }}>{item.label}</strong> {item.text}</span></div>)}</div>}</div><div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, color:palette.textActive, fontSize:11, fontWeight:700 }}><FireboxAgentMark size={17} animated={phase === "building" || aiThinking} state={phase === "error" ? "error" : phase === "complete" ? "complete" : "working"}/><span>Firebox Agent</span>{(phase === "building" || aiThinking) && <ThinkingDots/>}</div>{agentStates.every(state => state.status === "idle") && !chatHistory.length && !editingFiles ? <div style={{ padding:"14px 8px", color:palette.textFaint, fontSize:11, lineHeight:1.6 }}>The Agent’s live activity will appear here after you send a request.</div> : <>{chatHistory.filter(message => message.role === "user").slice(-3).map((message, index) => <div key={`request-${index}`} style={{ marginBottom:10, padding:"8px 9px", borderRadius:7, background:"rgba(0,120,212,0.10)", border:"1px solid rgba(0,120,212,0.22)", color:palette.text, fontSize:11, lineHeight:1.45 }}><div style={{ color:palette.textFaint, fontSize:9, marginBottom:3 }}>REQUEST</div>{message.text}</div>)}{AGENT_META.map(({ name, Icon, color }) => { const state = agentStates.find(item => item.name === name); if (!state || state.status === "idle") return null; const active = state.status === "working"; const done = state.status === "done"; const failed = state.status === "error"; const steps = AGENT_STEPS[name] || []; const visible = agentVisSteps[name] || 0; return <div key={name} style={{ marginBottom:8, padding:"8px 9px", borderRadius:7, background:active ? `${color}10` : "rgba(255,255,255,0.025)", border:`1px solid ${active ? `${color}55` : "rgba(255,255,255,0.08)"}` }}><div style={{ display:"flex", alignItems:"center", gap:7 }}><span style={{ color:active ? color : done ? palette.success : failed ? palette.error : palette.textMuted, fontSize:12 }}>{active ? "●" : done ? "✓" : failed ? "✕" : "○"}</span><Icon size={13} color={active ? color : done ? palette.success : failed ? palette.error : palette.textMuted}/><span style={{ color:active ? palette.textActive : palette.text, fontSize:11, fontWeight:650 }}>{active ? "Working" : done ? "Completed" : failed ? "Failed" : "Waiting"}</span><span style={{ color:palette.textMuted, fontSize:10 }}>{name}</span>{active && <ThinkingDots/>}</div>{visible > 0 && <div style={{ marginTop:6, paddingLeft:20 }}>{steps.slice(0, visible).map((step, stepIndex) => <div key={`${name}-${stepIndex}`} style={{ display:"flex", alignItems:"center", gap:6, color:stepIndex === visible - 1 && active ? palette.text : palette.textMuted, fontSize:10, lineHeight:1.45, marginTop:3 }}><span>{step.icon}</span><span>{step.text}</span>{stepIndex === visible - 1 && active && <span style={{ width:4, height:4, borderRadius:"50%", background:color, animation:"pulse 0.9s ease-in-out infinite" }}/>}</div>)}</div>}{state.streaming && <div style={{ marginTop:6, paddingLeft:20, color:palette.textFaint, fontSize:9, lineHeight:1.4, maxHeight:42, overflow:"hidden" }}>{state.streaming.slice(-280)}</div>}</div>})}{(editingFiles || editChangedFiles.length > 0 || editError) && <div style={{ padding:"8px 9px", borderRadius:7, background:"rgba(255,255,255,0.025)", border:`1px solid ${editError ? `${palette.error}55` : `${palette.success}44`}`, color:editError ? palette.error : palette.textMuted, fontSize:10 }}>{editingFiles ? "● Editing files…" : editError ? `✕ ${editError}` : `✓ ${editChangedFiles.length} file${editChangedFiles.length === 1 ? "" : "s"} updated`}</div>}{workflowStage?.activity && <div style={{ marginTop:8, color:palette.textFaint, fontSize:10 }}>● {workflowStage.activity}</div>}</>}</div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
                       <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${palette.borderLight}`, borderRadius:8, background:palette.editorBg, color:palette.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? palette.accent : "#38383a", color:chatInput.trim() ? "#fff" : palette.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
