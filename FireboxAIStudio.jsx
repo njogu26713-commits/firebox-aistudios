@@ -69,6 +69,12 @@ const BUILD_LAUNCHER_TYPES = [
   { Icon: Sparkles, label: "Landing Page", description: "Create a marketing website.", prompt: "Create a marketing website" },
 ];
 
+const BUILD_SUBTITLE_PROMPTS = [
+  "Describe an idea and Firebox will turn it into a real project.",
+  "Start with a thought and Firebox will shape the architecture.",
+  "Explain what you need and Firebox will build the first version.",
+];
+
 const BUILD_TYPEWRITER_PROMPTS = [
   "Build a school management platform with students, teachers, payments, and reports.",
   "Create an e-commerce marketplace with seller dashboards and checkout.",
@@ -608,6 +614,7 @@ export default function FireboxAIStudio() {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
+  const [subtitleText, setSubtitleText] = useState("");
   const [launcherFramework, setLauncherFramework] = useState("auto");
   const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
   const [launcherDatabase, setLauncherDatabase] = useState("auto");
@@ -679,6 +686,46 @@ export default function FireboxAIStudio() {
     timer = setTimeout(tick, 500);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [activity, chatInput, typewriterStopped]);
+
+  useEffect(() => {
+    if (activity !== "home") {
+      setSubtitleText("");
+      return undefined;
+    }
+    let cancelled = false;
+    let phraseIndex = 0;
+    let characterIndex = 0;
+    let deleting = false;
+    let pauseUntil = 0;
+    let timer;
+    const tick = () => {
+      if (cancelled) return;
+      const phrase = BUILD_SUBTITLE_PROMPTS[phraseIndex];
+      if (Date.now() < pauseUntil) {
+        timer = setTimeout(tick, 90);
+        return;
+      }
+      if (!deleting) {
+        characterIndex = Math.min(characterIndex + 1, phrase.length);
+        setSubtitleText(phrase.slice(0, characterIndex));
+        if (characterIndex === phrase.length) {
+          deleting = true;
+          pauseUntil = Date.now() + 1800;
+        }
+      } else {
+        characterIndex = Math.max(characterIndex - 1, 0);
+        setSubtitleText(phrase.slice(0, characterIndex));
+        if (characterIndex === 0) {
+          deleting = false;
+          phraseIndex = (phraseIndex + 1) % BUILD_SUBTITLE_PROMPTS.length;
+          pauseUntil = Date.now() + 400;
+        }
+      }
+      timer = setTimeout(tick, deleting ? 24 : 42);
+    };
+    timer = setTimeout(tick, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [activity]);
 
   /* AI provider settings — Cloud remains the default and unchanged */
   const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
@@ -3605,7 +3652,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ width:"100%", maxWidth:"none", margin:0, padding:isMobile ? "28px 16px 44px" : "42px 18px 60px", boxSizing:"border-box" }}>
                   <div style={{ textAlign:"center", marginBottom:24 }}>
                     <div style={{ color:palette.textActive, fontSize:isMobile ? 25 : 32, fontWeight:650, letterSpacing:"-0.035em" }}>What do you want to build?</div>
-                    <div style={{ color:palette.textMuted, fontSize:12, marginTop:8 }}>Describe an idea and Firebox will turn it into a real project.</div>
+                    <div style={{ color:palette.textMuted, fontSize:12, marginTop:8, minHeight:18 }}>{subtitleText || "Describe an idea and Firebox will turn it into a real project."}</div>
                   </div>
 
                   <div style={{ border:`1px solid ${palette.border}`, borderRadius:10, background:"transparent", padding:"12px 13px 9px", margin:"0 auto 28px", maxWidth:"none" }}>
