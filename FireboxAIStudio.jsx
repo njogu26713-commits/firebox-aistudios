@@ -91,14 +91,14 @@ function extractLocalAiReply(data) {
   };
 }
 
-async function fetchLocalAi(url, options = {}) {
+async function fetchLocalAi(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error(`Request timed out after 15 seconds: ${url}`);
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds: ${url}`);
     }
     throw error;
   } finally {
@@ -132,10 +132,10 @@ async function requestLocalChat({ config, messages, hasFiles, fileNames }) {
         })),
       ],
       stream: false,
-      max_tokens: 800,
+      max_tokens: 256,
       temperature: 0.5,
     }),
-  });
+  }, 120000);
   logLocalAiDebug("POST", chatUrl, "HTTP", response.status, "direct browser chat");
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`POST ${chatUrl} failed with HTTP ${response.status}`);
@@ -1094,7 +1094,10 @@ export default function FireboxAIStudio() {
         startEditFiles(text);
       }
     } catch (err) {
-      setChatHistory(prev => [...prev, { role: "ai", text: `Sorry, something went wrong: ${err.message}` }]);
+      const message = aiProvider === "local"
+        ? `Local AI did not respond in time or returned an error. Check that Ollama is running and try again. (${err.message})`
+        : `Sorry, something went wrong: ${err.message}`;
+      setChatHistory(prev => [...prev, { role: "ai", text: message }]);
       setAiStreamText("");
       setAiThinking(false);
     }
