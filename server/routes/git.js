@@ -104,23 +104,33 @@ router.get("/repos", dbRequired, async (req, res) => {
   }
 });
 
+/* ── POST /api/git/branches — list branches for a repository ────────────── */
+router.post("/branches", async (req, res) => {
+  const { owner, repo, token } = req.body;
+  if (!owner || !repo || !token) return res.status(400).json({ error: "owner, repo and token are required" });
+  try {
+    const branches = await ghFetch(`/repos/${owner}/${repo}/branches?per_page=100`, token);
+    res.json(branches.map(branch => branch.name));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 /* ── POST /api/git/connect ───────────────────────────────────────────────── */
 router.post("/connect", async (req, res) => {
-  const { repoUrl, token } = req.body;
+  const { repoUrl, token, branch: requestedBranch } = req.body;
   if (!repoUrl?.trim() || !token?.trim())
     return res.status(400).json({ error: "repoUrl and token are required" });
   try {
     const { owner, repo } = parseRepoUrl(repoUrl);
     const info   = await ghFetch(`/repos/${owner}/${repo}`, token);
-    const branch = info.default_branch;
+    const branch = requestedBranch?.trim() || info.default_branch;
     const tree   = await ghFetch(
-      `/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, token
+      `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, token
     );
     const files = (tree.tree || [])
       .filter(f => f.type === "blob")
       .map(f => ({ path: f.path, sha: f.sha, size: f.size }));
     res.json({
-      owner, repo, branch, files,
+      owner, repo, branch, defaultBranch: info.default_branch, files,
       fullName: info.full_name,
       description: info.description || "",
       htmlUrl: info.html_url,
@@ -292,6 +302,8 @@ router.post("/import-as-project", dbRequired, async (req, res) => {
     description: `Imported from GitHub: ${owner}/${repo} (branch: ${branch})`,
     projectName: repo,
     status: "complete",
+    importSource: "github",
+    importMeta: { owner, repo, branch, fileCount: fetchedFiles.length },
     agents: [],
     files:  fetchedFiles,
   });

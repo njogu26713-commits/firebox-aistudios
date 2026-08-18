@@ -634,6 +634,9 @@ export default function FireboxAIStudio() {
   /* new-project dropdown */
   const [newProjOpen, setNewProjOpen] = useState(false);
   const [importing,   setImporting]   = useState(false);
+  const [zipImportOpen, setZipImportOpen] = useState(false);
+  const [zipDragActive, setZipDragActive] = useState(false);
+  const zipInputRef = useRef(null);
   const newProjRef = useRef(null);
 
   /* layout state */
@@ -784,6 +787,8 @@ export default function FireboxAIStudio() {
   const [gitShowPromptStep,setGitShowPromptStep]= useState(false);   // show prompt step
   const [gitAnalyzing,     setGitAnalyzing]     = useState(false);   // analyzing repo with agents
   const [gitImporting,     setGitImporting]     = useState(false);   // importing repo as project
+  const [gitBranches,      setGitBranches]      = useState([]);
+  const [gitBranchesLoading,setGitBranchesLoading] = useState(false);
 
   const terminalRef    = useRef(null);
   const chatInputRef   = useRef(null);
@@ -791,6 +796,7 @@ export default function FireboxAIStudio() {
   const streamingRef   = useRef({});
   const editorRef      = useRef(null);
   const agentTimerRefs = useRef({});  // { name: { elapsed: intervalId, steps: timeoutIds[] } }
+  const loadProjectFilesRef = useRef(null);
 
   /* mobile breakpoint */
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
@@ -824,6 +830,26 @@ export default function FireboxAIStudio() {
   const updateAgent = useCallback((name, patch) =>
     setAgentStates(prev => prev.map(a => a.name===name ? {...a,...patch} : a)), []);
 
+  /* ── Shared external-project persistence ──────────────────────────────── */
+  const persistImportedProject = useCallback(async ({ files, projectName, description, source, sourceMeta = {} }) => {
+    const normalizedFiles = files
+      .filter(file => file?.path && typeof file.content === "string")
+      .map(file => ({ ...file, agent: file.agent || (source === "github" ? "GitHub Import" : "ZIP Import"), language: file.language || "plaintext" }))
+      .slice(0, 200);
+    if (!normalizedFiles.length) throw new Error("No readable project files found");
+    const response = await fetch("/api/import/project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectName, description, source, sourceMeta, files: normalizedFiles }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Import failed with HTTP ${response.status}`);
+    const importedBuild = { _id: data.buildId, projectName: data.projectName || projectName, description, importSource: source };
+    await loadProjectFilesRef.current?.(importedBuild);
+    fetch("/api/builds").then(r => r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(() => {});
+    return data;
+  }, []);
+
   /* ── Import: local folder ─────────────────────────────────────────────── */
   const importFolder = useCallback(async () => {
     setNewProjOpen(false);
@@ -836,69 +862,45 @@ export default function FireboxAIStudio() {
     catch (err) { if (err.name !== "AbortError") console.error(err); return; }
 
     setImporting(true);
-    const files = [];
-
-    async function readDir(handle, prefix) {
-      for await (const [name, entry] of handle.entries()) {
-        if (name.startsWith(".") || name === "node_modules") continue;
-        const path = prefix ? `${prefix}/${name}` : name;
-        if (entry.kind === "file") {
-          try {
-            const f = await entry.getFile();
-            const content = await f.text();
-            files.push({ path, content, agent: "Import", language: "" });
-          } catch {}
-        } else {
-          await readDir(entry, path);
+    try {
+      const files = [];
+      async function readDir(handle, prefix) {
+        for await (const [name, entry] of handle.entries()) {
+          if (name.startsWith(".") || name === "node_modules") continue;
+          const path = prefix ? `${prefix}/${name}` : name;
+          if (entry.kind === "file") {
+            try { files.push({ path, content: await (await entry.getFile()).text(), agent: "Folder Import", language: "" }); } catch {}
+          } else await readDir(entry, path);
         }
       }
-    }
-
-    await readDir(dirHandle, dirHandle.name);
-    setAllFiles(files);
-    setOpenTabs([]); setActiveTabPath(null); setTabContents({});
-    if (files.length > 0) {
-      const f = files[0];
-      setOpenTabs([f]); setActiveTabPath(f.path);
-      setTabContents({ [f.path]: f.content });
-    }
-    setCurrentBuildId(null); // local import — no server build to edit against
-    setActivity("explorer"); setImporting(false);
-  }, []);
+      await readDir(dirHandle, "");
+      await persistImportedProject({ files, projectName: dirHandle.name, description: `Imported folder: ${dirHandle.name}`, source: "folder", sourceMeta: { folderName: dirHandle.name } });
+    } catch (err) { setErrorMsg(err.message); }
+    setImporting(false);
+  }, [persistImportedProject]);
 
   /* ── Import: ZIP file ─────────────────────────────────────────────────── */
+  const processZipFile = useCallback(async (zipFile) => {
+    if (!zipFile || !/\.zip$/i.test(zipFile.name)) { setErrorMsg("Please choose a .zip project file."); return; }
+    setImporting(true);
+    try {
+      const zip = await JSZip.loadAsync(zipFile);
+      const files = [];
+      for (const [path, entry] of Object.entries(zip.files)) {
+        if (entry.dir) continue;
+        const seg = path.split("/");
+        if (seg.some(s => s.startsWith(".") || s === "node_modules")) continue;
+        try { files.push({ path, content: await entry.async("string"), agent: "ZIP Import", language: "" }); } catch {}
+      }
+      const rawName = zipFile.name.replace(/\.zip$/i, "").trim() || "firebox-project";
+      await persistImportedProject({ files, projectName: rawName, description: `Imported ZIP: ${zipFile.name}`, source: "zip", sourceMeta: { fileName: zipFile.name, size: zipFile.size } });
+      setZipImportOpen(false);
+    } catch (err) { setErrorMsg(err.message); }
+    setImporting(false);
+  }, [persistImportedProject]);
   const importZip = useCallback(() => {
     setNewProjOpen(false);
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = ".zip";
-    input.onchange = async () => {
-      if (!input.files?.[0]) return;
-      setImporting(true);
-      try {
-        const zip = await JSZip.loadAsync(input.files[0]);
-        const files = [];
-        for (const [path, entry] of Object.entries(zip.files)) {
-          if (entry.dir) continue;
-          const seg = path.split("/");
-          if (seg.some(s => s.startsWith(".") || s === "node_modules")) continue;
-          try {
-            const content = await entry.async("string");
-            files.push({ path, content, agent: "Import", language: "" });
-          } catch {}
-        }
-        setAllFiles(files);
-        setOpenTabs([]); setActiveTabPath(null); setTabContents({});
-        if (files.length > 0) {
-          const f = files[0];
-          setOpenTabs([f]); setActiveTabPath(f.path);
-          setTabContents({ [f.path]: f.content });
-        }
-        setCurrentBuildId(null); // local import — no server build to edit against
-        setActivity("explorer");
-      } catch (err) { console.error(err); }
-      setImporting(false);
-    };
-    input.click();
+    setZipImportOpen(true);
   }, []);
 
   /* ── Import: GitHub (open git panel) ─────────────────────────────────── */
@@ -1538,6 +1540,7 @@ export default function FireboxAIStudio() {
     }
     setLoadingProjectId(null);
   }, []);
+  loadProjectFilesRef.current = loadProjectFiles;
 
   /* ── Tab management ───────────────────────────────────────────────────── */
   const openFile = useCallback((file) => {
@@ -1621,24 +1624,31 @@ export default function FireboxAIStudio() {
   const removeGitToken = useCallback(async () => {
     await fetch("/api/git/token", { method:"DELETE" });
     setGitToken(""); setGitTokenSaved(false); setGitRepos([]);
-    setGitRepo(null); setGitFileShas({}); setGitError("");
+    setGitRepo(null); setGitFileShas({}); setGitBranches([]); setGitError("");
     setGitPushResult(null); setGitShowPromptStep(false);
   }, []);
 
   /* ── Git: connect repo ───────────────────────────────────────────────────── */
-  const connectGitRepo = useCallback(async (repoFullName) => {
+  const connectGitRepo = useCallback(async (repoFullName, requestedBranch = "") => {
     const token = gitToken;
     if (!repoFullName || !token) return;
     setGitConnecting(true); setGitError(""); setGitRepo(null);
     try {
       const res  = await fetch("/api/git/connect", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ repoUrl: `github.com/${repoFullName}`, token }),
+        body: JSON.stringify({ repoUrl: `github.com/${repoFullName}`, token, branch: requestedBranch || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setGitRepo(data);
       setGitFileShas({});
+      setGitBranchesLoading(true);
+      fetch("/api/git/branches", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owner: data.owner, repo: data.repo, token }),
+      }).then(branchRes => branchRes.json().then(branchData => {
+        if (branchRes.ok && Array.isArray(branchData)) setGitBranches(branchData);
+      })).catch(() => {}).finally(() => setGitBranchesLoading(false));
       setGitExpandedDirs(new Set());
       setGitPushResult(null);
       setGitShowPromptStep(true);  // show "what changes?" step
@@ -2167,41 +2177,26 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   boxShadow:"0 8px 32px rgba(0,0,0,0.5)",
                   overflow:"hidden", animation:"fadeIn 0.12s ease",
                 }}>
-                  {/* Header */}
-                  <div style={{ padding:"8px 12px 6px", fontSize:10, fontWeight:700, color:palette.textMuted, letterSpacing:"0.08em", borderBottom:`1px solid ${palette.border}` }}>
-                    NEW PROJECT
-                  </div>
-
+                  <div style={{ padding:"8px 12px 5px", fontSize:10, fontWeight:700, color:palette.textMuted, letterSpacing:"0.08em" }}>CREATE NEW</div>
+                  <button
+                    onClick={() => { setNewProjOpen(false); reset(); setActivity("home"); setSideOpen(false); }}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 12px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}
+                    onMouseEnter={e => e.currentTarget.style.background="#2A2D2E"}
+                    onMouseLeave={e => e.currentTarget.style.background="transparent"}
+                  >
+                    <div style={{ width:28, height:28, borderRadius:6, background:"rgba(0,122,204,0.12)", border:`1px solid rgba(0,122,204,0.35)`, display:"flex", alignItems:"center", justifyContent:"center" }}><Plus size={13} color={palette.accent}/></div>
+                    <div><div style={{ fontSize:12, color:palette.text, fontWeight:600 }}>Start with an idea</div><div style={{ fontSize:10, color:palette.textFaint, marginTop:1 }}>Build a new application</div></div>
+                  </button>
+                  <div style={{ margin:"4px 12px", borderTop:`1px solid ${palette.border}` }}/>
+                  <div style={{ padding:"5px 12px", fontSize:10, fontWeight:700, color:palette.textMuted, letterSpacing:"0.08em" }}>IMPORT EXISTING</div>
                   {[
-                    { Icon:FolderOpen, label:"Import Folder",      sub:"Open a local directory", action:importFolder },
-                    { Icon:Upload,     label:"Upload ZIP",          sub:"Extract from .zip file",  action:importZip },
-                    { Icon:Github,     label:"Import from GitHub",  sub:"Browse your repositories",action:importGithub },
+                    { Icon:Github, label:"GitHub Repository", sub:"Connect, choose a branch, import", action:importGithub },
+                    { Icon:Upload, label:"Upload ZIP", sub:"Drop or browse a .zip project", action:importZip },
+                    { Icon:FolderOpen, label:"Local Folder", sub:"Open a local directory", action:importFolder },
                   ].map(({ Icon, label, sub, action }) => (
-                    <button
-                      key={label}
-                      onClick={action}
-                      style={{
-                        display:"flex", alignItems:"center", gap:10,
-                        width:"100%", padding:"9px 12px",
-                        background:"transparent", border:"none",
-                        cursor:"pointer", textAlign:"left",
-                        transition:"background 0.1s",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background="#2A2D2E"}
-                      onMouseLeave={e => e.currentTarget.style.background="transparent"}
-                    >
-                      <div style={{
-                        width:28, height:28, borderRadius:6, flexShrink:0,
-                        background:"rgba(255,255,255,0.05)",
-                        border:`1px solid ${palette.border}`,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                      }}>
-                        <Icon size={13} color={palette.textMuted}/>
-                      </div>
-                      <div>
-                        <div style={{ fontSize:12, color:palette.text, fontWeight:500 }}>{label}</div>
-                        <div style={{ fontSize:10, color:palette.textFaint, marginTop:1 }}>{sub}</div>
-                      </div>
+                    <button key={label} onClick={action} style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 12px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }} onMouseEnter={e => e.currentTarget.style.background="#2A2D2E"} onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                      <div style={{ width:28, height:28, borderRadius:6, flexShrink:0, background:"rgba(255,255,255,0.05)", border:`1px solid ${palette.border}`, display:"flex", alignItems:"center", justifyContent:"center" }}><Icon size={13} color={palette.textMuted}/></div>
+                      <div><div style={{ fontSize:12, color:palette.text, fontWeight:500 }}>{label}</div><div style={{ fontSize:10, color:palette.textFaint, marginTop:1 }}>{sub}</div></div>
                     </button>
                   ))}
                 </div>
@@ -3106,9 +3101,17 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 <ExternalLink size={11}/>
                               </a>
                             </div>
-                            <div style={{ fontSize:10, color:palette.textMuted, marginTop:2 }}>
-                              branch: <span style={{ color:palette.success }}>{gitRepo.branch}</span>
-                              {" · "}{gitRepo.files.length} files
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:4 }}>
+                              <span style={{ fontSize:10, color:palette.textMuted }}>branch:</span>
+                              <select
+                                value={gitRepo.branch}
+                                disabled={gitBranchesLoading || gitConnecting || gitImporting}
+                                onChange={e => connectGitRepo(gitRepo.fullName, e.target.value)}
+                                style={{ flex:1, minWidth:0, background:palette.sideBar, color:palette.success, border:`1px solid ${palette.border}`, borderRadius:4, padding:"2px 5px", fontSize:10, outline:"none" }}
+                              >
+                                {[...new Set([gitRepo.branch, ...gitBranches].filter(Boolean))].map(branch => <option key={branch} value={branch}>{branch}</option>)}
+                              </select>
+                              <span style={{ fontSize:10, color:palette.textMuted, whiteSpace:"nowrap" }}>{gitRepo.files.length} files</span>
                             </div>
                           </div>
 
@@ -4371,6 +4374,28 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
           })()}
         </div>
 
+        {zipImportOpen && (
+          <div style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(0,0,0,0.58)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={() => !importing && setZipImportOpen(false)}>
+            <div style={{ width:"min(520px, 100%)", background:palette.sideBar, border:`1px solid ${palette.border}`, borderRadius:12, boxShadow:"0 20px 70px rgba(0,0,0,0.45)", overflow:"hidden" }} onClick={e => e.stopPropagation()}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"16px 18px", borderBottom:`1px solid ${palette.border}` }}>
+                <div style={{ width:34, height:34, borderRadius:9, background:"rgba(0,122,204,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}><Upload size={17} color={palette.accent}/></div>
+                <div style={{ flex:1 }}><div style={{ color:palette.textActive, fontSize:14, fontWeight:700 }}>Upload your project</div><div style={{ color:palette.textMuted, fontSize:11, marginTop:2 }}>Import a ZIP and open it as a normal Firebox workspace.</div></div>
+                <button onClick={() => setZipImportOpen(false)} disabled={importing} style={{ background:"transparent", border:"none", color:palette.textMuted, cursor:importing ? "not-allowed" : "pointer" }}><X size={16}/></button>
+              </div>
+              <div
+                onDragOver={e => { e.preventDefault(); setZipDragActive(true); }}
+                onDragLeave={() => setZipDragActive(false)}
+                onDrop={e => { e.preventDefault(); setZipDragActive(false); processZipFile(e.dataTransfer.files?.[0]); }}
+                onClick={() => !importing && zipInputRef.current?.click()}
+                style={{ margin:18, minHeight:220, border:`1px dashed ${zipDragActive ? palette.accent : palette.borderLight}`, borderRadius:10, background:zipDragActive ? "rgba(0,122,204,0.12)" : "rgba(255,255,255,0.02)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", cursor:importing ? "default" : "pointer", transition:"all 0.16s" }}
+              >
+                {importing ? <><Flame size={34} color={palette.accent} style={{ animation:"pulse 1.2s ease-in-out infinite" }}/><div style={{ marginTop:12, color:palette.text, fontSize:13, fontWeight:600 }}>Importing project…</div><div style={{ marginTop:4, color:palette.textMuted, fontSize:11 }}>Saving files and preparing Workspace</div></> : <><Upload size={30} color={palette.accent}/><div style={{ marginTop:12, color:palette.text, fontSize:14, fontWeight:600 }}>{zipDragActive ? "Drop ZIP to import" : "Drop your ZIP here"}</div><div style={{ marginTop:5, color:palette.textMuted, fontSize:11 }}>or click to browse · .zip supported</div></>}
+                <input ref={zipInputRef} type="file" accept=".zip,application/zip" style={{ display:"none" }} onChange={e => processZipFile(e.target.files?.[0])}/>
+              </div>
+              <div style={{ padding:"0 18px 16px", color:palette.textFaint, fontSize:10, lineHeight:1.5 }}>Hidden folders and node_modules are skipped. After import, the Agent can inspect, edit, run, preview, and continue working on this project.</div>
+            </div>
+          </div>
+        )}
         {/* ══ Status bar ══════════════════════════════════════════════════ */}
         <div style={{
           height: isMobile ? 20 : 22, flexShrink:0,

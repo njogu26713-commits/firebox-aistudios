@@ -21,8 +21,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
 app.use("/api/git", gitRouter);
+
+/* ── POST /api/import/project — persist files from an external project source ── */
+app.post("/api/import/project", dbRequired, async (req, res) => {
+  const { projectName = "firebox-project", description = "Imported project", source = "upload", sourceMeta = {}, files } = req.body;
+  if (!Array.isArray(files) || files.length === 0)
+    return res.status(400).json({ error: "At least one project file is required" });
+  if (files.length > 200)
+    return res.status(400).json({ error: "Imported projects are limited to 200 files" });
+  const normalizedFiles = files
+    .filter(file => file && typeof file.path === "string" && typeof file.content === "string")
+    .map(file => ({
+      agent: file.agent || (source === "github" ? "GitHub Import" : "ZIP Import"),
+      path: file.path.replace(/^\/+/, "").replace(/\\/g, "/"),
+      content: file.content,
+      language: file.language || "plaintext",
+    }))
+    .filter(file => file.path && file.path.length <= 500 && file.content.length <= 300_000);
+  if (!normalizedFiles.length)
+    return res.status(400).json({ error: "No readable project files were supplied" });
+  const build = await Build.create({
+    description: String(description || "Imported project").trim().slice(0, 500),
+    projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",
+    status: "complete",
+    agents: [],
+    files: normalizedFiles,
+    importSource: source,
+    importMeta: sourceMeta,
+  });
+  res.json({ buildId: build._id, projectName: build.projectName, filesCount: normalizedFiles.length });
+});
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", dbRequired, async (req, res) => {
