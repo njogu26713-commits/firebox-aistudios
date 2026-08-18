@@ -8,6 +8,25 @@ function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForResume(buildId, res, signal) {
+  let announced = false;
+  while (!signal?.aborted) {
+    const state = await Build.findById(buildId).select("status executionState").lean();
+    if (!state || state.status !== "running" || state.executionState !== "paused") {
+      if (announced) sse(res, "workflow-resumed", { buildId: buildId.toString() });
+      return state;
+    }
+    if (!announced) {
+      sse(res, "workflow-paused", { buildId: buildId.toString(), message: "Paused at a safe workflow checkpoint" });
+      announced = true;
+    }
+    await sleep(500);
+  }
+  return null;
+}
+
 async function getStreamWithRepair({ config, messages, maxTokens, temperature, signal, res, agent }) {
   for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
     try {
@@ -29,6 +48,8 @@ export async function runAgentPipeline(build, res, signal) {
 
   for (let i = 0; i < AGENT_DEFS.length; i++) {
     if (signal?.aborted) break;
+    const beforeStage = await waitForResume(build._id, res, signal);
+    if (!beforeStage || signal?.aborted) break;
 
     const agentDef = AGENT_DEFS[i];
     const capability = AGENT_CAPABILITIES[agentDef.name] || { id: agentDef.name.toLowerCase(), label: agentDef.task, activity: agentDef.task };
@@ -76,6 +97,8 @@ export async function runAgentPipeline(build, res, signal) {
         }
       }
       if (buffer) sse(res, "agent-token", { agent: agentDef.name, token: buffer });
+      const afterGeneration = await waitForResume(build._id, res, signal);
+      if (!afterGeneration || signal?.aborted) break;
 
       agentOutputs[agentDef.name] = fullOutput;
 

@@ -514,6 +514,7 @@ export default function FireboxAIStudio() {
   );
   const [activeAgent,    setActiveAgent]    = useState(null);
   const [workflowStage,  setWorkflowStage]  = useState(null);
+  const [buildPaused,    setBuildPaused]    = useState(false);
   const [allFiles,       setAllFiles]       = useState([]);
   const [errorMsg,       setErrorMsg]       = useState("");
   const [recentBuilds,   setRecentBuilds]   = useState([]);
@@ -890,7 +891,7 @@ export default function FireboxAIStudio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start");
       buildId = useLocalEngine ? data.jobId : data.buildId;
-      if (!useLocalEngine) setCurrentBuildId(data.buildId);
+      setCurrentBuildId(buildId);
     } catch (err) { setPhase("error"); setErrorMsg(err.message); return; }
 
     const eventUrl = useLocalEngine
@@ -900,10 +901,19 @@ export default function FireboxAIStudio() {
     esRef.current = es;
 
     es.addEventListener("workflow-stage-start", e => {
+      setBuildPaused(false);
       try { setWorkflowStage(JSON.parse(e.data)); } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-stage-complete", e => {
       try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), completed:true })); } catch { /* ignore malformed activity event */ }
+    });
+    es.addEventListener("workflow-paused", e => {
+      setBuildPaused(true);
+      setWorkflowStage(prev => ({ ...(prev || {}), activity:"Paused at a safe checkpoint", paused:true }));
+    });
+    es.addEventListener("workflow-resumed", e => {
+      setBuildPaused(false);
+      setWorkflowStage(prev => ({ ...(prev || {}), activity:"Resuming workflow", paused:false }));
     });
     es.addEventListener("workflow-stage-error", e => {
       try { setWorkflowStage(prev => ({ ...(prev || {}), ...JSON.parse(e.data), error:true })); } catch { /* ignore malformed activity event */ }
@@ -1019,6 +1029,24 @@ export default function FireboxAIStudio() {
 
     es.onerror = () => { setPhase("error"); setErrorMsg("Connection lost."); es.close(); };
   }, [updateAgent, aiProvider, localAiConfig, localEngineUrl, localEngineToken]);
+
+  const setBuildExecutionState = useCallback(async (nextState) => {
+    if (!currentBuildId) return;
+    const useLocalEngine = aiProvider === "local";
+    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
+    if (useLocalEngine && (!engineBase || !localEngineToken.trim())) return;
+    const url = useLocalEngine ? `${engineBase}/api/build/${currentBuildId}/${nextState === "paused" ? "pause" : "resume"}` : `/api/build/${currentBuildId}/${nextState === "paused" ? "pause" : "resume"}`;
+    const headers = { "Content-Type": "application/json" };
+    if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
+    try {
+      const response = await fetch(url, { method:"POST", headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to change build execution state");
+      setBuildPaused(data.executionState === "paused");
+    } catch (error) {
+      setErrorMsg(error.message);
+    }
+  }, [currentBuildId, aiProvider, localEngineUrl, localEngineToken]);
 
   /* ── Edit existing build files with targeted search/replace ───────────── */
   const startEditFiles = useCallback(async (instruction) => {
@@ -1258,6 +1286,7 @@ export default function FireboxAIStudio() {
     Object.values(agentTimerRefs.current).forEach(({ elapsed, steps }) => { clearInterval(elapsed); steps.forEach(clearTimeout); });
     agentTimerRefs.current = {};
     setActiveAgent(null);
+    setBuildPaused(false);
     setPhase("idle");
     setErrorMsg("Agent stopped. No further changes are being made.");
   }, []);
@@ -3468,7 +3497,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:"#181818", color:VS.text, fontFamily:FONT_UI }}>
                 <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 18px", borderBottom:`1px solid ${VS.border}`, background:"#202020" }}>
                   <div><div style={{ color:VS.textActive, fontSize:18, fontWeight:700 }}>My Workspace</div><div style={{ color:VS.textMuted, fontSize:11, marginTop:3 }}>{workflowStage?.activity || "Follow your agents and inspect generated project files."}</div></div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}{phase === "building" && <button onClick={stopBuild} style={{ marginLeft:6, border:`1px solid ${VS.error}66`, borderRadius:6, background:`${VS.error}12`, color:VS.error, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>Stop Agent</button>}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, color:VS.textMuted, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:phase === "error" ? VS.error : phase === "complete" ? VS.success : VS.accent }}/>{phase === "idle" ? "Ready" : phase === "building" ? "Agents working" : phase === "complete" ? "Complete" : "Needs attention"}{phase === "building" && <><button onClick={() => setBuildExecutionState(buildPaused ? "running" : "paused")} style={{ marginLeft:6, border:`1px solid ${VS.accent}66`, borderRadius:6, background:`${VS.accent}12`, color:VS.accent, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>{buildPaused ? "Resume" : "Pause"}</button><button onClick={stopBuild} style={{ marginLeft:4, border:`1px solid ${VS.error}66`, borderRadius:6, background:`${VS.error}12`, color:VS.error, padding:"4px 8px", fontSize:10, cursor:"pointer" }}>Stop Agent</button></>}</div>
                 </div>
                 {(planning || buildPlan) && <div style={{ flexShrink:0, margin:"10px 14px 0", padding:"12px 14px", border:`1px solid ${VS.accent}66`, borderRadius:9, background:`${VS.accent}0d` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8 }}><div style={{ color:VS.textActive, fontSize:12, fontWeight:700 }}>🔥 Firebox Agent plan</div>{planning ? <span style={{ color:VS.accent, fontSize:10 }}>Understanding your request…</span> : <button onClick={() => setBuildPlan(null)} style={{ border:"none", background:"transparent", color:VS.textMuted, cursor:"pointer", fontSize:11 }}>Cancel</button>}</div>{planning ? <div style={{ color:VS.textMuted, fontSize:11 }}>I’ll inspect the request and prepare the build steps before changing the project.</div> : <><div style={{ color:VS.text, fontSize:12, lineHeight:1.5, marginBottom:8 }}>{buildPlan.summary}</div><ol style={{ margin:"0 0 10px 18px", padding:0, color:VS.textMuted, fontSize:11, lineHeight:1.6 }}>{buildPlan.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol>{buildPlan.needsConfirmation ? <><div style={{ padding:"8px 10px", borderRadius:7, background:`${VS.warning || "#d7ba7d"}18`, color:VS.textMuted, fontSize:11, marginBottom:8 }}>Confirmation required: {buildPlan.confirmationReason}</div><button onClick={() => confirmBuildPlan(true)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Confirm and start building →</button></> : <button onClick={() => confirmBuildPlan(false)} style={{ border:"none", borderRadius:7, background:VS.accent, color:"white", padding:"8px 13px", fontSize:11, fontWeight:700, cursor:"pointer" }}>Start building →</button>}</>}</div>}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>

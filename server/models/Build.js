@@ -28,6 +28,7 @@ const buildSchema = new mongoose.Schema({
     apiKey:   { type: String, default: "", select: false },
   },
   status:      { type: String, enum: ["running","complete","failed"], default: "running" },
+  executionState: { type: String, enum: ["running", "paused", "stopping", "stopped"], default: "running" },
   agents:      [agentSchema],
   files:       [fileSchema],
   createdAt:   { type: Date, default: Date.now },

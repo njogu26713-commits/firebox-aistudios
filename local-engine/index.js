@@ -20,6 +20,7 @@ const OLLAMA_API_KEY = String(process.env.OLLAMA_API_KEY || "").trim();
 const jobs = new Map();
 const previews = new Map();
 const PREVIEW_PORT = Number(process.env.FIREBOX_PREVIEW_PORT || 5173);
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 if (TOKEN.length < 24) {
   console.error("FIREBOX_ENGINE_TOKEN must be set to a random value of at least 24 characters.");
@@ -108,6 +109,14 @@ async function runProjectChecks(projectDir, emit) {
   }
 }
 
+async function waitForResume(job, res, signal) {
+  if (!job.paused) return true;
+  send(res, "workflow-paused", { jobId: job.id, message: "Paused at a safe workflow checkpoint" });
+  while (job.paused && !signal?.aborted) await sleep(500);
+  if (!signal?.aborted) send(res, "workflow-resumed", { jobId: job.id });
+  return !signal?.aborted;
+}
+
 async function runBuild(job, res, signal) {
   const projectDir = safeWorkspacePath(job.projectName);
   await fs.mkdir(projectDir, { recursive: true });
@@ -120,6 +129,7 @@ async function runBuild(job, res, signal) {
 
   for (const agent of AGENT_DEFS) {
     if (signal?.aborted) throw new Error("Build stopped by user");
+    if (!await waitForResume(job, res, signal)) throw new Error("Build stopped by user");
     const capability = AGENT_CAPABILITIES[agent.name] || { id: agent.name.toLowerCase(), label: agent.task, activity: agent.task };
     send(res, "workflow-stage-start", { stage: capability.id, label: capability.label, activity: capability.activity, agent: agent.name });
     send(res, "agent-start", { agent: agent.name, task: agent.task, capability });
@@ -144,6 +154,7 @@ async function runBuild(job, res, signal) {
       }
     }
     if (buffer) send(res, "agent-token", { agent: agent.name, token: buffer });
+    if (!await waitForResume(job, res, signal)) throw new Error("Build stopped by user");
     outputs[agent.name] = full;
     const files = extractFiles(agent.name, full);
     for (const file of files) {
@@ -261,8 +272,22 @@ app.post("/api/build", auth, async (req, res) => {
   if (!model?.trim()) return res.status(400).json({ error: "Local AI model is required" });
   const safeName = String(projectName || `firebox-project-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
   const jobId = crypto.randomUUID();
-  jobs.set(jobId, { id: jobId, description: description.trim(), endpoint, model, apiKey, projectName: safeName });
+  jobs.set(jobId, { id: jobId, description: description.trim(), endpoint, model, apiKey, projectName: safeName, paused: false });
   res.json({ jobId, projectName: safeName });
+});
+
+app.post("/api/build/:id/pause", auth, (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Build job not found" });
+  job.paused = true;
+  res.json({ ok: true, executionState: "paused" });
+});
+
+app.post("/api/build/:id/resume", auth, (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Build job not found" });
+  job.paused = false;
+  res.json({ ok: true, executionState: "running" });
 });
 
 app.get("/api/build/:id/events", auth, async (req, res) => {

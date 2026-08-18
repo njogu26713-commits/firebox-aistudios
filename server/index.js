@@ -69,6 +69,26 @@ app.get("/api/build/:id/events", dbRequired, async (req, res) => {
   res.end();
 });
 
+/* ── POST /api/build/:id/pause — pause at the next safe checkpoint ─────────── */
+app.post("/api/build/:id/pause", dbRequired, async (req, res) => {
+  try {
+    const build = await Build.findByIdAndUpdate(req.params.id, { $set: { executionState: "paused" } }, { new: true }).select("executionState status");
+    if (!build) return res.status(404).json({ error: "Build not found" });
+    if (build.status !== "running") return res.status(409).json({ error: "Build is not running", executionState: build.executionState });
+    res.json({ ok: true, executionState: build.executionState });
+  } catch { res.status(400).json({ error: "Unable to pause build" }); }
+});
+
+/* ── POST /api/build/:id/resume — resume a paused build ──────────────────── */
+app.post("/api/build/:id/resume", dbRequired, async (req, res) => {
+  try {
+    const build = await Build.findByIdAndUpdate(req.params.id, { $set: { executionState: "running" } }, { new: true }).select("executionState status");
+    if (!build) return res.status(404).json({ error: "Build not found" });
+    if (build.status !== "running") return res.status(409).json({ error: "Build is not running", executionState: build.executionState });
+    res.json({ ok: true, executionState: build.executionState });
+  } catch { res.status(400).json({ error: "Unable to resume build" }); }
+});
+
 /* ── GET /api/builds — recent builds (no file content) ──────────────────── */
 app.get("/api/builds", dbRequired, async (req, res) => {
   const builds = await Build.find()
