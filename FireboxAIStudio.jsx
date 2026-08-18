@@ -10,6 +10,7 @@ import {
   FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
   Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen, Workflow, Flame, Sun, Moon,
+  ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -59,6 +60,25 @@ const LIGHT_VS = {
 
 const FONT_UI   = "'Inter', 'Segoe UI', system-ui, sans-serif";
 const FONT_MONO = "'Cascadia Code', 'Fira Code', 'IBM Plex Mono', Menlo, monospace";
+
+const BUILD_LAUNCHER_TYPES = [
+  { Icon: Globe, label: "Website", description: "Build a complete web application.", prompt: "Build a complete web application" },
+  { Icon: Code2, label: "Mobile", description: "Create a mobile application.", prompt: "Create a mobile application" },
+  { Icon: Package, label: "Dashboard", description: "Create an admin or business dashboard.", prompt: "Create an admin/business dashboard" },
+  { Icon: Server, label: "API", description: "Build a backend or API.", prompt: "Build a backend/API" },
+  { Icon: Sparkles, label: "Landing Page", description: "Create a marketing website.", prompt: "Create a marketing website" },
+];
+
+const BUILD_IDEA_EXAMPLES = [
+  { Icon: ShoppingCart, label: "E-commerce", prompt: "Build an e-commerce platform where customers can browse products, add items to a cart, and complete purchases." },
+  { Icon: GraduationCap, label: "School Management", prompt: "Build a school management platform with students, teachers, payments, attendance, and reports." },
+  { Icon: Landmark, label: "Fintech", prompt: "Build a fintech dashboard with accounts, transactions, transfers, spending insights, and secure authentication." },
+  { Icon: Home, label: "Real Estate", prompt: "Build a real estate platform where agents can list properties and users can search, filter, save, and inquire about listings." },
+  { Icon: CalendarDays, label: "Booking Platform", prompt: "Build a booking platform with availability calendars, appointment creation, reminders, and an admin panel." },
+  { Icon: MessageCircle, label: "Social App", prompt: "Build a social application with profiles, posts, comments, likes, direct messages, and notifications." },
+  { Icon: Bot, label: "AI SaaS", prompt: "Build an AI SaaS application with authentication, a workspace, usage tracking, billing, and an AI-powered workflow." },
+  { Icon: Store, label: "Marketplace", prompt: "Build a marketplace where sellers can list products, customers can browse and purchase, sellers have dashboards, and admins can manage listings." },
+];
 
 function getLocalAiUrls(endpoint) {
   const normalized = String(endpoint || "").trim().replace(/\/+$/, "");
@@ -254,32 +274,32 @@ const AGENT_STEPS = {
 /* ─── Prompt suggestions shown on the idle screen ───────────────────────── */
 const PROMPT_SUGGESTIONS = [
   {
-    icon: "🛒",
+    Icon: ShoppingCart,
     label: "E-commerce store",
     prompt: "Build a full-stack e-commerce store with product listings, shopping cart, user auth, and Stripe checkout integration",
   },
   {
-    icon: "💬",
+    Icon: MessageCircle,
     label: "Real-time chat app",
     prompt: "Build a real-time chat application with WebSocket support, multiple rooms, user presence indicators, and message history",
   },
   {
-    icon: "📋",
+    Icon: ClipboardList,
     label: "Project management",
     prompt: "Build a project management app with Kanban boards, task assignment, due dates, comments, and team collaboration features",
   },
   {
-    icon: "📊",
+    Icon: BarChart3,
     label: "Analytics dashboard",
     prompt: "Build an analytics dashboard with interactive charts, KPI cards, date range filters, CSV export, and a REST API backend",
   },
   {
-    icon: "🤖",
+    Icon: Bot,
     label: "AI chatbot",
     prompt: "Build an AI-powered chatbot app with streaming responses, conversation history, system prompt configuration, and a clean chat UI",
   },
   {
-    icon: "🔐",
+    Icon: LockKeyhole,
     label: "SaaS starter",
     prompt: "Build a SaaS starter app with user authentication, subscription billing via Stripe, a settings page, and a protected dashboard",
   },
@@ -578,6 +598,10 @@ export default function FireboxAIStudio() {
   const [chatInput,      setChatInput]      = useState("");
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
+  const [launcherFramework, setLauncherFramework] = useState("auto");
+  const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
+  const [launcherDatabase, setLauncherDatabase] = useState("auto");
 
   /* editor state */
   const [openTabs,       setOpenTabs]       = useState([]);          // [{path,agent,content,language}]
@@ -1238,8 +1262,12 @@ export default function FireboxAIStudio() {
 
   /* ── Send chat message — AI replies first, then acts ──────────────────── */
   const sendChatMessage = useCallback(async () => {
-    const text = chatInput.trim();
-    if (!text) return;
+    const baseText = chatInput.trim();
+    if (!baseText) return;
+    const launcherOverrides = activity === "home" && advancedOptionsOpen
+      ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
+      : "";
+    const text = `${baseText}${launcherOverrides}`;
     const userMsg = { role: "user", text };
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput("");
@@ -1334,7 +1362,7 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
     }
-  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, currentBuildId, allFiles, aiProvider, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
 
   const stopBuild = useCallback(() => {
     esRef.current?.close();
@@ -2439,7 +2467,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           gridTemplateColumns:"1fr 1fr",
                           gap:7,
                         }}>
-                          {PROMPT_SUGGESTIONS.map(({ icon, label, prompt }) => (
+                          {PROMPT_SUGGESTIONS.map(({ Icon, label, prompt }) => (
                             <button
                               key={label}
                               onClick={() => {
@@ -2466,7 +2494,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                 e.currentTarget.style.transform = "translateY(0)";
                               }}
                             >
-                              <span style={{ fontSize:16, lineHeight:1 }}>{icon}</span>
+                              <span style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", borderRadius:7, background:`${palette.accent}14`, color:palette.accent }}><Icon size={16}/></span>
                               <span style={{ fontSize:11, fontWeight:600, color:palette.textActive, lineHeight:1.3 }}>
                                 {label}
                               </span>
@@ -3551,15 +3579,37 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </div>
                   </div>
 
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:isMobile ? 10 : 22, flexWrap:"wrap", marginBottom:26 }}>
-                    {[[Globe,"Website","Build a web app"],[Code2,"Mobile","Build a mobile app"],[Package,"Dashboard","Create a dashboard"],[Server,"API","Create a backend"],[Sparkles,"Landing page","Design a landing page"]].map(([Icon,label,prompt]) => (
-                      <button key={label} onClick={() => { setChatInput(prompt); setActivity("agents"); setSideOpen(true); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minWidth:82, display:"flex", flexDirection:"column", alignItems:"center", gap:7, border:"none", background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI }}>
-                        <span style={{ width:48, height:48, border:`1px solid ${palette.border}`, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.035)" }}><Icon size={19}/></span>
-                        <span style={{ fontSize:11 }}>{label}</span>
-                      </button>
-                    ))}
+                  <div style={{ maxWidth:800, margin:"0 auto 22px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, color:palette.textActive, fontSize:12, fontWeight:700 }}><Layers3 size={15} color={palette.accent}/><span>Start with an idea</span></div>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap:8 }}>
+                      {BUILD_LAUNCHER_TYPES.map(({ Icon, label, description, prompt }) => (
+                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ minHeight:86, padding:"10px 8px", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:6, textAlign:"left", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI }}>
+                          <Icon size={17} color={palette.accent}/><span style={{ fontSize:11, fontWeight:700 }}>{label}</span><span style={{ color:palette.textMuted, fontSize:9, lineHeight:1.35 }}>{description}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
+                  <div style={{ maxWidth:800, margin:"0 auto 18px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, color:palette.textActive, fontSize:12, fontWeight:700 }}><Boxes size={15} color={palette.accent}/><span>Build from an existing idea</span></div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                      {BUILD_IDEA_EXAMPLES.map(({ Icon, label, prompt }) => (
+                        <button key={label} onClick={() => { setChatInput(prompt); setTimeout(() => chatInputRef.current?.focus(), 80); }} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 10px", border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, cursor:"pointer", fontFamily:FONT_UI, fontSize:10 }}><Icon size={13} color={palette.accent}/>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ maxWidth:800, margin:"0 auto 22px", padding:"11px 13px", border:`1px solid ${palette.border}`, borderRadius:9, background:palette.panelBg }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.textMuted, fontSize:11 }}><Bot size={15} color={palette.accent}/><span>Firebox automatically handles architecture, code, database, dependencies, testing, and preview.</span></div>
+                      <button onClick={() => setAdvancedOptionsOpen(prev => !prev)} style={{ flexShrink:0, display:"inline-flex", alignItems:"center", gap:5, border:"none", background:"transparent", color:palette.accent, cursor:"pointer", fontFamily:FONT_UI, fontSize:10, fontWeight:700 }}><SlidersHorizontal size={13}/>{advancedOptionsOpen ? "Hide options" : "Advanced options"}<ChevronDown size={12} style={{ transform:advancedOptionsOpen ? "rotate(180deg)" : "none", transition:"transform 0.15s" }}/></button>
+                    </div>
+                    {advancedOptionsOpen && <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, 1fr)", gap:8, marginTop:12, paddingTop:11, borderTop:`1px solid ${palette.border}` }}>
+                      {[ ["Framework", launcherFramework, setLauncherFramework, ["auto","React + Vite","Next.js","Vue"]], ["Package manager", launcherPackageManager, setLauncherPackageManager, ["auto","npm","pnpm","yarn"]], ["Database", launcherDatabase, setLauncherDatabase, ["auto","MongoDB","PostgreSQL","SQLite"]] ].map(([label, value, setter, options]) => <label key={label} style={{ display:"flex", flexDirection:"column", gap:5, color:palette.textMuted, fontSize:10, fontWeight:700 }}>{label}<select value={value} onChange={e => setter(e.target.value)} style={{ padding:"7px 8px", border:`1px solid ${palette.border}`, borderRadius:6, background:palette.editorBg, color:palette.text, fontFamily:FONT_UI, fontSize:10 }}>{options.map(option => <option key={option} value={option}>{option === "auto" ? "Firebox decides" : option}</option>)}</select></label>)}
+                    </div>}
+                  </div>
+
+                  <div style={{ display:"flex", justifyContent:"center", marginTop:4 }}><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"10px 18px", border:"none", borderRadius:8, background:chatInput.trim() ? palette.accent : palette.border, color:chatInput.trim() ? "#fff" : palette.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}><Bot size={15}/>{aiThinking ? "Starting project…" : "Build with AI"}<ChevronRight size={14}/></button></div>
 
                 </div>
               </div>
