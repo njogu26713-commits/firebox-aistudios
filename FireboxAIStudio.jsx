@@ -1603,7 +1603,7 @@ export default function FireboxAIStudio() {
       : "";
     const text = `${baseText}${launcherOverrides}`;
     setPreparationActive(true);
-    if (activity === "home" && allFiles.length === 0) {
+    if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
       setChatInput("");
       await startBuild(text);
       return;
