@@ -4885,49 +4885,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                       </div>
                     )}
 
-                    {/* GitHub import callout — only when projects exist */}
-                    {recentBuilds.length > 0 && (
-                      <div style={{
-                        marginTop:36,
-                        background:palette.sideBar,
-                        border:`1px solid ${palette.border}`,
-                        borderRadius:12, padding:"18px 20px",
-                        display:"flex", alignItems:"center", justifyContent:"space-between", gap:16,
-                      }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                          <div style={{
-                            width:40, height:40, borderRadius:10, flexShrink:0,
-                            background:"rgba(255,255,255,0.05)",
-                            border:`1px solid ${palette.border}`,
-                            display:"flex", alignItems:"center", justifyContent:"center",
-                          }}>
-                            <Github size={20} color={palette.text}/>
-                          </div>
-                          <div>
-                            <div style={{ fontSize:13, fontWeight:600, color:palette.textActive, marginBottom:2 }}>
-                              Import from GitHub
-                            </div>
-                            <div style={{ fontSize:12, color:palette.textMuted }}>
-                              Connect a repo — AI agents can read, edit, and push changes back.
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => { setActivity("git"); setSideOpen(true); }}
-                          style={{
-                            flexShrink:0, padding:"7px 16px", borderRadius:8,
-                            border:`1px solid ${palette.border}`,
-                            background:"#2d2d2d", color:palette.text,
-                            fontSize:12, fontFamily:FONT_UI,
-                            cursor:"pointer", fontWeight:500, whiteSpace:"nowrap",
-                          }}
-                          onMouseEnter={e=>{ e.currentTarget.style.borderColor=palette.accent; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.borderColor=palette.border; }}
-                        >
-                          Connect GitHub →
-                        </button>
-                      </div>
-                    )}
+
                   </div>
                 </div>
               )}
