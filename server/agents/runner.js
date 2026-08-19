@@ -33,6 +33,8 @@ async function waitForResume(buildId, res, signal) {
 async function runProviderToolMode(build, res, aiConfig, signal) {
   const emit = (event, data) => sse(res, event, { ...data, agent: "Firebox Agent" });
   const tools = createCloudProjectTools({ build, emit });
+  emit("agent.started", { agent:"Firebox Agent", title:"Firebox Agent", description:"Starting autonomous project work", status:"working" });
+  emit("task.started", { agent:"Firebox Agent", title:"Active task", description:build.description, status:"working" });
   emit("workflow-stage-start", { stage: "autonomous", label: "Firebox Agent", activity: "Choosing the next controlled project action" });
   const result = await runFireboxToolLoop({
     config: aiConfig,
@@ -51,6 +53,7 @@ async function runProviderToolMode(build, res, aiConfig, signal) {
     },
   });
   await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+  emit("agent.completed", { agent:"Firebox Agent", title:"Completed", description:"Project work finished", status:"completed" });
   emit("agent-complete", { output: result.content });
   emit("workflow-stage-complete", { stage: "autonomous", label: "Firebox Agent" });
   sse(res, "build-complete", { buildId: build._id.toString() });
@@ -80,6 +83,7 @@ export async function runAgentPipeline(build, res, signal) {
       await runProviderToolMode(build, res, aiConfig, signal);
     } catch (error) {
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
+      sse(res, "agent.failed", { agent:"Firebox Agent", title:"Agent failed", description:error.message, status:"error", details:error.stack || error.message });
       sse(res, "agent-error", { agent: "Firebox Agent", message: error.message });
     }
     return;
@@ -92,6 +96,8 @@ export async function runAgentPipeline(build, res, signal) {
 
     const agentDef = AGENT_DEFS[i];
     const capability = AGENT_CAPABILITIES[agentDef.name] || { id: agentDef.name.toLowerCase(), label: agentDef.task, activity: agentDef.task };
+    sse(res, "agent.started", { agent:agentDef.name, title:capability.label, description:capability.activity, status:"working" });
+    sse(res, "task.started", { agent:agentDef.name, title:capability.label, description:capability.activity, status:"working" });
     sse(res, "workflow-stage-start", { stage: capability.id, label: capability.label, activity: capability.activity, agent: agentDef.name });
 
     await Build.findOneAndUpdate(
@@ -162,6 +168,7 @@ export async function runAgentPipeline(build, res, signal) {
         sse(res, "tool-complete", { tool: "create_or_update_files", agent: agentDef.name, count: files.length });
       }
 
+      sse(res, "agent.completed", { agent:agentDef.name, title:capability.label, description:`${agentDef.name} completed`, status:"completed", files:files.map(file => file.path) });
       sse(res, "agent-complete", { agent: agentDef.name, output: fullOutput, files, capability });
       sse(res, "workflow-stage-complete", { stage: capability.id, label: capability.label, agent: agentDef.name });
 
@@ -171,6 +178,7 @@ export async function runAgentPipeline(build, res, signal) {
         { _id: build._id, "agents.name": agentDef.name },
         { $set: { "agents.$.status": "error" } }
       );
+      sse(res, "agent.failed", { agent:agentDef.name, title:capability.label, description:err.message, status:"error", details:err.stack || err.message });
       sse(res, "agent-error", { agent: agentDef.name, message: err.message, capability });
       sse(res, "workflow-stage-error", { stage: capability.id, label: capability.label, agent: agentDef.name, message: err.message });
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
@@ -180,6 +188,7 @@ export async function runAgentPipeline(build, res, signal) {
 
   if (!signal?.aborted) {
     await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+    sse(res, "agent.completed", { agent:"Firebox Agent", title:"Completed", description:"Project is ready", status:"completed" });
     sse(res, "build-complete", { buildId: build._id.toString() });
   }
 }

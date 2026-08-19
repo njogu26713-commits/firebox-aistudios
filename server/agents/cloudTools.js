@@ -3,13 +3,24 @@ import Build from "../models/Build.js";
 const clip = (value, length = 12000) => String(value ?? "").slice(0, length);
 
 export function createCloudProjectTools({ build, emit = () => {} }) {
+  const structuredEvent = (name, phase, input = {}, extra = {}) => {
+    const path = input.path || input.file || extra.path;
+    const command = input.command ? [input.command, ...(input.args || [])].join(" ") : extra.command;
+    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting" };
+    const event = eventMap[name];
+    if (event) emit(event, { phase, tool:name, title:name.replaceAll("_", " "), ...(path ? { path } : {}), ...(command ? { command } : {}), ...extra });
+  };
   const withTool = async (name, input, action) => {
+    structuredEvent(name, "started", input);
     emit("tool-start", { tool: name, input });
     try {
       const result = await action();
-      emit("tool-complete", { tool: name, result: typeof result === "string" ? clip(result, 1000) : result });
+      const resultData = typeof result === "string" ? clip(result, 1000) : result;
+      structuredEvent(name, "completed", input, { result:resultData, ...(result?.path ? { path:result.path } : {}) });
+      emit("tool-complete", { tool: name, result: resultData });
       return result;
     } catch (error) {
+      structuredEvent(name, "error", input, { message:error.message });
       emit("tool-error", { tool: name, message: error.message });
       throw error;
     }
@@ -19,7 +30,8 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
   const saveFiles = async (files) => {
     build.files = files;
     await Build.updateOne({ _id: build._id }, { $set: { files } });
-    emit("files-updated", { files: files.map(({ content: _content, ...file }) => file), count: files.length });
+      emit("files-updated", { files: files.map(({ content: _content, ...file }) => file), count: files.length });
+      emit("file.modified", { phase:"completed", title:"Project files updated", count:files.length });
   };
 
   return {

@@ -31,13 +31,21 @@ async function runAllowlisted(command, args, cwd, onOutput = () => {}) {
 
 export function createProjectTools({ root, emit = () => {}, startPreview = null, getPreviewStatus = null }) {
   const resolve = (relativePath) => safeWorkspacePath(relativePath, root);
+  const structuredEvent = (name, phase, input = {}, extra = {}) => {
+    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting" };
+    const event = eventMap[name];
+    if (event) emit(event, { phase, tool:name, title:name.replaceAll("_", " "), ...(input.path ? { path:input.path } : {}), ...(input.command ? { command:[input.command, ...(input.args || [])].join(" ") } : {}), ...extra });
+  };
   const withTool = async (name, input, action) => {
+    structuredEvent(name, "started", input);
     emit("tool-start", { tool: name, input });
     try {
       const result = await action();
+      structuredEvent(name, "completed", input, { ...(result?.path ? { path:result.path } : {}) });
       emit("tool-complete", { tool: name });
       return result;
     } catch (error) {
+      structuredEvent(name, "error", input, { message:error.message });
       emit("tool-error", { tool: name, message: error.message });
       throw error;
     }
