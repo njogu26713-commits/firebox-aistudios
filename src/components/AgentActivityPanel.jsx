@@ -74,8 +74,7 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
   const recordActivities = displayActivities.filter(item => !["agent.output", "agent.message", "agent.completed", "agent.started", "task.started", "agent.failed"].includes(item.type));
   const runningActivity = [...displayActivities].reverse().find(item => item.status === "running" && !["agent.started", "task.started"].includes(item.type));
   const latestAgentMessage = [...aiActivities].reverse().find(item => item.type === "agent.message");
-  const latestActionActivity = [...displayActivities].reverse().find(item => !["agent.started", "task.started", "agent.completed", "agent.failed", "agent.message", "agent.output"].includes(item.type));
-  const liveNarration = latestAgentMessage || runningActivity || latestActionActivity;
+  const liveNarration = latestAgentMessage;
   const actionGroups = useMemo(() => normalized.reduce((groups, item) => { const key = item.type.startsWith("file.") ? "files" : item.type.startsWith("command.") || item.type === "dependency.installing" ? "tools" : item.type.startsWith("test.") ? "tests" : item.type.startsWith("preview.") ? "preview" : item.type.startsWith("agent.") ? "agent" : "activity"; groups[key] = (groups[key] || 0) + 1; return groups; }, {}), [normalized]);
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
