@@ -636,6 +636,7 @@ export default function FireboxAIStudio() {
   const [chatInput,      setChatInput]      = useState("");
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
+  const [understandingText, setUnderstandingText] = useState("");
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
@@ -716,6 +717,51 @@ export default function FireboxAIStudio() {
     timer = setTimeout(tick, 500);
     return () => clearTimeout(timer);
   }, [preHomeVisible]);
+  useEffect(() => {
+    if (!aiThinking || aiStreamText) {
+      setUnderstandingText("");
+      return undefined;
+    }
+    const startedAt = Date.now();
+    const phrases = ["Understanding", "Analyzing"];
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let deleting = false;
+    let pauseUntil = 0;
+    let timer;
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= 3000) {
+        setUnderstandingText("");
+        return;
+      }
+      const phrase = phrases[phraseIndex];
+      if (Date.now() < pauseUntil) {
+        timer = setTimeout(tick, 70);
+        return;
+      }
+      if (!deleting) {
+        charIndex = Math.min(charIndex + 1, phrase.length);
+        setUnderstandingText(`${phrase.slice(0, charIndex)}${".".repeat((Math.floor(Date.now() / 420) % 3) + 1)}`);
+        if (charIndex === phrase.length) {
+          deleting = true;
+          pauseUntil = Date.now() + 480;
+        }
+      } else {
+        charIndex = Math.max(charIndex - 1, 0);
+        setUnderstandingText(`${phrase.slice(0, charIndex)}${".".repeat((Math.floor(Date.now() / 420) % 3) + 1)}`);
+        if (charIndex === 0) {
+          deleting = false;
+          phraseIndex = (phraseIndex + 1) % phrases.length;
+          pauseUntil = Date.now() + 180;
+        }
+      }
+      timer = setTimeout(tick, deleting ? 32 : 52);
+    };
+    timer = setTimeout(tick, 80);
+    return () => clearTimeout(timer);
+  }, [aiThinking, aiStreamText]);
+
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {
       setTypewriterText("");
@@ -2984,7 +3030,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
                           wordBreak:"break-word", whiteSpace:"pre-wrap",
                         }}>
-                          {aiStreamText || <ThinkingDots/>}
+                          {aiStreamText || understandingText || <ThinkingDots/>}
                         </div>
                       </div>
                     )}
