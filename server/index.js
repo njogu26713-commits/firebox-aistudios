@@ -22,6 +22,17 @@ import { createCloudRuntime } from "./agents/cloudRuntime.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+const cloudTerminalRuntimes = new Map();
+const CLOUD_TERMINAL_IDLE_MS = 30 * 60 * 1000;
+setInterval(async () => {
+  const now = Date.now();
+  for (const [buildId, session] of cloudTerminalRuntimes) {
+    if (now - session.lastUsedAt > CLOUD_TERMINAL_IDLE_MS) {
+      await session.runtime.close().catch(() => {});
+      cloudTerminalRuntimes.delete(buildId);
+    }
+  }
+}, 5 * 60 * 1000).unref();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use("/api/git", gitRouter);
@@ -177,17 +188,22 @@ app.post("/api/terminal", dbRequired, requireAuth, async (req, res) => {
   const parts = rawCommand.split(/\s+/);
   const [command, ...args] = parts;
   if (!["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git"].includes(command)) return res.status(400).json({ ok:false, error:"This command is not allowed in the Cloud Terminal." });
-  const build = await Build.findById(buildId);
+  const build = await Build.findOne({ _id: buildId, ownerId: req.user._id });
   if (!build) return res.status(404).json({ ok:false, error:"Project not found." });
-  const runtime = await createCloudRuntime({ build });
+  let session = cloudTerminalRuntimes.get(buildId);
+  if (!session) {
+    session = { runtime: await createCloudRuntime({ build }), lastUsedAt: Date.now() };
+    cloudTerminalRuntimes.set(buildId, session);
+  } else {
+    await session.runtime.syncFiles(build.files || []);
+    session.lastUsedAt = Date.now();
+  }
   const output = [];
   try {
-    await runtime.runCommand(command, args, (chunk) => output.push(String(chunk)));
-    res.json({ ok:true, command:rawCommand, output:output.join("").slice(-20000) });
+    await session.runtime.runCommand(command, args, (chunk) => output.push(String(chunk)));
+    res.json({ ok:true, source:"user", runtime:"cloud-project", buildId, command:rawCommand, cwd:session.runtime.workspace, output:output.join("").slice(-20000) });
   } catch (error) {
-    res.status(400).json({ ok:false, command:rawCommand, output:output.join("").slice(-20000), error:error.message });
-  } finally {
-    await runtime.close();
+    res.status(400).json({ ok:false, source:"user", runtime:"cloud-project", buildId, command:rawCommand, cwd:session.runtime.workspace, output:output.join("").slice(-20000), error:error.message });
   }
 });
 
