@@ -10,6 +10,11 @@
 .current-title { font-size:13px; font-weight:600; }
 .current-description { margin-top:3px; font-size:11px; color:#858894; }
 .activity-list { flex:1; padding:4px 14px 20px; overflow-y:auto; }
+.activity-record-icons { display:flex; align-items:center; gap:7px; min-height:28px; padding:8px 0 4px; }
+.activity-record-icon { width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #303238; border-radius:6px; background:#202126; color:#aeb3c2; }
+.activity-record-icon-completed { color:#55d69a; }
+.activity-record-icon-running { color:#a99cff; }
+.activity-record-icon-error { color:#ff6b6b; }
 .activity-record-summary { display:flex; align-items:center; justify-content:space-between; width:100%; padding:9px 0; border:0; border-bottom:1px solid #292b31; background:transparent; color:#aeb3c2; font-size:11px; text-align:left; cursor:pointer; }
 .activity-record-summary span { display:flex; align-items:center; gap:5px; }
 .activity-record-summary:hover { color:#f1f3f5; }
