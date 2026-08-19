@@ -39,6 +39,8 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
   let toolCallRepairAttempts = 0;
   let emptyResponseRepairAttempts = 0;
   let repairNoticeSent = false;
+  let verificationCompleted = false;
+  let verificationPromptAttempts = 0;
   for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
     let response;
@@ -74,6 +76,15 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
     transcript.push({ role: "assistant", content: content || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
 
     if (!toolCalls.length) {
+      if (content.trim() && !verificationCompleted) {
+        verificationPromptAttempts += 1;
+        if (verificationPromptAttempts <= 3) {
+          emit("workflow-verification-required", { message: "The Agent must run a real project check before reporting completion.", status: "working" });
+          transcript.push({ role: "user", content: "Do not finish yet. The implementation has not passed a real verification check. Use the available Firebox tools to run the most appropriate project test or build command, read its result, repair any reported errors, and repeat the check until it passes." });
+          continue;
+        }
+        throw new Error("The Agent stopped before completing a successful project verification check");
+      }
       if (content.trim()) return { content, messages: transcript, turns: turn + 1 };
       if (emptyResponseRepairAttempts < 2) {
         emptyResponseRepairAttempts += 1;
@@ -107,6 +118,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
         await sleep(ACTION_RESULT_DELAY_MS);
         emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: serialized });
+        if (!CHECK_TOOLS.has(name)) verificationCompleted = false;
         transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. Read and use its result before continuing. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call. For a created or modified file, inspect or verify it when appropriate before moving on; never rush through a batch of files." });
         if (CHECK_TOOLS.has(name) && failedCheck(result)) {
           repairAttempts += 1;
@@ -114,12 +126,14 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
           if (repairAttempts > maxRepairAttempts) throw new Error(`${name} failed after ${maxRepairAttempts} repair attempts`);
           transcript.push({ role: "user", content: `The ${name} check failed. Diagnose the reported project error, use the available Firebox tools to inspect and repair the project, then run the check again. This is repair attempt ${repairAttempts} of ${maxRepairAttempts}.` });
         } else if (CHECK_TOOLS.has(name)) {
+          verificationCompleted = true;
           emit("workflow-repair-complete", { tool: name, attempts: repairAttempts, message: "Project check passed after controlled repair handling." });
         }
       } catch (error) {
         emit("tool-error", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, message: error.message, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: compact({ error: error.message }) });
         if (CHECK_TOOLS.has(name)) {
+          verificationCompleted = false;
           repairAttempts += 1;
           emit("workflow-repair", { tool: name, attempt: repairAttempts, maxAttempts: maxRepairAttempts, message: `${name} errored; diagnosing before the next check.` });
           if (repairAttempts > maxRepairAttempts) throw new Error(`${name} failed after ${maxRepairAttempts} repair attempts`);
