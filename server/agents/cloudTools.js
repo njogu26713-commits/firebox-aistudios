@@ -75,11 +75,11 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
       await saveFiles((build.files || []).filter((file) => file.path !== filePath));
       return { path: filePath };
     }),
-    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => ({ ok: true, skipped: true, message: "Cloud command execution is unavailable in Railway; file changes were persisted, but verification requires the Local Engine." })),
-    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => ({ ok: true, skipped: true, message: "Cloud dependency installation is unavailable in Railway; connect the Local Engine to install packages." })),
-    run_tests: () => withTool("run_tests", {}, async () => ({ ok: true, skipped: true, message: "Cloud test execution is unavailable in Railway; connect the Local Engine to run tests." })),
-    run_build: () => withTool("run_build", {}, async () => ({ ok: true, skipped: true, message: "Cloud build execution is unavailable in Railway; connect the Local Engine to run the build." })),
-    start_preview: () => withTool("start_preview", {}, async () => ({ running: false, message: "Cloud live preview requires a connected project runtime." })),
+    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => ({ ok: true, skipped: true, message: "Command skipped: Railway cannot execute cloud commands. File changes were saved." })),
+    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => ({ ok: true, skipped: true, message: "Package install skipped: connect the Local Engine to install dependencies." })),
+    run_tests: () => withTool("run_tests", {}, async () => ({ ok: true, skipped: true, message: "Tests skipped: connect the Local Engine to run tests." })),
+    run_build: () => withTool("run_build", {}, async () => ({ ok: true, skipped: true, message: "Build skipped: connect the Local Engine to run the build." })),
+    start_preview: () => withTool("start_preview", {}, async () => ({ running: false, message: "Preview skipped: connect a project runtime." })),
     get_preview_status: () => withTool("get_preview_status", {}, async () => ({ running: false })),
   };
 }
