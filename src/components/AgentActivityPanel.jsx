@@ -45,12 +45,13 @@ function AgentNarrationLine({ text, active = true }) {
   return <div className="agent-narration-line" aria-live="polite">{visibleText}{active && <span className="agent-narration-caret" aria-hidden="true" />}</div>;
 }
 
-export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", errorText = "", userPrompt = "" }) {
+export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", errorText = "", userPrompt = "", userPrompts = [] }) {
   const [now, setNow] = useState(Date.now());
   const [expandedId, setExpandedId] = useState(null);
   const [recordsExpanded, setRecordsExpanded] = useState(false);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const normalized = useMemo(() => activities.map(normalizeActivity), [activities]);
+  const promptMessages = userPrompts.length ? userPrompts : (userPrompt ? [{ role:"user", text:userPrompt }] : []);
   const agentCompleted = normalized.some(item => item.type === "agent.completed" && item.status === "completed");
   const displayActivities = useMemo(() => normalized.map(item => agentCompleted && item.status === "running" ? { ...item, status:"completed" } : item), [normalized, agentCompleted]);
   const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.type === "agent.completed");
@@ -61,7 +62,7 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
   return <aside className="agent-activity-panel">
-    {userPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{userPrompt}</div></div>}
+    {promptMessages[0] && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{promptMessages[0].text}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {errorText && <div className="workspace-error-line" role="alert">{errorText}</div>}
     {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} active={!agentCompleted} />}
@@ -76,5 +77,6 @@ export default function AgentActivityPanel({ taskName = "Working on your project
       </>}
       {!latestAgentMessage && !runningActivity && recordActivities.length === 0 && <div className="activity-empty" aria-label="Live AI activity field" />}
     </div>
+    {promptMessages.slice(1).map((message, index) => <div key={`user-prompt-${index}-${message.text}`} className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{message.text}</div></div>)}
   </aside>;
 }
