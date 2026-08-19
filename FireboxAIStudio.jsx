@@ -1179,7 +1179,8 @@ export default function FireboxAIStudio() {
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
         const detail = data.details || data.error || data.output || data.command || data.path || "";
-        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:data.title || eventName, text:data.description || detail || "Agent activity received", file:data.path || data.file || "", command:data.command || "", details:data.details || data.error || "", eventType:eventName });
+        const text = data.description || detail || "";
+        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:data.title || eventName, text, file:data.path || data.file || "", command:data.command || "", details:data.details || data.error || "", eventType:eventName });
       } catch { /* ignore malformed structured event */ }
     }));
 
@@ -1188,25 +1189,21 @@ export default function FireboxAIStudio() {
       try {
         const stage = JSON.parse(e.data);
         setWorkflowStage(stage);
-        appendActivity({ kind:"stage", status:"working", label:stage.label || stage.stage || "Workflow", text:stage.activity || "Started workflow stage" });
       } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-stage-complete", e => {
       try {
         const stage = JSON.parse(e.data);
         setWorkflowStage(prev => ({ ...(prev || {}), ...stage, completed:true }));
-        appendActivity({ kind:"stage", status:"done", label:stage.label || stage.stage || "Workflow", text:"Stage completed" });
       } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("workflow-paused", e => {
       setBuildPaused(true);
       setWorkflowStage(prev => ({ ...(prev || {}), activity:"Paused at a safe checkpoint", paused:true }));
-      appendActivity({ kind:"status", status:"paused", label:"Workflow", text:"Paused at a safe checkpoint" });
     });
     es.addEventListener("workflow-resumed", e => {
       setBuildPaused(false);
       setWorkflowStage(prev => ({ ...(prev || {}), activity:"Resuming workflow", paused:false }));
-      appendActivity({ kind:"status", status:"working", label:"Workflow", text:"Resuming workflow" });
     });
     es.addEventListener("workflow-stage-error", e => {
       try {
@@ -1219,30 +1216,27 @@ export default function FireboxAIStudio() {
       try {
         const repair = JSON.parse(e.data);
         setChatHistory(prev => [...prev, { role:"ai", text:`Build step failed. I’m investigating and retrying (${repair.attempt}/${repair.maxAttempts})…` }]);
-        appendActivity({ kind:"repair", status:"working", label:repair.agent || "Firebox Agent", text:`Retrying provider request (${repair.attempt}/${repair.maxAttempts})` });
       } catch { /* ignore malformed repair event */ }
     });
     es.addEventListener("project-inspected", e => {
       try {
         const project = JSON.parse(e.data);
         setChatHistory(prev => [...prev, { role:"ai", text:`I inspected the project before editing it${project.files?.length ? ` (${project.files.length} files found)` : ""}.` }]);
-        appendActivity({ kind:"inspection", status:"done", label:"Firebox Agent", text:`Inspected project${project.files?.length ? ` (${project.files.length} files)` : ""}` });
       } catch { /* ignore malformed inspection event */ }
     });
     es.addEventListener("tool-start", e => {
-      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"working", label:"Firebox Tool", text:`Running ${data.tool || "controlled operation"}` }); } catch { /* ignore malformed activity event */ }
+      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-complete", e => {
-      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"done", label:"Firebox Tool", text:`Completed ${data.tool || "controlled operation"}` }); } catch { /* ignore malformed activity event */ }
+      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-error", e => {
-      try { const data = JSON.parse(e.data); appendActivity({ kind:"tool", status:"error", label:"Firebox Tool", text:`${data.tool || "Controlled operation"} failed: ${data.message || "unknown error"}` }); } catch { /* ignore malformed activity event */ }
+      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
     });
 
     es.addEventListener("agent-start", e => {
       const { agent, capability, task } = JSON.parse(e.data);
       setActiveAgent(agent);
-      appendActivity({ kind:"agent", status:"working", label:agent || "Firebox Agent", text:capability?.activity || task || "Agent started working" });
       updateAgent(agent, { status:"working", streaming:"" });
       streamingRef.current[agent] = "";
 
@@ -1276,7 +1270,7 @@ export default function FireboxAIStudio() {
         const label = agent || "Firebox Agent";
         const last = prev[prev.length - 1];
         if (last?.kind === "token" && last.label === label) return [...prev.slice(0, -1), { ...last, text:`${last.text}${token}`.slice(-360), time:new Date() }];
-        return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), kind:"token", status:"working", label, text:String(token || "") }].slice(-80);
+        return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), kind:"token", eventType:"agent.output", status:"working", label, text:String(token || "") }].slice(-80);
       });
     });
 
@@ -1284,7 +1278,6 @@ export default function FireboxAIStudio() {
       try {
         const { files = [] } = JSON.parse(e.data);
         if (!files.length) return;
-        appendActivity({ kind:"files", status:"done", label:"Firebox Agent", text:`Updated ${files.length} project file${files.length === 1 ? "" : "s"}` });
         const response = await fetch(`/api/build/${buildId}`);
         const project = await response.json();
         if (!response.ok || !Array.isArray(project.files)) return;
@@ -1300,7 +1293,6 @@ export default function FireboxAIStudio() {
 
     es.addEventListener("agent-complete", e => {
       const { agent, files } = JSON.parse(e.data);
-      appendActivity({ kind:"agent", status:"done", label:agent || "Firebox Agent", text:`Finished${files?.length ? ` and produced ${files.length} file${files.length === 1 ? "" : "s"}` : ""}` });
       // Stop timers and show all steps
       if (agentTimerRefs.current[agent]) {
         clearInterval(agentTimerRefs.current[agent].elapsed);
@@ -1335,7 +1327,6 @@ export default function FireboxAIStudio() {
     es.addEventListener("agent-error", e => {
       streamTerminalRef.current = true;
       const { agent, message } = JSON.parse(e.data);
-      appendActivity({ kind:"agent", status:"error", label:agent || "Firebox Agent", text:message || "Agent failed" });
       if (agentTimerRefs.current[agent]) {
         clearInterval(agentTimerRefs.current[agent].elapsed);
         agentTimerRefs.current[agent].steps.forEach(clearTimeout);
@@ -1352,7 +1343,6 @@ export default function FireboxAIStudio() {
         const browserPreviewUrl = preview.gatewayUrl || preview.url || null;
         setPreviewStatus(browserPreviewUrl ? "running" : "error");
         setPreviewError(browserPreviewUrl ? "" : "Preview process completed without a URL");
-        appendActivity({ kind:"preview", status:browserPreviewUrl ? "done" : "error", label:"Preview", text:browserPreviewUrl ? "Live preview is ready" : "Preview process completed without a URL" });
         if (browserPreviewUrl) { setPreviewUrl(browserPreviewUrl); setPreviewOpen(true); }
       } catch { /* ignore malformed preview event */ }
     });
@@ -1361,7 +1351,6 @@ export default function FireboxAIStudio() {
         const preview = JSON.parse(e.data);
         setPreviewStatus("error");
         setPreviewError(preview.message || "Preview could not be started");
-        appendActivity({ kind:"preview", status:"error", label:"Preview", text:preview.message || "Preview could not be started" });
         setWorkflowStage(prev => ({ ...(prev || {}), stage:"preview", label:"Preview", activity:preview.message || "Preview could not be started", error:true }));
       } catch { /* ignore malformed preview event */ }
     });
@@ -1370,7 +1359,6 @@ export default function FireboxAIStudio() {
       streamTerminalRef.current = true;
       let completion = {};
       try { completion = JSON.parse(e.data); } catch { /* ignore malformed completion event */ }
-      appendActivity({ kind:"build", status:"done", label:"Firebox Agent", text:(completion.preview?.gatewayUrl || completion.preview?.url) ? "Build complete — live preview is ready" : "Build complete — no live runtime preview was returned" });
       const livePreviewUrl = completion.preview?.gatewayUrl || completion.preview?.url || null;
       setPreviewStatus(livePreviewUrl ? "running" : "stopped");
       setPreviewError(livePreviewUrl ? "" : "No live runtime preview was returned");
