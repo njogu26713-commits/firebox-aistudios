@@ -729,9 +729,11 @@ export default function FireboxAIStudio() {
     if (!command || terminalRunning) return;
     const id = `${Date.now()}-${Math.random()}`;
     const startedAt = new Date().toISOString();
+    const isClearCommand = command === "clear";
     setTerminalInput("");
+    if (isClearCommand) setTerminalEntries([]);
     setTerminalRunning(true);
-    setTerminalEntries(prev => [...prev, { id, command, source:"user", status:"running", output:"", startedAt }]);
+    if (!isClearCommand) setTerminalEntries(prev => [...prev, { id, command, source:"user", status:"running", output:"", startedAt }]);
     try {
       const isLocal = aiProvider === "local";
       const endpoint = isLocal ? `${localEngineUrl.replace(/\/$/, "")}/api/terminal` : "/api/terminal";

@@ -21,8 +21,12 @@ function runProcess(command, args, cwd, onOutput = () => {}) {
   if (!ALLOWED_COMMANDS.has(command)) throw new Error(`Cloud Runtime command is not allowed: ${command}`);
   if (!Array.isArray(args) || args.some((arg) => /[;&|`$<>]/.test(String(arg)))) throw new Error("Unsafe Cloud Runtime command arguments");
   const normalizedArgs = args.map(String);
+  if (command === "clear") {
+    onOutput("\\x1b[2J\\x1b[H");
+    return Promise.resolve({ ok: true, code: 0 });
+  }
   const run = (actualCommand, actualArgs) => new Promise((resolve, reject) => {
-    const child = spawn(actualCommand, actualArgs, { cwd, shell: false, detached: process.platform !== "win32" });
+    const child = spawn(actualCommand, actualArgs, { cwd, shell: false, detached: process.platform !== "win32", env: { ...process.env, TERM: process.env.TERM || "xterm-256color", COLORTERM: process.env.COLORTERM || "truecolor" } });
     child.stdout.on("data", (chunk) => onOutput(String(chunk)));
     child.stderr.on("data", (chunk) => onOutput(String(chunk)));
     child.on("error", (error) => {
