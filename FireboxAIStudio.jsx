@@ -711,6 +711,17 @@ export default function FireboxAIStudio() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewStatus, setPreviewStatus] = useState("stopped");
   const [previewError, setPreviewError] = useState("");
+  /* AI provider settings — Cloud remains the default and unchanged */
+  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
+  const [agentPageSelected, setAgentPageSelected] = useState(() => localStorage.getItem("firebox-agent-page-selected") === "true");
+  const [localAiEndpoint, setLocalAiEndpoint] = useState(() => localStorage.getItem("firebox-local-ai-endpoint") || "http://127.0.0.1:11434/v1");
+  const [localAiModel, setLocalAiModel] = useState(() => localStorage.getItem("firebox-local-ai-model") || "");
+  const [localAiApiKey, setLocalAiApiKey] = useState(() => localStorage.getItem("firebox-local-ai-api-key") || "");
+  const [localEngineUrl, setLocalEngineUrl] = useState(() => localStorage.getItem("firebox-local-engine-url") || "http://127.0.0.1:8787");
+  const [localEngineToken, setLocalEngineToken] = useState(() => localStorage.getItem("firebox-local-engine-token") || "");
+  const [localAiTestState, setLocalAiTestState] = useState("idle");
+  const [localAiTestMessage, setLocalAiTestMessage] = useState("");
+
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const refreshPreview = useCallback(() => setPreviewRefreshKey(value => value + 1), []);
   const runTerminalCommand = useCallback(async () => {
@@ -875,16 +886,6 @@ export default function FireboxAIStudio() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [activity]);
 
-  /* AI provider settings — Cloud remains the default and unchanged */
-  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
-  const [agentPageSelected, setAgentPageSelected] = useState(() => localStorage.getItem("firebox-agent-page-selected") === "true");
-  const [localAiEndpoint, setLocalAiEndpoint] = useState(() => localStorage.getItem("firebox-local-ai-endpoint") || "http://127.0.0.1:11434/v1");
-  const [localAiModel, setLocalAiModel] = useState(() => localStorage.getItem("firebox-local-ai-model") || "");
-  const [localAiApiKey, setLocalAiApiKey] = useState(() => localStorage.getItem("firebox-local-ai-api-key") || "");
-  const [localEngineUrl, setLocalEngineUrl] = useState(() => localStorage.getItem("firebox-local-engine-url") || "http://127.0.0.1:8787");
-  const [localEngineToken, setLocalEngineToken] = useState(() => localStorage.getItem("firebox-local-engine-token") || "");
-  const [localAiTestState, setLocalAiTestState] = useState("idle");
-  const [localAiTestMessage, setLocalAiTestMessage] = useState("");
 
   useEffect(() => {
     localStorage.setItem("firebox-ai-provider", aiProvider);
