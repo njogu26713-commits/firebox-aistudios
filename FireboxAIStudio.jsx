@@ -723,40 +723,23 @@ export default function FireboxAIStudio() {
       return undefined;
     }
     const startedAt = Date.now();
-    const phrases = ["Understanding", "Analyzing"];
-    let phraseIndex = 0;
+    let currentPhrase = "Understanding";
     let charIndex = 0;
-    let deleting = false;
-    let pauseUntil = 0;
     let timer;
     const tick = () => {
       const elapsed = Date.now() - startedAt;
-      if (elapsed >= 3000) {
-        setUnderstandingText("");
-        return;
-      }
-      const phrase = phrases[phraseIndex];
-      if (Date.now() < pauseUntil) {
-        timer = setTimeout(tick, 70);
-        return;
-      }
-      if (!deleting) {
-        charIndex = Math.min(charIndex + 1, phrase.length);
-        setUnderstandingText(`${phrase.slice(0, charIndex)}${".".repeat((Math.floor(Date.now() / 420) % 3) + 1)}`);
-        if (charIndex === phrase.length) {
-          deleting = true;
-          pauseUntil = Date.now() + 480;
-        }
-      } else {
-        charIndex = Math.max(charIndex - 1, 0);
-        setUnderstandingText(`${phrase.slice(0, charIndex)}${".".repeat((Math.floor(Date.now() / 420) % 3) + 1)}`);
-        if (charIndex === 0) {
-          deleting = false;
-          phraseIndex = (phraseIndex + 1) % phrases.length;
-          pauseUntil = Date.now() + 180;
+      if (elapsed >= 1500) currentPhrase = "Analyzing";
+      charIndex = Math.min(charIndex + 1, currentPhrase.length);
+      const dots = ".".repeat((Math.floor(Date.now() / 420) % 3) + 1);
+      setUnderstandingText(`${currentPhrase.slice(0, charIndex)}${dots}`);
+      if (charIndex >= currentPhrase.length) {
+        charIndex = 0;
+        if (currentPhrase === "Analyzing" && elapsed >= 3000) {
+          timer = setTimeout(tick, 120);
+          return;
         }
       }
-      timer = setTimeout(tick, deleting ? 32 : 52);
+      timer = setTimeout(tick, 52);
     };
     timer = setTimeout(tick, 80);
     return () => clearTimeout(timer);
@@ -1667,6 +1650,7 @@ export default function FireboxAIStudio() {
 
             if (evt.token) {
               fullText += evt.token;
+              setUnderstandingText("");
               setAiStreamText(fullText);
             } else if (evt.done) {
               fullText = evt.text || fullText;
@@ -3028,7 +3012,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           border:"1px solid rgba(0,120,212,0.25)",
                           color: palette.text,
                           fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
-                          wordBreak:"break-word", whiteSpace:"pre-wrap",
+                          wordBreak:"break-word", whiteSpace:"nowrap", minHeight:18,
                         }}>
                           {aiStreamText || understandingText || <ThinkingDots/>}
                         </div>
