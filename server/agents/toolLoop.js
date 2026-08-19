@@ -9,6 +9,8 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
   const transcript = [...messages];
   let repairAttempts = 0;
   let toolCallRepairAttempts = 0;
+  let emptyResponseRepairAttempts = 0;
+  let repairNoticeSent = false;
   for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
     let response;
@@ -27,7 +29,10 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       const malformedToolCall = /tool.?use.?failed|parse tool call|invalid.*json|failed_generation/i.test(message);
       if (malformedToolCall && toolCallRepairAttempts < 2) {
         toolCallRepairAttempts += 1;
-        emit("agent.message", { agent:"Firebox Agent", description:"The Agent is repairing its tool-call format before continuing.", status:"working", aiGenerated:true });
+        if (!repairNoticeSent) {
+          repairNoticeSent = true;
+          emit("agent.message", { agent:"Firebox Agent", description:"The Agent is repairing its tool-call format before continuing.", status:"working", aiGenerated:true });
+        }
         transcript.push({ role:"user", content:"Your previous tool-call output was invalid JSON and was not executed. Retry the next action using exactly one provided Firebox tool with strictly valid JSON arguments. Escape every newline inside string values and do not include markdown or source-code outside the tool arguments." });
         continue;
       }
@@ -42,8 +47,13 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
 
     if (!toolCalls.length) {
       if (content.trim()) return { content, messages: transcript, turns: turn + 1 };
-      if (turn < 2) {
-        transcript.push({ role: "user", content: "Your previous response contained no assistant content and no Firebox tool call. Begin by using the appropriate Firebox tool to inspect or modify the project, then continue the task." });
+      if (emptyResponseRepairAttempts < 2) {
+        emptyResponseRepairAttempts += 1;
+        if (!repairNoticeSent) {
+          repairNoticeSent = true;
+          emit("agent.message", { agent:"Firebox Agent", description:"The Agent returned no usable action and is retrying once before stopping.", status:"working", aiGenerated:true });
+        }
+        transcript.push({ role: "user", content: "Your previous response contained no assistant content and no Firebox tool call. Begin by using exactly one appropriate Firebox tool to inspect or modify the project, then continue the task." });
         continue;
       }
       throw new Error("Provider returned no assistant content or Firebox tool calls");

@@ -1401,6 +1401,8 @@ export default function FireboxAIStudio() {
       }
       setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent]||[]).length }));
       updateAgent(agent, { status:"error", streaming:"" });
+      setPhase("error");
+      setPreparationActive(false);
       setErrorMsg(`${agent}: ${message}`);
     });
 
