@@ -85,7 +85,11 @@ export async function runAgentPipeline(build, res, signal) {
       await runProviderToolMode(build, res, aiConfig, signal);
     } catch (error) {
       await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
-      sse(res, "agent.failed", { agent:"Firebox Agent", title:"Agent failed", description:error.message, status:"error", details:error.stack || error.message });
+      const rawMessage = String(error?.message || "");
+    const safeDescription = /tool.?use.?failed|parse tool call|invalid.*json|failed_generation/i.test(rawMessage)
+      ? "The Agent could not produce a valid controlled tool action after retrying. No file was changed for that action."
+      : rawMessage || "The Agent could not complete the requested work.";
+    sse(res, "agent.failed", { agent:"Firebox Agent", title:"Agent failed", description:safeDescription, status:"error", details:error.stack || rawMessage });
       sse(res, "agent-error", { agent: "Firebox Agent", message: error.message });
     }
     return;

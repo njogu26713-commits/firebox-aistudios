@@ -8,17 +8,31 @@ const failedCheck = (value) => value?.ok === false || value?.success === false |
 export async function runFireboxToolLoop({ config, messages, toolDefinitions, executeTool, emit = () => {}, signal, maxTokens = 2200, temperature = 0.2, maxTurns = 24, maxRepairAttempts = 3 }) {
   const transcript = [...messages];
   let repairAttempts = 0;
+  let toolCallRepairAttempts = 0;
   for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
-    const response = await getStructuredCompletion({
-      config,
-      messages: transcript,
-      tools: toolDefinitions,
-      toolChoice: config.provider && config.provider !== "cloud" && turn === 0 ? "required" : "auto",
-      maxTokens,
-      temperature,
-      signal,
-    });
+    let response;
+    try {
+      response = await getStructuredCompletion({
+        config,
+        messages: transcript,
+        tools: toolDefinitions,
+        toolChoice: config.provider && config.provider !== "cloud" && turn === 0 ? "required" : "auto",
+        maxTokens,
+        temperature,
+        signal,
+      });
+    } catch (error) {
+      const message = String(error?.message || "");
+      const malformedToolCall = /tool.?use.?failed|parse tool call|invalid.*json|failed_generation/i.test(message);
+      if (malformedToolCall && toolCallRepairAttempts < 2) {
+        toolCallRepairAttempts += 1;
+        emit("agent.message", { agent:"Firebox Agent", description:"The Agent is repairing its tool-call format before continuing.", status:"working", aiGenerated:true });
+        transcript.push({ role:"user", content:"Your previous tool-call output was invalid JSON and was not executed. Retry the next action using exactly one provided Firebox tool with strictly valid JSON arguments. Escape every newline inside string values and do not include markdown or source-code outside the tool arguments." });
+        continue;
+      }
+      throw error;
+    }
     const message = response?.choices?.[0]?.message || {};
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.slice(0, 1) : [];
     const content = Array.isArray(message.content)
