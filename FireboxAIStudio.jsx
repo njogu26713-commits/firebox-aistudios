@@ -1299,7 +1299,7 @@ export default function FireboxAIStudio() {
         const label = agent || "Firebox Agent";
         const last = prev[prev.length - 1];
         if (last?.kind === "token" && last.label === label) return [...prev.slice(0, -1), { ...last, text:`${last.text}${token}`.slice(-360), time:new Date() }];
-        return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), kind:"token", eventType:"agent.output", status:"working", label, text:String(token || "") }].slice(-80);
+        return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), kind:"token", eventType:"agent.output", status:"working", label, text:String(token || ""), aiGenerated:true }].slice(-80);
       });
     });
 
