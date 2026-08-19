@@ -2990,31 +2990,6 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 </>
               )}
 
-              {/* Panel: Terminal */}
-              {activity === "terminal" && (
-                <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:palette.editorBg, color:palette.text, fontFamily:FONT_MONO }}>
-                  <div style={{ padding:"10px 12px", borderBottom:`1px solid ${palette.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:7, color:palette.textActive, fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}><Terminal size={14} color={palette.accent}/>Terminal</div>
-                    <span style={{ color:palette.textFaint, fontFamily:FONT_UI, fontSize:10 }}>{aiProvider === "cloud" ? "Cloud Runtime" : "Local Engine"}</span>
-                  </div>
-                  <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 12px", fontSize:11, lineHeight:1.55 }}>
-                    {terminalEntries.length === 0 ? <div style={{ color:palette.textFaint, fontFamily:FONT_UI, lineHeight:1.6 }}>Run commands in {currentProjectName || "your project"}.<br/>Commands execute through the selected Agent runtime.</div> : terminalEntries.map(entry => (
-                      <div key={entry.id} style={{ marginBottom:14 }}>
-                        <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:10, marginLeft:5 }}>{entry.status}</span></div>
-                        {entry.output && <pre style={{ margin:"4px 0 0 10px", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ borderTop:`1px solid ${palette.border}`, padding:"9px 10px 10px", flexShrink:0 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:7, border:`1px solid ${palette.borderLight}`, borderRadius:7, padding:"7px 8px", background:palette.sideBar }}>
-                      <span style={{ color:palette.accent, fontFamily:FONT_MONO, fontSize:12 }}>›</span>
-                      <input value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || !currentBuildId && aiProvider === "cloud"} placeholder={terminalRunning ? "Running command…" : "Run a command…"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:11 }} />
-                      <button onClick={runTerminalCommand} disabled={!terminalInput.trim() || terminalRunning || (!currentBuildId && aiProvider === "cloud")} style={{ border:"none", background:"transparent", color:terminalInput.trim() && !terminalRunning ? palette.accent : palette.textFaint, cursor:terminalInput.trim() && !terminalRunning ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:10 }}>{terminalRunning ? "…" : "Run"}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Panel: Explorer */}
               {activity === "explorer" && (
                 <>
@@ -4291,6 +4266,28 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                   <div style={{ display:"flex", justifyContent:"center", marginTop:4 }}><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"10px 18px", border:"none", borderRadius:8, background:chatInput.trim() ? palette.accent : palette.border, color:chatInput.trim() ? "#fff" : palette.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}><Bot size={15}/>{aiThinking ? "Starting project…" : "Build with AI"}<ChevronRight size={14}/></button></div>
 
+                </div>
+              </div>
+            ) : activity === "terminal" ? (
+              <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:palette.editorBg, color:palette.text, fontFamily:FONT_MONO }}>
+                <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 22px", borderBottom:`1px solid ${palette.border}`, background:palette.titleBar }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:9, color:palette.textActive, fontFamily:FONT_UI, fontSize:16, fontWeight:700 }}><Terminal size={18} color={palette.accent}/>Terminal</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.textMuted, fontFamily:FONT_UI, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:terminalRunning ? palette.accent : palette.success }}/>{aiProvider === "cloud" ? "Cloud Runtime" : "Local Engine"}</div>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"22px 26px", fontSize:13, lineHeight:1.6 }}>
+                  {terminalEntries.length === 0 ? <div style={{ color:palette.textFaint, fontFamily:FONT_UI }}>Type a command below to run it in {currentProjectName || "your project"}.</div> : terminalEntries.map(entry => (
+                    <div key={entry.id} style={{ marginBottom:18 }}>
+                      <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:11, marginLeft:8 }}>{entry.status}</span></div>
+                      {entry.output && <pre style={{ margin:"5px 0 0 18px", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop:`1px solid ${palette.border}`, padding:"14px 22px 18px", flexShrink:0, background:palette.titleBar }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, maxWidth:1100, border:`1px solid ${palette.borderLight}`, borderRadius:8, padding:"10px 12px", background:palette.editorBg }}>
+                    <span style={{ color:palette.accent, fontSize:16 }}>›</span>
+                    <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "Running command…" : "Type a command and press Enter"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
+                    <button onClick={runTerminalCommand} disabled={!terminalInput.trim() || terminalRunning || (!currentBuildId && aiProvider === "cloud")} style={{ border:"none", background:"transparent", color:terminalInput.trim() && !terminalRunning ? palette.accent : palette.textFaint, cursor:terminalInput.trim() && !terminalRunning ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12 }}>{terminalRunning ? "Running…" : "Run"}</button>
+                  </div>
                 </div>
               </div>
             ) : activity === "workspace" ? (
