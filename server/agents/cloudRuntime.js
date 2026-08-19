@@ -3,10 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createBrowserRuntime } from "../../local-engine/browser.js";
+import crypto from "node:crypto";
+import ProjectSecret from "../models/ProjectSecret.js";
 
 const ALLOWED_COMMANDS = new Set(["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git", "pwd", "ls", "find", "cat", "echo", "clear", "mkdir", "rm"]);
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const clip = (value, limit = 6000) => String(value ?? "").slice(-limit);
+const secretKey = crypto.createHash("sha256").update(String(process.env.FIREBOX_SECRETS_KEY || process.env.SESSION_SECRET || "firebox-development-secret")).digest();
+const decryptSecret = (value) => {
+  const [ivPart, tagPart, dataPart] = String(value || "").split(".");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", secretKey, Buffer.from(ivPart, "base64url"));
+  decipher.setAuthTag(Buffer.from(tagPart, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(dataPart, "base64url")), decipher.final()]).toString("utf8");
+};
 
 function safePath(root, relativePath) {
   const normalized = String(relativePath || "").replaceAll("\\", "/");
@@ -17,7 +26,7 @@ function safePath(root, relativePath) {
   return target;
 }
 
-function runProcess(command, args, cwd, onOutput = () => {}) {
+function runProcess(command, args, cwd, onOutput = () => {}, extraEnv = {}) {
   if (!ALLOWED_COMMANDS.has(command)) throw new Error(`Cloud Runtime command is not allowed: ${command}`);
   if (!Array.isArray(args) || args.some((arg) => /[;&|`$<>]/.test(String(arg)))) throw new Error("Unsafe Cloud Runtime command arguments");
   const normalizedArgs = args.map(String);
@@ -26,7 +35,7 @@ function runProcess(command, args, cwd, onOutput = () => {}) {
     return Promise.resolve({ ok: true, code: 0 });
   }
   const run = (actualCommand, actualArgs) => new Promise((resolve, reject) => {
-    const child = spawn(actualCommand, actualArgs, { cwd, shell: false, detached: process.platform !== "win32", env: { ...process.env, TERM: process.env.TERM || "xterm-256color", COLORTERM: process.env.COLORTERM || "truecolor" } });
+    const child = spawn(actualCommand, actualArgs, { cwd, shell: false, detached: process.platform !== "win32", env: { ...process.env, ...extraEnv, TERM: process.env.TERM || "xterm-256color", COLORTERM: process.env.COLORTERM || "truecolor" } });
     child.stdout.on("data", (chunk) => onOutput(String(chunk)));
     child.stderr.on("data", (chunk) => onOutput(String(chunk)));
     child.on("error", (error) => {
@@ -64,6 +73,8 @@ async function probe(url) {
 
 export async function createCloudRuntime({ build, emit = () => {} }) {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), `firebox-cloud-${String(build._id)}-`));
+  const secretDocuments = await ProjectSecret.find({ ownerId: build.ownerId, buildId: build._id }).select("+encryptedValue key").lean().catch(() => []);
+  const runtimeEnv = Object.fromEntries(secretDocuments.map(secret => [secret.key, decryptSecret(secret.encryptedValue)]));
   let projectRoot = workspaceRoot;
   let preview = null;
   let previewPort = 4173 + Math.floor(Math.random() * 1000);
@@ -78,7 +89,7 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
       }
     },
     async runCommand(command, args = [], onOutput = () => {}) {
-      return runProcess(command, args, projectRoot, (output) => { onOutput(output); emit("runtime-output", { output: clip(output) }); });
+      return runProcess(command, args, projectRoot, (output) => { onOutput(output); emit("runtime-output", { output: clip(output) }); }, runtimeEnv);
     },
     async installPackage(packageName) {
       return runtime.runCommand("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", String(packageName)]);
@@ -90,7 +101,7 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
       if (!script) throw new Error("Project has no dev or start script");
       previewPort += 1;
       const commandArgs = ["run", script, "--", "--host", "0.0.0.0", "--port", String(previewPort)];
-      const child = spawn("npm", commandArgs, { cwd: projectRoot, shell: false, detached: process.platform !== "win32", env: { ...process.env, PORT: String(previewPort), TERM: process.env.TERM || "xterm-256color" } });
+      const child = spawn("npm", commandArgs, { cwd: projectRoot, shell: false, detached: process.platform !== "win32", env: { ...process.env, ...runtimeEnv, PORT: String(previewPort), TERM: process.env.TERM || "xterm-256color" } });
       preview = { child, port: previewPort, output: "" };
       child.stdout.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });
       child.stderr.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });

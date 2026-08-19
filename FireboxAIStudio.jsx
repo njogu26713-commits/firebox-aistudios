@@ -659,6 +659,11 @@ export default function FireboxAIStudio() {
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalEntries, setTerminalEntries] = useState([]);
   const [terminalRunning, setTerminalRunning] = useState(false);
+  const [projectSecrets, setProjectSecrets] = useState([]);
+  const [secretName, setSecretName] = useState("");
+  const [secretValue, setSecretValue] = useState("");
+  const [secretsLoading, setSecretsLoading] = useState(false);
+  const [secretsMessage, setSecretsMessage] = useState("");
 
   useEffect(() => {
     if (!currentBuildId) return;
@@ -724,6 +729,34 @@ export default function FireboxAIStudio() {
 
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const refreshPreview = useCallback(() => setPreviewRefreshKey(value => value + 1), []);
+  const loadProjectSecrets = useCallback(async () => {
+    if (!currentBuildId) { setProjectSecrets([]); return; }
+    setSecretsLoading(true);
+    try {
+      const response = await fetch(`/api/build/${currentBuildId}/secrets`);
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(data.error || "Unable to load project secrets");
+      setProjectSecrets(Array.isArray(data) ? data : []);
+    } catch (error) { setSecretsMessage(error.message); }
+    finally { setSecretsLoading(false); }
+  }, [currentBuildId]);
+  const saveProjectSecret = useCallback(async () => {
+    const key = secretName.trim().toUpperCase();
+    if (!currentBuildId || !key || !secretValue) return;
+    setSecretsMessage("");
+    try {
+      const response = await fetch(`/api/build/${currentBuildId}/secrets/${encodeURIComponent(key)}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ value:secretValue }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to save secret");
+      setSecretName(""); setSecretValue(""); setSecretsMessage(`${key} saved securely.`); await loadProjectSecrets();
+    } catch (error) { setSecretsMessage(error.message); }
+  }, [currentBuildId, secretName, secretValue, loadProjectSecrets]);
+  const deleteProjectSecret = useCallback(async (key) => {
+    if (!currentBuildId) return;
+    await fetch(`/api/build/${currentBuildId}/secrets/${encodeURIComponent(key)}`, { method:"DELETE" });
+    await loadProjectSecrets();
+  }, [currentBuildId, loadProjectSecrets]);
+  useEffect(() => { if (activity === "secrets") loadProjectSecrets(); }, [activity, loadProjectSecrets]);
   const runTerminalCommand = useCallback(async () => {
     const command = terminalInput.trim();
     if (!command || terminalRunning) return;
@@ -2748,6 +2781,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"workspace",Icon:Workflow, title:"Workspace",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"terminal", Icon:Terminal,  title:"Terminal" },
+              { id:"secrets",  Icon:Key,       title:"Secrets" },
               { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
               { id:"search",   Icon:Search,    title:"Search"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
@@ -4284,6 +4318,32 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
 
                   <div style={{ display:"flex", justifyContent:"center", marginTop:4 }}><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"10px 18px", border:"none", borderRadius:8, background:chatInput.trim() ? palette.accent : palette.border, color:chatInput.trim() ? "#fff" : palette.textFaint, cursor:chatInput.trim() ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}><Bot size={15}/>{aiThinking ? "Starting project…" : "Build with AI"}<ChevronRight size={14}/></button></div>
 
+                </div>
+              </div>
+            ) : activity === "secrets" ? (
+              <div style={{ flex:1, minHeight:0, overflowY:"auto", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
+                <div style={{ height:52, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 22px", borderBottom:`1px solid ${palette.border}`, background:palette.titleBar }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:9, color:palette.textActive, fontSize:16, fontWeight:700 }}><Key size={18} color={palette.accent}/>Secrets</div>
+                  <div style={{ color:palette.textMuted, fontSize:11 }}>{currentProjectName || "No project selected"}</div>
+                </div>
+                <div style={{ maxWidth:860, padding:"32px 34px" }}>
+                  <div style={{ color:palette.textActive, fontSize:24, fontWeight:750, letterSpacing:"-0.03em" }}>Project secrets</div>
+                  <div style={{ color:palette.textMuted, fontSize:12, lineHeight:1.6, marginTop:8, maxWidth:650 }}>Store API keys and environment values for this project. Values are encrypted before storage and are never shown back in the interface.</div>
+                  {!currentBuildId ? <div style={{ marginTop:28, padding:18, border:`1px dashed ${palette.borderLight}`, color:palette.textMuted, fontSize:12 }}>Open or create a project before adding secrets.</div> : <>
+                    <div style={{ marginTop:28, padding:18, border:`1px solid ${palette.border}`, background:palette.panelBg }}>
+                      <div style={{ color:palette.textActive, fontSize:13, fontWeight:700, marginBottom:12 }}>Add or update a secret</div>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "0.8fr 1.2fr auto", gap:10, alignItems:"center" }}>
+                        <input value={secretName} onChange={e => setSecretName(e.target.value.toUpperCase())} placeholder="SECRET_NAME" style={{ minWidth:0, padding:"10px 11px", border:`1px solid ${palette.borderLight}`, background:palette.editorBg, color:palette.textActive, outline:"none", fontFamily:FONT_MONO, fontSize:12 }} />
+                        <input type="password" value={secretValue} onChange={e => setSecretValue(e.target.value)} placeholder="Secret value" style={{ minWidth:0, padding:"10px 11px", border:`1px solid ${palette.borderLight}`, background:palette.editorBg, color:palette.textActive, outline:"none", fontFamily:FONT_MONO, fontSize:12 }} />
+                        <button onClick={saveProjectSecret} disabled={!secretName.trim() || !secretValue} style={{ padding:"10px 15px", border:"none", background:secretName.trim() && secretValue ? palette.accent : palette.border, color:secretName.trim() && secretValue ? "#fff" : palette.textFaint, cursor:secretName.trim() && secretValue ? "pointer" : "not-allowed", fontSize:12, fontWeight:700 }}>Save secret</button>
+                      </div>
+                      {secretsMessage && <div style={{ marginTop:10, color:secretsMessage.includes("saved") ? palette.success : palette.error, fontSize:11 }}>{secretsMessage}</div>}
+                    </div>
+                    <div style={{ marginTop:28 }}>
+                      <div style={{ color:palette.textActive, fontSize:13, fontWeight:700, marginBottom:10 }}>Configured secrets</div>
+                      {secretsLoading ? <div style={{ color:palette.textMuted, fontSize:12 }}>Loading secrets…</div> : projectSecrets.length === 0 ? <div style={{ padding:"22px 0", color:palette.textFaint, fontSize:12 }}>No secrets have been added to this project.</div> : projectSecrets.map(secret => <div key={secret.key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14, padding:"13px 0", borderBottom:`1px solid ${palette.border}` }}><div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}><LockKeyhole size={15} color={palette.success}/><span style={{ color:palette.textActive, fontFamily:FONT_MONO, fontSize:12 }}>{secret.key}</span><span style={{ color:palette.textFaint, fontFamily:FONT_MONO, fontSize:12 }}>••••••••</span></div><button onClick={() => deleteProjectSecret(secret.key)} style={{ border:"none", background:"transparent", color:palette.error, cursor:"pointer", fontSize:11 }}>Remove</button></div>)}
+                    </div>
+                  </>}
                 </div>
               </div>
             ) : activity === "terminal" ? (

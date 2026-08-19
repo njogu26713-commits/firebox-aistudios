@@ -18,8 +18,23 @@ import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvide
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
 import { createCloudRuntime } from "./agents/cloudRuntime.js";
+import ProjectSecret from "./models/ProjectSecret.js";
+import crypto from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const secretKey = crypto.createHash("sha256").update(String(process.env.FIREBOX_SECRETS_KEY || process.env.SESSION_SECRET || "firebox-development-secret")).digest();
+const encryptSecret = (value) => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", secretKey, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  return `${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${encrypted.toString("base64url")}`;
+};
+const decryptSecret = (value) => {
+  const [ivPart, tagPart, dataPart] = String(value || "").split(".");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", secretKey, Buffer.from(ivPart, "base64url"));
+  decipher.setAuthTag(Buffer.from(tagPart, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(dataPart, "base64url")), decipher.final()]).toString("utf8");
+};
 
 const app = express();
 const cloudTerminalRuntimes = new Map();
@@ -177,6 +192,30 @@ app.get("/api/build/:id/files", dbRequired, requireAuth, async (req, res) => {
   } catch {
     res.status(404).json({ error: "Not found" });
   }
+});
+
+/* ── Project-scoped encrypted secrets ───────────────────────────────────── */
+app.get("/api/build/:id/secrets", dbRequired, requireAuth, async (req, res) => {
+  const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("_id").lean();
+  if (!build) return res.status(404).json({ error: "Project not found." });
+  const secrets = await ProjectSecret.find({ ownerId: req.user._id, buildId: build._id }).select("key createdAt updatedAt").sort({ key: 1 }).lean();
+  res.json(secrets.map(secret => ({ key: secret.key, hasValue: true, createdAt: secret.createdAt, updatedAt: secret.updatedAt })));
+});
+app.put("/api/build/:id/secrets/:key", dbRequired, requireAuth, async (req, res) => {
+  const key = String(req.params.key || "").trim().toUpperCase();
+  const value = typeof req.body?.value === "string" ? req.body.value : "";
+  if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) return res.status(400).json({ error: "Secret names may contain uppercase letters, numbers, and underscores, and cannot start with a number." });
+  if (!value) return res.status(400).json({ error: "Secret value is required." });
+  const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("_id").lean();
+  if (!build) return res.status(404).json({ error: "Project not found." });
+  await ProjectSecret.findOneAndUpdate({ ownerId: req.user._id, buildId: build._id, key }, { $set: { encryptedValue: encryptSecret(value), updatedAt: new Date() }, $setOnInsert: { ownerId: req.user._id, buildId: build._id, key, createdAt: new Date() } }, { upsert: true, new: true });
+  res.json({ ok: true, key, hasValue: true });
+});
+app.delete("/api/build/:id/secrets/:key", dbRequired, requireAuth, async (req, res) => {
+  const build = await Build.findOne({ _id: req.params.id, ownerId: req.user._id }).select("_id").lean();
+  if (!build) return res.status(404).json({ error: "Project not found." });
+  await ProjectSecret.deleteOne({ ownerId: req.user._id, buildId: build._id, key: String(req.params.key || "").trim().toUpperCase() });
+  res.json({ ok: true });
 });
 
 /* ── GET /api/build/:id/file?path=... — single file content ─────────────── */
