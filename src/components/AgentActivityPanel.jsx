@@ -72,8 +72,10 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
   const displayActivities = useMemo(() => normalized.map(item => agentCompleted && item.status === "running" ? { ...item, status:"completed" } : item), [normalized, agentCompleted]);
   const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.type === "agent.completed");
   const recordActivities = displayActivities.filter(item => !["agent.output", "agent.message", "agent.completed", "agent.started", "task.started", "agent.failed"].includes(item.type));
-  const runningActivity = [...aiActivities].reverse().find(item => item.status === "running");
+  const runningActivity = [...displayActivities].reverse().find(item => item.status === "running" && !["agent.started", "task.started"].includes(item.type));
   const latestAgentMessage = [...aiActivities].reverse().find(item => item.type === "agent.message");
+  const latestActionActivity = [...displayActivities].reverse().find(item => !["agent.started", "task.started", "agent.completed", "agent.failed", "agent.message", "agent.output"].includes(item.type));
+  const liveNarration = latestAgentMessage || runningActivity || latestActionActivity;
   const actionGroups = useMemo(() => normalized.reduce((groups, item) => { const key = item.type.startsWith("file.") ? "files" : item.type.startsWith("command.") || item.type === "dependency.installing" ? "tools" : item.type.startsWith("test.") ? "tests" : item.type.startsWith("preview.") ? "preview" : item.type.startsWith("agent.") ? "agent" : "activity"; groups[key] = (groups[key] || 0) + 1; return groups; }, {}), [normalized]);
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
@@ -83,8 +85,7 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
     {currentPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{currentPrompt.text}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {errorText && <div className="workspace-error-line" role="alert">{errorText}</div>}
-    {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} active={!agentCompleted} />}
-    {!latestAgentMessage && runningActivity && <div className="current-operation"><div className="current-dot"><Loader2 size={14} className="activity-spin"/></div><div><div className="current-title">{runningActivity.title}</div><div className="current-description">{runningActivity.description || runningActivity.file || runningActivity.command}</div></div></div>}
+    {!preparationText && liveNarration && <AgentNarrationLine text={liveNarration.description || liveNarration.file || liveNarration.command || liveNarration.title} active={!agentCompleted && liveNarration.status === "running"} />}
     <div className="activity-list">
       {recordActivities.length > 0 && <>
         <div className="activity-record-icons" aria-label={`${recordActivities.length} completed actions`}>
