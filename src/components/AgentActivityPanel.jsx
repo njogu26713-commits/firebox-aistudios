@@ -77,6 +77,6 @@ export default function AgentActivityPanel({ taskName = "Working on your project
       </>}
       {!latestAgentMessage && !runningActivity && recordActivities.length === 0 && <div className="activity-empty" aria-label="Live AI activity field" />}
     </div>
-    {promptMessages.slice(1).map((message, index) => <div key={`user-prompt-${index}-${message.text}`} className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{message.text}</div></div>)}
+    {promptMessages.slice(1).map((message, index) => <div key={`user-prompt-${index}-${message.text}`} className="user-prompt-line user-prompt-followup"><div className="user-prompt-label">You</div><div className="user-prompt-text">{message.text}</div></div>)}
   </aside>;
 }
