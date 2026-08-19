@@ -45,7 +45,7 @@ function AgentNarrationLine({ text }) {
   return <div className="agent-narration-line" aria-live="polite">{visibleText}<span className="agent-narration-caret" aria-hidden="true" /></div>;
 }
 
-export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", userPrompt = "" }) {
+export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", userPrompt = "" }) {
   const [now, setNow] = useState(Date.now());
   const [expandedId, setExpandedId] = useState(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
@@ -59,7 +59,7 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const completed = normalized.filter(item => item.status === "completed").length;
   return <aside className="agent-activity-panel">
     {userPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{userPrompt}</div></div>}
-    {preparationText && <div className="preparation-line" aria-live="polite">{preparationText}</div>}
+    {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} />}
     {!latestAgentMessage && runningActivity && <div className="current-operation"><div className="current-dot"><Loader2 size={14} className="activity-spin"/></div><div><div className="current-title">{runningActivity.title}</div><div className="current-description">{runningActivity.description || runningActivity.file || runningActivity.command}</div></div></div>}
     <div className="activity-list">

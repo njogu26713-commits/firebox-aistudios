@@ -640,6 +640,7 @@ export default function FireboxAIStudio() {
   const [preparationActive, setPreparationActive] = useState(false);
   const [preparationPlanText, setPreparationPlanText] = useState("");
   const [preparationDecisionText, setPreparationDecisionText] = useState("");
+  const [preparationError, setPreparationError] = useState("");
   const [preparationPlanStartedAt, setPreparationPlanStartedAt] = useState(0);
   const [preparationStartedAt, setPreparationStartedAt] = useState(0);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
@@ -740,6 +741,8 @@ export default function FireboxAIStudio() {
         ? "Analyzing"
         : preparationPlanText && planElapsed < 10000
         ? `Creating plan: ${preparationPlanText}`
+        : preparationError
+        ? preparationError
         : preparationDecisionText
         ? preparationDecisionText
         : preparationPlanText
@@ -1602,7 +1605,9 @@ export default function FireboxAIStudio() {
     } catch (error) {
       const remaining = Math.max(0, 40000 - (Date.now() - (preparationStartedAt || Date.now())));
       if (remaining) window.setTimeout(() => setPreparationActive(false), remaining);
-      setErrorMsg(error.message || "The AI plan could not be generated.");
+      const planError = `Planning Agent error: ${error.message || "The AI plan could not be generated."}`;
+      setPreparationError(planError);
+      setErrorMsg(planError);
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
       return false;
     } finally {
@@ -1633,6 +1638,7 @@ export default function FireboxAIStudio() {
     setPreparationStartedAt(Date.now());
     setPreparationPlanText("");
     setPreparationDecisionText("");
+    setPreparationError("");
     setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
       const planStarted = await requestBuildPlan(text);
@@ -4173,7 +4179,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${palette.border}`, background:palette.sideBar }}>
                     <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div></div>
-                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} userPrompt={description || ""} /></div>
+                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} preparationError={preparationError} userPrompt={description || ""} /></div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
                       <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${palette.borderLight}`, borderRadius:8, background:palette.editorBg, color:palette.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? palette.accent : "#38383a", color:chatInput.trim() ? "#fff" : palette.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
