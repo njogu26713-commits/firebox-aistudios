@@ -45,7 +45,7 @@ async function fetchProvider(url, options, label) {
 
 function normalizeProviderError(label, status, body = "") {
   const text = String(body || "");
-  if (status === 402 || /insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|credit(?:s)?\s+(?:limit|balance)/i.test(text)) {
+  if (status === 402 || /insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|limit_source[^\n]*credit|credit_limit/i.test(text)) {
     return new Error(`Your ${label} AI provider is out of credits. Try another configured Agent or add credits to the provider account.`);
   }
   return new Error(`${label} request failed (${status})${text ? `: ${text.slice(0, 500)}` : ""}`);

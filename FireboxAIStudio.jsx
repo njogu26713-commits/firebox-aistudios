@@ -16,7 +16,7 @@ import {
 
 const friendlyProviderError = (message) => {
   const text = String(message || "");
-  if (/402|insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|credit(?:s)?\s+(?:limit|balance)/i.test(text)) {
+  if (/402|insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|limit_source[^\n]*credit|credit_limit/i.test(text)) {
     return "This AI provider is out of credits. Try another configured Agent or add credits to the provider account.";
   }
   return text;
