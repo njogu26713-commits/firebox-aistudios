@@ -11,6 +11,9 @@
 .current-description { margin-top:3px; font-size:11px; color:#858894; }
 .activity-list { flex:1; padding:4px 14px 20px; overflow-y:auto; }
 .activity-empty { padding:16px 0; color:#858894; font-size:12px; line-height:1.55; }
+.user-prompt-line { margin:12px 14px 2px; padding:9px 11px; border-radius:9px 9px 3px 9px; background:#252830; border:1px solid #353945; }
+.user-prompt-label { margin-bottom:4px; color:#8b7cff; font-size:10px; font-weight:700; }
+.user-prompt-text { color:#f1f3f5; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 .preparation-line { min-height:22px; padding:14px 0 10px; color:#a99cff; font-size:13px; font-weight:600; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .agent-narration-line { min-height:22px; padding:14px 0 10px; color:#e5e7eb; font-size:13px; font-weight:600; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .agent-narration-caret { display:inline-block; width:6px; height:14px; margin-left:4px; vertical-align:-2px; background:#a99cff; animation:agent-caret-blink 0.9s steps(1) infinite; }
