@@ -187,7 +187,7 @@ app.post("/api/terminal", dbRequired, requireAuth, async (req, res) => {
   if (/[;&|`$<>]/.test(rawCommand)) return res.status(400).json({ ok:false, error:"Shell operators are not allowed in the Terminal command." });
   const parts = rawCommand.split(/\s+/);
   const [command, ...args] = parts;
-  if (!["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git"].includes(command)) return res.status(400).json({ ok:false, error:"This command is not allowed in the Cloud Terminal." });
+  if (!["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git", "pwd", "ls", "find", "cat", "echo", "clear", "mkdir", "rm"].includes(command)) return res.status(400).json({ ok:false, error:"This command is not allowed in the Cloud Project Terminal." });
   const build = await Build.findOne({ _id: buildId, ownerId: req.user._id });
   if (!build) return res.status(404).json({ ok:false, error:"Project not found." });
   let session = cloudTerminalRuntimes.get(buildId);

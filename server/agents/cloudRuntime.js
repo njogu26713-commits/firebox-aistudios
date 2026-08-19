@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createBrowserRuntime } from "../../local-engine/browser.js";
 
-const ALLOWED_COMMANDS = new Set(["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git"]);
+const ALLOWED_COMMANDS = new Set(["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git", "pwd", "ls", "find", "cat", "echo", "clear", "mkdir", "rm"]);
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const clip = (value, limit = 6000) => String(value ?? "").slice(-limit);
 
@@ -20,13 +20,19 @@ function safePath(root, relativePath) {
 function runProcess(command, args, cwd, onOutput = () => {}) {
   if (!ALLOWED_COMMANDS.has(command)) throw new Error(`Cloud Runtime command is not allowed: ${command}`);
   if (!Array.isArray(args) || args.some((arg) => /[;&|`$<>]/.test(String(arg)))) throw new Error("Unsafe Cloud Runtime command arguments");
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args.map(String), { cwd, shell: false, detached: process.platform !== "win32" });
+  const normalizedArgs = args.map(String);
+  const run = (actualCommand, actualArgs) => new Promise((resolve, reject) => {
+    const child = spawn(actualCommand, actualArgs, { cwd, shell: false, detached: process.platform !== "win32" });
     child.stdout.on("data", (chunk) => onOutput(String(chunk)));
     child.stderr.on("data", (chunk) => onOutput(String(chunk)));
-    child.on("error", reject);
-    child.on("close", (code) => code === 0 ? resolve({ ok: true, code }) : reject(new Error(`${command} ${args.join(" ")} exited with code ${code}`)));
+    child.on("error", (error) => {
+      if (error.code === "ENOENT" && command === "pnpm") return run("npx", ["--yes", "pnpm", ...normalizedArgs]).then(resolve, reject);
+      if (error.code === "ENOENT" && command === "yarn") return run("corepack", ["yarn", ...normalizedArgs]).then(resolve, reject);
+      reject(error);
+    });
+    child.on("close", (code) => code === 0 ? resolve({ ok: true, code }) : reject(new Error(`${command} ${normalizedArgs.join(" ")} exited with code ${code}`)));
   });
+  return run(command, normalizedArgs);
 }
 
 async function probe(url) {
@@ -81,6 +87,7 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
     },
   };
   await runtime.syncFiles(build.files || []);
+  await runProcess("git", ["init"], workspace).catch(() => {});
   runtime.browser = createBrowserRuntime({ getPreviewStatus: () => runtime.getPreviewStatus(), emit });
   runtime.close = async () => {
     await runtime.browser.close().catch(() => {});
