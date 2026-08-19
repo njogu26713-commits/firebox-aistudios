@@ -1693,6 +1693,8 @@ export default function FireboxAIStudio() {
       setChatInput("");
       setActivity("workspace");
       setSideOpen(false);
+      // Keep Understanding → Analyzing → Creating plan → Deciding changes visible for 10 seconds each before editing.
+      await new Promise(resolve => window.setTimeout(resolve, 40000));
       await startEditFiles(text);
       return;
     }
