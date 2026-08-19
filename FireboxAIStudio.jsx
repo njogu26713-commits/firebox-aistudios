@@ -1590,7 +1590,7 @@ export default function FireboxAIStudio() {
       const requestUrl = useLocalEngine ? `${engineBase}/api/plan` : "/api/plan";
       const headers = { "Content-Type": "application/json" };
       if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
-      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, endpoint:localAiConfig.endpoint, model:localAiConfig.model, apiKey:localAiConfig.apiKey, localAi:aiProvider !== "cloud" ? localAiConfig : undefined }) });
+      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
       const planNarration = [data.plan.summary, ...(data.plan.steps || [])].filter(Boolean).join("; ");
