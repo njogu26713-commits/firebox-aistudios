@@ -1568,7 +1568,11 @@ export default function FireboxAIStudio() {
 
   const requestBuildPlan = useCallback(async (requestText) => {
     const text = String(requestText || "").trim();
-    if (!text || planning) return;
+    if (!text) return false;
+    if (planning) {
+      setErrorMsg("A plan is already being generated. Please wait for it to finish before submitting another prompt.");
+      return false;
+    }
     setPlanning(true);
     setBuildPlan(null);
     try {
@@ -1590,12 +1594,14 @@ export default function FireboxAIStudio() {
       const remaining = Math.max(0, 40000 - (Date.now() - started));
       if (remaining) await new Promise(resolve => window.setTimeout(resolve, remaining));
       await startBuild(text);
+      return true;
     } catch (error) {
       setPreparationActive(false);
       setPreparationPlanText("");
       setPreparationPlanStartedAt(0);
       setErrorMsg(error.message || "The AI plan could not be generated.");
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
+      return false;
     } finally {
       setPlanning(false);
     }
@@ -1617,13 +1623,14 @@ export default function FireboxAIStudio() {
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
+    setDescription(baseText);
     setPreparationActive(true);
     setPreparationStartedAt(Date.now());
     setPreparationPlanText("");
     setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
-      setChatInput("");
-      await requestBuildPlan(text);
+      const planStarted = await requestBuildPlan(text);
+      if (planStarted !== false) setChatInput("");
       return;
     }
     if (currentBuildId && allFiles.length > 0) {
