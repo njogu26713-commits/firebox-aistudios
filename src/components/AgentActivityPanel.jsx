@@ -29,7 +29,7 @@ function iconFor(type, status) {
 function formatDuration(seconds) { return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; }
 function formatTime(timestamp) { return new Date(timestamp).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
-export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt }) {
+export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "" }) {
   const [now, setNow] = useState(Date.now());
   const [expandedId, setExpandedId] = useState(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
@@ -41,6 +41,7 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
   return <aside className="agent-activity-panel">
+    {preparationText && <div className="preparation-line" aria-live="polite">{preparationText}</div>}
     {runningActivity && <div className="current-operation"><div className="current-dot"><Loader2 size={14} className="activity-spin"/></div><div><div className="current-title">{runningActivity.title}</div><div className="current-description">{runningActivity.description || runningActivity.file || runningActivity.command}</div></div></div>}
     <div className="activity-list">
       {narrative.length === 0 ? <div className="activity-empty" aria-label="Live AI activity field" /> : narrative.map(activity => { const expandable = Boolean(activity.details || activity.file || activity.command); const expanded = expandedId === activity.id; return <div key={activity.id} className={`activity-narrative activity-${activity.status}`}><button type="button" className="activity-narrative-main" onClick={() => expandable && setExpandedId(expanded ? null : activity.id)}><div className="activity-narrative-title">{activity.title}{expandable && (expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>)}</div><div className="activity-narrative-description">{activity.description || activity.file || activity.command}</div></button><div className="activity-narrative-meta">{formatTime(activity.timestamp)}{activity.status === "running" && <span className="running-label">running</span>}{activity.status === "completed" && <span className="completed-label"><CheckCircle2 size={12}/>done</span>}{activity.status === "error" && <span className="error-label"><TriangleAlert size={12}/>failed</span>}</div>{expanded && <div className="activity-details">{activity.details || activity.file || activity.command}</div>}</div>; })}

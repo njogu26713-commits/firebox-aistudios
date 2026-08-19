@@ -637,6 +637,7 @@ export default function FireboxAIStudio() {
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
   const [understandingText, setUnderstandingText] = useState("");
+  const [preparationActive, setPreparationActive] = useState(false);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
@@ -718,32 +719,32 @@ export default function FireboxAIStudio() {
     return () => clearTimeout(timer);
   }, [preHomeVisible]);
   useEffect(() => {
-    if (!aiThinking || aiStreamText) {
+    if (!preparationActive) {
       setUnderstandingText("");
       return undefined;
     }
     const startedAt = Date.now();
-    let currentPhrase = "Understanding";
+    let lastPhrase = "";
     let charIndex = 0;
     let timer;
     const tick = () => {
       const elapsed = Date.now() - startedAt;
-      if (elapsed >= 1500) currentPhrase = "Analyzing";
-      charIndex = Math.min(charIndex + 1, currentPhrase.length);
+      const phrase = elapsed < 900
+        ? "Understanding"
+        : elapsed < 1800
+        ? "Analyzing"
+        : elapsed < 3000
+        ? "Creating plan"
+        : "Deciding what files/components need to change";
+      if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
+      charIndex = Math.min(charIndex + 1, phrase.length);
       const dots = ".".repeat((Math.floor(Date.now() / 420) % 3) + 1);
-      setUnderstandingText(`${currentPhrase.slice(0, charIndex)}${dots}`);
-      if (charIndex >= currentPhrase.length) {
-        charIndex = 0;
-        if (currentPhrase === "Analyzing" && elapsed >= 3000) {
-          timer = setTimeout(tick, 120);
-          return;
-        }
-      }
-      timer = setTimeout(tick, 52);
+      setUnderstandingText(`${phrase.slice(0, charIndex)}${dots}`);
+      timer = setTimeout(tick, charIndex >= phrase.length ? 120 : 52);
     };
     timer = setTimeout(tick, 80);
     return () => clearTimeout(timer);
-  }, [aiThinking, aiStreamText]);
+  }, [preparationActive]);
 
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {
@@ -1165,6 +1166,7 @@ export default function FireboxAIStudio() {
     if (useLocalEngine && (!engineBase || !localEngineToken.trim())) {
       setPhase("error");
       setErrorMsg("Local AI builds require the Local Firebox Engine URL and pairing token. Start the engine on Windows and enter both values in Settings.");
+      setPreparationActive(false);
       return;
     }
     try {
@@ -1191,7 +1193,7 @@ export default function FireboxAIStudio() {
       buildId = useLocalEngine ? data.jobId : data.buildId;
       setCurrentBuildId(buildId);
       setCurrentProjectName(data.projectName || "firebox-project");
-    } catch (err) { setPhase("error"); setErrorMsg(err.message); return; }
+    } catch (err) { setPhase("error"); setErrorMsg(err.message); setPreparationActive(false); return; }
 
     const eventUrl = useLocalEngine
       ? `${engineBase}/api/build/${buildId}/events?token=${encodeURIComponent(localEngineToken.trim())}`
@@ -1205,6 +1207,7 @@ export default function FireboxAIStudio() {
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
+        if (eventName === "agent.started" || eventName === "task.started") setPreparationActive(false);
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
         const detail = data.details || data.error || data.output || data.command || data.path || "";
@@ -1482,6 +1485,7 @@ export default function FireboxAIStudio() {
           try { evt = JSON.parse(rawData); } catch { continue; }
 
           if (eventName === "edit-token" || evt.token) {
+            setPreparationActive(false);
             setEditStream(prev => prev + (evt.token || ""));
           } else if (eventName === "edit-file-updated" || evt.path) {
             const { path: filePath, content: newContent, isNew, applied, failed } = evt;
@@ -1530,6 +1534,7 @@ export default function FireboxAIStudio() {
       setEditError(err.message);
     }
     setEditingFiles(false);
+    setPreparationActive(false);
   }, [currentBuildId, aiProvider, providerConfig, localAiConfig]);
 
   const requestBuildPlan = useCallback(async (requestText) => {
@@ -1574,6 +1579,7 @@ export default function FireboxAIStudio() {
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
+    setPreparationActive(true);
     if (activity === "home" && allFiles.length === 0) {
       setChatInput("");
       await startBuild(text);
@@ -1613,6 +1619,7 @@ export default function FireboxAIStudio() {
         });
         fullText = result.text;
         action = result.action;
+        if (action !== "build") setPreparationActive(false);
         setAiStreamText(fullText);
       } else {
         const res = await fetch("/api/chat", {
@@ -1650,11 +1657,11 @@ export default function FireboxAIStudio() {
 
             if (evt.token) {
               fullText += evt.token;
-              setUnderstandingText("");
               setAiStreamText(fullText);
             } else if (evt.done) {
               fullText = evt.text || fullText;
               action = evt.action || null;
+              if (action !== "build") setPreparationActive(false);
             } else if (evt.error) {
               throw new Error(evt.error);
             }
@@ -1682,6 +1689,7 @@ export default function FireboxAIStudio() {
       setChatHistory(prev => [...prev, { role: "ai", text: message }]);
       setAiStreamText("");
       setAiThinking(false);
+      setPreparationActive(false);
     }
   }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
 
@@ -1693,6 +1701,7 @@ export default function FireboxAIStudio() {
     setActiveAgent(null);
     setBuildPaused(false);
     setPhase("idle");
+    setPreparationActive(false);
     setErrorMsg("Agent stopped. No further changes are being made.");
   }, []);
 
@@ -2998,7 +3007,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     ))}
 
                     {/* Streaming AI reply bubble */}
-                    {(aiThinking || aiStreamText) && (
+                    {aiStreamText && (
                       <div style={{
                         display:"flex", flexDirection:"column", alignItems:"flex-start",
                         marginBottom:10, animation:"fadeIn 0.2s ease",
@@ -3014,7 +3023,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           fontSize:12, lineHeight:1.6, fontFamily:FONT_UI,
                           wordBreak:"break-word", whiteSpace:"nowrap", minHeight:18,
                         }}>
-                          {aiStreamText || understandingText || <ThinkingDots/>}
+                          {aiStreamText}
                         </div>
                       </div>
                     )}
@@ -4110,7 +4119,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${palette.border}`, background:palette.sideBar }}>
                     <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div></div>
-                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} /></div>
+                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} /></div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
                       <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${palette.borderLight}`, borderRadius:8, background:palette.editorBg, color:palette.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? palette.accent : "#38383a", color:chatInput.trim() ? "#fff" : palette.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
