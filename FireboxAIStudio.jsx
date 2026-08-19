@@ -1247,6 +1247,15 @@ export default function FireboxAIStudio() {
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
+        if (eventName === "preview.ready") {
+          const browserPreviewUrl = data.gatewayUrl || data.url || data.previewUrl || null;
+          setPreviewStatus(browserPreviewUrl ? "running" : "error");
+          setPreviewError(browserPreviewUrl ? "" : "Preview became ready without a URL");
+          if (browserPreviewUrl) {
+            setPreviewUrl(browserPreviewUrl);
+            setPreviewOpen(true);
+          }
+        }
         if (eventName === "agent.preparation" && Array.isArray(data.phases)) {
           setPreparationPhases(data.phases.map(value => String(value || "").trim()).filter(Boolean));
           return;
