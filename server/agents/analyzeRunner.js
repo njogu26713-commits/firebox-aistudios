@@ -38,7 +38,7 @@ export async function runAnalysisPipeline(build, repoContext, res, signal) {
     try {
       const stream = await callWithFallback(client =>
         client.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
           messages: [
             { role: "system", content: agentDef.systemPrompt },
             { role: "user",   content: contextLines.join("\n\n") },

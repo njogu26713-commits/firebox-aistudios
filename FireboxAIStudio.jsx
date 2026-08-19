@@ -1591,6 +1591,10 @@ export default function FireboxAIStudio() {
       if (remaining) await new Promise(resolve => window.setTimeout(resolve, remaining));
       await startBuild(text);
     } catch (error) {
+      setPreparationActive(false);
+      setPreparationPlanText("");
+      setPreparationPlanStartedAt(0);
+      setErrorMsg(error.message || "The AI plan could not be generated.");
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
     } finally {
       setPlanning(false);

@@ -1,6 +1,6 @@
 import { callWithFallback } from "./groqPool.js";
 
-const DEFAULT_CLOUD_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_CLOUD_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const PROVIDER_DEFAULTS = {
   openai: { endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   anthropic: { endpoint: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },

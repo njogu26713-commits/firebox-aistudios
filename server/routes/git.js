@@ -174,7 +174,7 @@ router.post("/ai-edit", async (req, res) => {
   try {
     const stream = await callWithFallback(client =>
       client.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
         messages: [
           {
             role: "system",
