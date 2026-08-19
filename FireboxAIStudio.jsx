@@ -640,6 +640,7 @@ export default function FireboxAIStudio() {
   const [preparationActive, setPreparationActive] = useState(false);
   const [preparationPlanText, setPreparationPlanText] = useState("");
   const [preparationPlanStartedAt, setPreparationPlanStartedAt] = useState(0);
+  const [preparationStartedAt, setPreparationStartedAt] = useState(0);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
@@ -732,13 +733,13 @@ export default function FireboxAIStudio() {
     const tick = () => {
       const elapsed = Date.now() - startedAt;
       const planElapsed = preparationPlanStartedAt ? Date.now() - preparationPlanStartedAt : 0;
-      const phrase = elapsed < 900
+      const phrase = elapsed < 10000
         ? "Understanding"
-        : elapsed < 1800
+        : elapsed < 20000
         ? "Analyzing"
-        : preparationPlanText && planElapsed < 4000
+        : preparationPlanText && planElapsed < 10000
         ? `Creating plan: ${preparationPlanText}`
-        : elapsed < 3000 && !preparationPlanText
+        : !preparationPlanText
         ? "Creating plan"
         : "Deciding what files/components need to change";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
@@ -1585,13 +1586,16 @@ export default function FireboxAIStudio() {
       setPreparationPlanStartedAt(Date.now());
       setBuildPlan({ ...data.plan, request:text });
       setBuildPlan(null);
+      const started = preparationStartedAt || Date.now();
+      const remaining = Math.max(0, 40000 - (Date.now() - started));
+      if (remaining) await new Promise(resolve => window.setTimeout(resolve, remaining));
       await startBuild(text);
     } catch (error) {
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
     } finally {
       setPlanning(false);
     }
-  }, [planning, aiProvider, localEngineUrl, localEngineToken, providerConfig, localAiConfig, allFiles, startBuild]);
+  }, [planning, aiProvider, localEngineUrl, localEngineToken, providerConfig, localAiConfig, allFiles, startBuild, preparationStartedAt]);
 
   const confirmBuildPlan = useCallback((override = false) => {
     if (!buildPlan?.request || (buildPlan.needsConfirmation && !override)) return;
@@ -1610,6 +1614,7 @@ export default function FireboxAIStudio() {
       : "";
     const text = `${baseText}${launcherOverrides}`;
     setPreparationActive(true);
+    setPreparationStartedAt(Date.now());
     setPreparationPlanText("");
     setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
