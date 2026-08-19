@@ -26,6 +26,7 @@ export const AGENT_CAPABILITIES = {
 export const PLAN_SCHEMA = {
   summary: "string",
   steps: ["string"],
+  decisionNarration: "string",
   existingProject: "boolean",
   needsConfirmation: "boolean",
   confirmationReason: "string|null",
@@ -36,7 +37,9 @@ export function buildPlanningPrompt({ description, fileNames = [] }) {
     ? `An existing project is open. Inspect it before proposing changes. Current files include: ${fileNames.slice(0, 50).join(", ")}.`
     : "No existing project files are open. Treat this as a new project request.";
 
-  return `You are the planning phase of the Firebox Agent. Understand the user's request before any code is changed.\n\n${projectContext}\n\nUser request:\n${description}\n\nReturn ONLY valid JSON matching this shape:\n${JSON.stringify(PLAN_SCHEMA, null, 2)}\n\nRules:\n- Make 4 to 8 concrete, user-readable steps.\n- Do not generate source code.\n- Set existingProject true only when files are present and the request is an edit/extension.\n- Set needsConfirmation true only for destructive changes, production deployment, real payments, secret exposure, or other irreversible actions.\n- If no confirmation is needed, confirmationReason must be null.\n- The plan must mention inspection for an existing project before editing it.`;
+  return `You are the planning phase of the Firebox Agent. Understand the user's request before any code is changed.\n\n${projectContext}\n\nUser request:\n${description}\n\nReturn ONLY valid JSON matching this shape:\n${JSON.stringify(PLAN_SCHEMA, null, 2)}\n\nRules:\n- Make 4 to 8 concrete, user-readable steps.
+- Return decisionNarration as one concise user-facing sentence naming the actual files/components you expect to inspect or change. Do not use generic wording; mention paths when they are known from the project context.
+- Do not generate source code.\n- Set existingProject true only when files are present and the request is an edit/extension.\n- Set needsConfirmation true only for destructive changes, production deployment, real payments, secret exposure, or other irreversible actions.\n- If no confirmation is needed, confirmationReason must be null.\n- The plan must mention inspection for an existing project before editing it.`;
 }
 
 export function normalizePlan(value) {
@@ -46,6 +49,7 @@ export function normalizePlan(value) {
     : [];
   return {
     summary: String(plan.summary || "I understand what you want to build.").trim(),
+    decisionNarration: String(plan.decisionNarration || "").trim(),
     steps: steps.length ? steps : [
       "Understand the requirements",
       "Set up or inspect the project",

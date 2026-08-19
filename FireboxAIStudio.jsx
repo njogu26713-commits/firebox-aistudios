@@ -639,6 +639,7 @@ export default function FireboxAIStudio() {
   const [understandingText, setUnderstandingText] = useState("");
   const [preparationActive, setPreparationActive] = useState(false);
   const [preparationPlanText, setPreparationPlanText] = useState("");
+  const [preparationDecisionText, setPreparationDecisionText] = useState("");
   const [preparationPlanStartedAt, setPreparationPlanStartedAt] = useState(0);
   const [preparationStartedAt, setPreparationStartedAt] = useState(0);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
@@ -739,9 +740,11 @@ export default function FireboxAIStudio() {
         ? "Analyzing"
         : preparationPlanText && planElapsed < 10000
         ? `Creating plan: ${preparationPlanText}`
-        : elapsed < 30000
-        ? "Creating plan"
-        : "Deciding what files/components need to change";
+        : preparationDecisionText
+        ? preparationDecisionText
+        : preparationPlanText
+        ? `Creating plan: ${preparationPlanText}`
+        : "Analyzing";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
       charIndex = Math.min(charIndex + 1, phrase.length);
       const dots = ".".repeat((Math.floor(Date.now() / 420) % 3) + 1);
@@ -1587,6 +1590,7 @@ export default function FireboxAIStudio() {
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
       const planNarration = [data.plan.summary, ...(data.plan.steps || [])].filter(Boolean).join("; ");
       setPreparationPlanText(planNarration);
+      setPreparationDecisionText(data.plan.decisionNarration || "");
       setPreparationPlanStartedAt(Date.now());
       setBuildPlan({ ...data.plan, request:text });
       setBuildPlan(null);
@@ -1628,6 +1632,7 @@ export default function FireboxAIStudio() {
     setPreparationActive(true);
     setPreparationStartedAt(Date.now());
     setPreparationPlanText("");
+    setPreparationDecisionText("");
     setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
       const planStarted = await requestBuildPlan(text);
