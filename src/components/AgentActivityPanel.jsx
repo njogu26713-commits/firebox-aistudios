@@ -29,7 +29,7 @@ function iconFor(type, status) {
 function formatDuration(seconds) { return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; }
 function formatTime(timestamp) { return new Date(timestamp).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
-function AgentNarrationLine({ text }) {
+function AgentNarrationLine({ text, active = true }) {
   const [visibleText, setVisibleText] = useState("");
   useEffect(() => {
     setVisibleText("");
@@ -42,7 +42,7 @@ function AgentNarrationLine({ text }) {
     }, 18);
     return () => window.clearInterval(timer);
   }, [text]);
-  return <div className="agent-narration-line" aria-live="polite">{visibleText}<span className="agent-narration-caret" aria-hidden="true" /></div>;
+  return <div className="agent-narration-line" aria-live="polite">{visibleText}{active && <span className="agent-narration-caret" aria-hidden="true" />}</div>;
 }
 
 export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", errorText = "", userPrompt = "" }) {
@@ -50,7 +50,9 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const [expandedId, setExpandedId] = useState(null);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const normalized = useMemo(() => activities.map(normalizeActivity), [activities]);
-  const aiActivities = normalized.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.aiGenerated === true);
+  const agentCompleted = normalized.some(item => item.type === "agent.completed" && item.status === "completed");
+  const displayActivities = useMemo(() => normalized.map(item => agentCompleted && item.status === "running" ? { ...item, status:"completed" } : item), [normalized, agentCompleted]);
+  const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.aiGenerated === true);
   const runningActivity = [...aiActivities].reverse().find(item => item.status === "running");
   const latestAgentMessage = [...aiActivities].reverse().find(item => item.type === "agent.message");
   const narrative = aiActivities.slice(-8);
@@ -61,7 +63,7 @@ export default function AgentActivityPanel({ taskName = "Working on your project
     {userPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{userPrompt}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {errorText && <div className="workspace-error-line" role="alert">{errorText}</div>}
-    {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} />}
+    {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} active={!agentCompleted} />}
     {!latestAgentMessage && runningActivity && <div className="current-operation"><div className="current-dot"><Loader2 size={14} className="activity-spin"/></div><div><div className="current-title">{runningActivity.title}</div><div className="current-description">{runningActivity.description || runningActivity.file || runningActivity.command}</div></div></div>}
     <div className="activity-list">
       {narrative.length === 0 ? <div className="activity-empty" aria-label="Live AI activity field" /> : narrative.map(activity => { const expandable = Boolean(activity.details || activity.file || activity.command); const expanded = expandedId === activity.id; return <div key={activity.id} className={`activity-narrative activity-${activity.status}`}><button type="button" className="activity-narrative-main" onClick={() => expandable && setExpandedId(expanded ? null : activity.id)}><div className="activity-narrative-title">{activity.title}{expandable && (expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>)}</div><div className="activity-narrative-description">{activity.description || activity.file || activity.command}</div></button><div className="activity-narrative-meta">{formatTime(activity.timestamp)}{activity.status === "running" && <span className="running-label">running</span>}{activity.status === "completed" && <span className="completed-label"><CheckCircle2 size={12}/>done</span>}{activity.status === "error" && <span className="error-label"><TriangleAlert size={12}/>failed</span>}</div>{expanded && <div className="activity-details">{activity.details || activity.file || activity.command}</div>}</div>; })}
