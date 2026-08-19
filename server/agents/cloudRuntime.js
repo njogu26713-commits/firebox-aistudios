@@ -39,6 +39,22 @@ function runProcess(command, args, cwd, onOutput = () => {}) {
   return run(command, normalizedArgs);
 }
 
+async function detectProjectRoot(workspaceRoot) {
+  try {
+    await fs.access(path.join(workspaceRoot, "package.json"));
+    return workspaceRoot;
+  } catch {}
+  const entries = await fs.readdir(workspaceRoot, { withFileTypes: true });
+  const directories = entries.filter(entry => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules");
+  if (directories.length !== 1) return workspaceRoot;
+  const candidate = path.join(workspaceRoot, directories[0].name);
+  const markers = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "yarn.lock", "package-lock.json", "vite.config.js", "vite.config.ts", "src"];
+  for (const marker of markers) {
+    try { await fs.access(path.join(candidate, marker)); return candidate; } catch {}
+  }
+  return workspaceRoot;
+}
+
 async function probe(url) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
@@ -47,33 +63,34 @@ async function probe(url) {
 }
 
 export async function createCloudRuntime({ build, emit = () => {} }) {
-  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), `firebox-cloud-${String(build._id)}-`));
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), `firebox-cloud-${String(build._id)}-`));
+  let projectRoot = workspaceRoot;
   let preview = null;
   let previewPort = 4173 + Math.floor(Math.random() * 1000);
   const runtime = {
-    workspace,
+    get workspace() { return projectRoot; },
     async syncFiles(files = []) {
       for (const file of files) {
         if (file.isBinary || file.content == null) continue;
-        const target = safePath(workspace, file.path);
+        const target = safePath(workspaceRoot, file.path);
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, String(file.content), "utf8");
       }
     },
     async runCommand(command, args = [], onOutput = () => {}) {
-      return runProcess(command, args, workspace, (output) => { onOutput(output); emit("runtime-output", { output: clip(output) }); });
+      return runProcess(command, args, projectRoot, (output) => { onOutput(output); emit("runtime-output", { output: clip(output) }); });
     },
     async installPackage(packageName) {
       return runtime.runCommand("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", String(packageName)]);
     },
     async startPreview() {
       if (preview?.child && preview.child.exitCode === null) return runtime.getPreviewStatus();
-      const packageJson = JSON.parse(await fs.readFile(path.join(workspace, "package.json"), "utf8"));
+      const packageJson = JSON.parse(await fs.readFile(path.join(projectRoot, "package.json"), "utf8"));
       const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
       if (!script) throw new Error("Project has no dev or start script");
       previewPort += 1;
       const commandArgs = ["run", script, "--", "--host", "0.0.0.0", "--port", String(previewPort)];
-      const child = spawn("npm", commandArgs, { cwd: workspace, shell: false, detached: process.platform !== "win32", env: { ...process.env, PORT: String(previewPort) } });
+      const child = spawn("npm", commandArgs, { cwd: projectRoot, shell: false, detached: process.platform !== "win32", env: { ...process.env, PORT: String(previewPort), TERM: process.env.TERM || "xterm-256color" } });
       preview = { child, port: previewPort, output: "" };
       child.stdout.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });
       child.stderr.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });
@@ -91,14 +108,15 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
     },
   };
   await runtime.syncFiles(build.files || []);
-  await runProcess("git", ["init"], workspace).catch(() => {});
+  projectRoot = await detectProjectRoot(workspaceRoot);
+  await runProcess("git", ["init"], projectRoot).catch(() => {});
   runtime.browser = createBrowserRuntime({ getPreviewStatus: () => runtime.getPreviewStatus(), emit });
   runtime.close = async () => {
     await runtime.browser.close().catch(() => {});
     if (preview?.child && preview.child.exitCode === null) {
       try { process.kill(-preview.child.pid, "SIGTERM"); } catch { preview.child.kill(); }
     }
-    await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
   };
   return runtime;
 }
