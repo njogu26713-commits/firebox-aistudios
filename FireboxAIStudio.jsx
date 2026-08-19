@@ -1623,6 +1623,8 @@ export default function FireboxAIStudio() {
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
+    setActivity("workspace");
+    setSideOpen(false);
     setDescription(baseText);
     setPreparationActive(true);
     setPreparationStartedAt(Date.now());
