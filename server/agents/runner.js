@@ -53,6 +53,7 @@ async function runProviderToolMode(build, res, aiConfig, signal) {
     },
   });
   await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+  if (result.content?.trim()) emit("agent.message", { agent:"Firebox Agent", description:result.content.trim().replace(/\s+/g, " "), status:"completed", aiGenerated:true });
   emit("checkpoint.created", { agent:"Firebox Agent", title:"Checkpoint created", description:"Project changes persisted", status:"completed", timestamp:Date.now() });
   emit("agent.completed", { agent:"Firebox Agent", title:"Completed", description:"Project work finished", status:"completed" });
   emit("agent-complete", { output: result.content });

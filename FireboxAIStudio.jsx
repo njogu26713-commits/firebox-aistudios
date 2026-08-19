@@ -638,6 +638,8 @@ export default function FireboxAIStudio() {
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
   const [understandingText, setUnderstandingText] = useState("");
   const [preparationActive, setPreparationActive] = useState(false);
+  const [preparationPlanText, setPreparationPlanText] = useState("");
+  const [preparationPlanStartedAt, setPreparationPlanStartedAt] = useState(0);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
@@ -729,11 +731,14 @@ export default function FireboxAIStudio() {
     let timer;
     const tick = () => {
       const elapsed = Date.now() - startedAt;
+      const planElapsed = preparationPlanStartedAt ? Date.now() - preparationPlanStartedAt : 0;
       const phrase = elapsed < 900
         ? "Understanding"
         : elapsed < 1800
         ? "Analyzing"
-        : elapsed < 3000
+        : preparationPlanText && planElapsed < 4000
+        ? `Creating plan: ${preparationPlanText}`
+        : elapsed < 3000 && !preparationPlanText
         ? "Creating plan"
         : "Deciding what files/components need to change";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
@@ -744,7 +749,7 @@ export default function FireboxAIStudio() {
     };
     timer = setTimeout(tick, 80);
     return () => clearTimeout(timer);
-  }, [preparationActive]);
+  }, [preparationActive, preparationPlanText, preparationPlanStartedAt]);
 
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {
@@ -1575,8 +1580,10 @@ export default function FireboxAIStudio() {
       const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, endpoint:localAiConfig.endpoint, model:localAiConfig.model, apiKey:localAiConfig.apiKey, localAi:aiProvider !== "cloud" ? localAiConfig : undefined }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
+      const planNarration = [data.plan.summary, ...(data.plan.steps || [])].filter(Boolean).join("; ");
+      setPreparationPlanText(planNarration);
+      setPreparationPlanStartedAt(Date.now());
       setBuildPlan({ ...data.plan, request:text });
-      setChatHistory(prev => [...prev, { role:"ai", text:`${data.plan.summary}\n\n${data.plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nStarting the Firebox Agent now…` }]);
       setBuildPlan(null);
       await startBuild(text);
     } catch (error) {
@@ -1603,9 +1610,11 @@ export default function FireboxAIStudio() {
       : "";
     const text = `${baseText}${launcherOverrides}`;
     setPreparationActive(true);
+    setPreparationPlanText("");
+    setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
       setChatInput("");
-      await startBuild(text);
+      await requestBuildPlan(text);
       return;
     }
     if (currentBuildId && allFiles.length > 0) {
