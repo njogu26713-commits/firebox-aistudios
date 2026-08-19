@@ -5000,10 +5000,11 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             );
 
             /* ── Conditional layout ── */
+            const utilityFullWidth = ["terminal", "secrets", "projects", "explorer", "search", "git"].includes(activity);
             if (isMobile) {
               return (
                 <>
-                  {sideOpen && activity !== "home" && activity !== "agents" && activity !== "settings" && (
+                  {sideOpen && !utilityFullWidth && activity !== "home" && activity !== "agents" && activity !== "settings" && (
                     <div style={{
                       position:"absolute", top:0, left:sideOpen ? 218 : 48, right:0,
                       bottom:0, zIndex:100,
@@ -5027,7 +5028,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 orientation="horizontal"
                 style={{ flex:1, overflow:"hidden" }}
               >
-                {sideOpen && activity !== "home" && activity !== "agents" && activity !== "explorer" && activity !== "settings" && (
+                {sideOpen && !utilityFullWidth && activity !== "home" && activity !== "agents" && activity !== "explorer" && activity !== "settings" && (
                   <>
                     <Panel
                       defaultSize="20%"
@@ -5057,7 +5058,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 >
                   {editorContent}
                 </Panel>
-                {explorerOpen && (
+                {explorerOpen && !utilityFullWidth && (
                   <>
                     <PanelResizeHandle
                       style={{ width: 4, background: palette.border, cursor: "col-resize", flexShrink: 0, transition: "background 0.15s" }}
