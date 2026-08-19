@@ -746,7 +746,7 @@ export default function FireboxAIStudio() {
     return () => clearTimeout(timer);
   }, [preHomeVisible]);
   useEffect(() => {
-    if (!preparationActive || preparationPhases.length === 0) {
+    if (!preparationActive) {
       setUnderstandingText("");
       return undefined;
     }
@@ -757,8 +757,8 @@ export default function FireboxAIStudio() {
     let timer;
     const tick = () => {
       const elapsed = Date.now() - startedAt;
-      phaseIndex = Math.min( preparationPhases.length - 1, Math.floor(elapsed / 10000) );
-      const phrase = preparationPhases[phaseIndex] || "";
+      phaseIndex = Math.min(3, Math.floor(elapsed / 10000));
+      const phrase = ["Thinking", "Analyzing", "Creating plan", "Deciding changes"][phaseIndex] || "Thinking";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
       charIndex = Math.min(charIndex + 1, phrase.length);
       const dots = ".".repeat((Math.floor(Date.now() / 420) % 3) + 1);
@@ -767,7 +767,7 @@ export default function FireboxAIStudio() {
     };
     timer = setTimeout(tick, 80);
     return () => clearTimeout(timer);
-  }, [preparationActive, preparationPhases]);
+  }, [preparationActive]);
 
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {

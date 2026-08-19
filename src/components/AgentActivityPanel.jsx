@@ -80,9 +80,7 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
   const currentPrompt = promptMessages[promptMessages.length - 1];
-  const activeStage = preparationText ? "Thinking / Analysis / Planning" : liveNarration?.type?.startsWith("test.") ? "Testing" : liveNarration?.type?.startsWith("preview.") ? "Preview" : agentCompleted ? "Done" : liveNarration ? "Building" : "Thinking";
   return <aside className="agent-activity-panel">
-    <div className="activity-agent-heading"><Bot size={15}/><span>Firebox Agent</span><span className="activity-stage-label">{activeStage}</span></div>
     {activityBlocks.map((block, index) => <HistoricalActivityBlock key={`activity-block-${index}-${block.prompt}`} block={block} />)}
     {currentPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{currentPrompt.text}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
