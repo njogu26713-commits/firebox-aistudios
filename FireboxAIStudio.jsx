@@ -1207,12 +1207,35 @@ export default function FireboxAIStudio() {
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
-        if (eventName === "agent.started" || eventName === "task.started") setPreparationActive(false);
+        if (eventName === "agent.started" || ["file.created", "file.modified", "file.deleted", "command.started", "dependency.installing", "test.started", "preview.starting"].includes(eventName)) setPreparationActive(false);
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
         const detail = data.details || data.error || data.output || data.command || data.path || "";
-        const text = data.description || detail || "";
-        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:data.title || eventName, text, file:data.path || data.file || "", command:data.command || "", details:data.details || data.error || "", eventType:eventName });
+        const filePath = data.path || data.file || "";
+        const command = data.command || "";
+        const narrativeTitles = {
+          "agent.started": "Firebox Agent started",
+          "task.started": "Understanding the requested changes",
+          "file.read": filePath ? `Reading ${filePath}` : "Reading project files",
+          "file.created": filePath ? `Creating ${filePath}` : "Creating project files",
+          "file.modified": filePath ? `Writing code for ${filePath}` : "Writing project code",
+          "file.deleted": filePath ? `Deleting ${filePath}` : "Removing an obsolete file",
+          "command.started": command ? `Running ${command}` : "Running a project command",
+          "command.output": command ? `Working through ${command}` : "Processing command output",
+          "command.completed": command ? `Finished ${command}` : "Project command completed",
+          "dependency.installing": "Installing project dependencies",
+          "test.started": "Running application tests",
+          "test.completed": "Application tests completed",
+          "preview.starting": "Starting the live preview",
+          "preview.ready": "Live preview is ready",
+          "preview.error": "The live preview reported an error",
+          "checkpoint.created": "Checkpoint created",
+          "agent.completed": "Project work completed",
+          "agent.failed": "Agent work failed",
+        };
+        const title = data.title || narrativeTitles[eventName] || eventName;
+        const text = data.description || detail || filePath || command || "";
+        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:title, text, file:filePath, command, details:data.details || data.error || "", eventType:eventName, aiGenerated:true });
       } catch { /* ignore malformed structured event */ }
     }));
 
