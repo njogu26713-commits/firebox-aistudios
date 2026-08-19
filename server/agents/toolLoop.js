@@ -95,6 +95,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
         const serialized = compact(result);
         emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: serialized });
+        transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call." });
         if (CHECK_TOOLS.has(name) && failedCheck(result)) {
           repairAttempts += 1;
           emit("workflow-repair", { tool: name, attempt: repairAttempts, maxAttempts: maxRepairAttempts, message: `${name} reported a project failure; diagnosing before the next check.` });
