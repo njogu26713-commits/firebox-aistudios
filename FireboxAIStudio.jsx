@@ -10,7 +10,7 @@ import {
   FolderOpen, Folder, History, Home, Zap, Code2, Package,
   Upload, Link, Key, Send, GitCommit, RefreshCw, ExternalLink,
   Eye, EyeOff, Globe, Plus, Github, Trash2, PanelLeftClose, PanelLeftOpen, Workflow, Flame, Sun, Moon,
-  ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole, LogOut,
+  ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole, LogOut, Clock3,
 } from "lucide-react";
 
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
@@ -595,6 +595,8 @@ export default function FireboxAIStudio() {
   const [activeAgent,    setActiveAgent]    = useState(null);
   const [workflowStage,  setWorkflowStage]  = useState(null);
   const [liveActivity,   setLiveActivity]   = useState([]);
+  const [activityStartedAt, setActivityStartedAt] = useState(null);
+  const [activityClock, setActivityClock] = useState(Date.now());
   const [buildPaused,    setBuildPaused]    = useState(false);
   const [allFiles,       setAllFiles]       = useState([]);
   const [errorMsg,       setErrorMsg]       = useState("");
@@ -903,6 +905,12 @@ export default function FireboxAIStudio() {
     setLiveActivity(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80));
   }, []);
 
+  useEffect(() => {
+    if (!activityStartedAt || phase !== "building") return undefined;
+    const timer = setInterval(() => setActivityClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [activityStartedAt, phase]);
+
   /* ── Shared external-project persistence ──────────────────────────────── */
   const persistImportedProject = useCallback(async ({ files, projectName, description, source, sourceMeta = {} }) => {
     const normalizedFiles = files
@@ -1108,6 +1116,8 @@ export default function FireboxAIStudio() {
     setActiveAgent(null);
     setWorkflowStage(null);
     setLiveActivity([]);
+    setActivityStartedAt(new Date());
+    setActivityClock(Date.now());
     setActivity("workspace");
     setAgentStartTimes({});
     setAgentElapsed({});
@@ -1665,6 +1675,8 @@ export default function FireboxAIStudio() {
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
     setChatHistory([]); setChatInput(""); setTypewriterStopped(false); setTypewriterText("");
     setCurrentBuildId(null);
+    setActivityStartedAt(null);
+    setActivityClock(Date.now());
     setCurrentProjectName("firebox-project");
     setCurrentProjectMeta({ fileCount: 0, framework: null, packageManager: null });
     setProjectOpenStatus(null);
@@ -4068,7 +4080,19 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ color:palette.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.1em", marginBottom:8 }}>CURRENT PROJECT</div><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div><div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{projectOpenStatus?.phase === "opening" ? <div style={{ marginTop:8, color:palette.accent, fontSize:10, display:"flex", alignItems:"center", gap:6 }}><FireboxAgentMark size={15} animated state="working"/>{projectOpenStatus.message}</div> : projectOpenStatus?.phase === "error" ? <div style={{ marginTop:8, color:palette.error, fontSize:10 }}>✕ {projectOpenStatus.message}</div> : projectOpenStatus?.phase === "ready" ? <div style={{ marginTop:5, color:palette.success, fontSize:10 }}>● Ready · {currentProjectMeta.fileCount} files{currentProjectMeta.framework ? ` · ${currentProjectMeta.framework}` : ""}</div> : <div style={{ marginTop:5, color:palette.textFaint, fontSize:10 }}>{allFiles.length ? `${allFiles.length} project file${allFiles.length === 1 ? "" : "s"} discovered` : "Waiting for the Agent to inspect the project"}</div>}</div></div>
                     <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"16px 18px", background:palette.editorBg }}>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingBottom:10, marginBottom:12, borderBottom:`1px solid ${palette.border}` }}>
-                        <span style={{ color:palette.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.12em" }}>AGENT ACTIVITY</span>
+                    <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"16px 18px", background:palette.editorBg }}>
+                      <div style={{ color:palette.textMuted, fontSize:10, fontWeight:800, letterSpacing:"0.12em", marginBottom:10 }}>AGENT ACTIVITY</div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"14px 14px", marginBottom:18, border:`1px solid ${palette.border}`, borderRadius:10, background:palette.panelBg }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}><FireboxAgentMark size={21} animated={phase === "building" || aiThinking} state={phase === "error" ? "error" : phase === "complete" ? "complete" : "working"}/><div style={{ minWidth:0 }}><div style={{ color:palette.textFaint, fontSize:10, marginBottom:4 }}>Active task</div><div style={{ color:palette.textActive, fontSize:13, fontWeight:650, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{description || currentProjectName || "Working on project"}</div></div></div><div style={{ color:phase === "error" ? palette.error : phase === "complete" ? palette.success : palette.accent, fontSize:10, whiteSpace:"nowrap" }}>{phase === "building" ? "Working" : phase === "complete" ? "Complete" : phase === "error" ? "Failed" : "Ready"}</div>
+                      </div>
+                      {liveActivity.length === 0 ? <div style={{ color:palette.textFaint, fontSize:12, lineHeight:1.7, padding:"4px 0 18px" }}>The Agent’s activity will appear here as Firebox works.</div> : <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+                        {liveActivity.slice(-18).map(item => { const iconColor = item.status === "error" ? palette.error : item.status === "done" ? palette.success : palette.accent; const ActivityIcon = item.kind === "tool" ? Terminal : item.kind === "files" ? FileCode : item.kind === "preview" ? Eye : item.kind === "build" ? CheckCircle2 : item.kind === "repair" ? RotateCcw : item.status === "error" ? AlertTriangle : Sparkles; return <div key={item.id} style={{ display:"flex", alignItems:"flex-start", gap:10, fontSize:12, lineHeight:1.65 }}><ActivityIcon size={17} color={iconColor} strokeWidth={1.8} style={{ flexShrink:0, marginTop:2 }}/><div style={{ minWidth:0, flex:1 }}><div style={{ color:palette.text, fontWeight:600 }}>{item.label}</div><div style={{ color:item.status === "error" ? palette.error : palette.textMuted, overflowWrap:"anywhere" }}>{item.text}</div></div></div>; })}
+                        {(() => { const groups = liveActivity.reduce((map, item) => { const key = item.kind || "agent"; if (!map[key]) map[key] = []; map[key].push(item); return map; }, {}); const entries = Object.entries(groups); return <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", paddingTop:2 }}>{entries.map(([kind, items]) => { const Icon = kind === "tool" ? Terminal : kind === "files" ? FileCode : kind === "preview" ? Eye : kind === "build" ? CheckCircle2 : Sparkles; return <span key={kind} title={kind} style={{ display:"inline-flex", alignItems:"center", gap:5, color:palette.textMuted, fontSize:10 }}><span style={{ width:25, height:25, display:"inline-flex", alignItems:"center", justifyContent:"center", borderRadius:6, background:palette.panelBg, color:palette.accent }}><Icon size={13}/></span>{items.length}</span>; })}</div>; })()}
+                      </div>}
+                      <div style={{ display:"flex", alignItems:"center", gap:9, marginTop:18, paddingTop:14, borderTop:`1px solid ${palette.border}`, color:palette.textMuted, fontSize:11 }}><Clock3 size={15}/><span>Worked for {activityStartedAt ? Math.max(0, Math.floor((activityClock - new Date(activityStartedAt).getTime()) / 1000)) : 0} seconds</span></div>
+                      {liveActivity.length > 0 && <div style={{ display:"flex", alignItems:"center", gap:9, marginTop:14, color:palette.success, fontSize:11 }}><CheckCircle2 size={15}/><span>{phase === "complete" ? "Checkpoint made just now" : "Checkpoint in progress"}</span></div>}
+                      {workflowStage?.activity && <div style={{ marginTop:14, color:palette.textFaint, fontSize:11, lineHeight:1.5 }}>{workflowStage.activity}</div>}
+                    </div>
                         {phase === "building" && <span style={{ color:palette.accent, fontSize:10, display:"flex", alignItems:"center", gap:5 }}><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Working</span>}
                       </div>
                       {liveActivity.length === 0 ? <div style={{ color:palette.textFaint, fontSize:11, lineHeight:1.6, padding:"12px 0" }}>Agent activity will appear here as Firebox works.</div> : <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
