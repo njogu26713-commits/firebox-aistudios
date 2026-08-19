@@ -945,6 +945,7 @@ export default function FireboxAIStudio() {
   const [gitBranchesLoading,setGitBranchesLoading] = useState(false);
 
   const terminalRef    = useRef(null);
+  const terminalInputRef = useRef(null);
   const chatInputRef   = useRef(null);
     const esRef            = useRef(null);
   const streamTerminalRef = useRef(false);
@@ -965,6 +966,11 @@ export default function FireboxAIStudio() {
   useEffect(() => {
     if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
   }, [agentStates, terminalEntries, terminalRunning]);
+  useEffect(() => {
+    if (activity === "terminal" && !(terminalRunning || (!currentBuildId && aiProvider === "cloud"))) {
+      requestAnimationFrame(() => terminalInputRef.current?.focus());
+    }
+  }, [activity, currentBuildId, aiProvider, terminalRunning]);
 
   useEffect(() => {
     if (!authUser) { setRecentBuilds([]); return; }
@@ -4295,7 +4301,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   ))}
                   <div style={{ display:"flex", alignItems:"center", gap:9 }}>
                     <span style={{ color:palette.accent, whiteSpace:"nowrap" }}>you@firebox:~$</span>
-                    <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "running…" : ""} aria-label="Cloud project terminal command" style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
+                    <input ref={terminalInputRef} autoFocus tabIndex={0} spellCheck={false} value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "running…" : (!currentBuildId && aiProvider === "cloud" ? "Open a project to use the terminal" : "")} aria-label="Cloud project terminal command" style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13, cursor:terminalRunning || (!currentBuildId && aiProvider === "cloud") ? "not-allowed" : "text" }} />
                   </div>
                 </div>
               </div>
