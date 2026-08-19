@@ -1,8 +1,11 @@
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
+
 [phases.install]
-cmds = ["npm install --include=dev"]
+cmds = ["npm ci --include=dev --no-audit --no-fund"]
 
 [phases.build]
 cmds = ["npm run build"]
