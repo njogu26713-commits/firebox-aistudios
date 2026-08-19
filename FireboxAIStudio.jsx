@@ -1631,7 +1631,12 @@ export default function FireboxAIStudio() {
       const requestUrl = useLocalEngine ? `${engineBase}/api/plan` : "/api/plan";
       const headers = { "Content-Type": "application/json" };
       if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
-      const response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
+      let response;
+      try {
+        response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
+      } catch (networkError) {
+        throw new Error(`Unable to reach the Planning Agent endpoint (${requestUrl}) for provider ${aiProvider}. Check that the deployed server is running and inspect Railway logs. Network detail: ${networkError?.message || "fetch failed"}`);
+      }
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
       const planNarration = [data.plan.summary, ...(data.plan.steps || [])].filter(Boolean).join("; ");

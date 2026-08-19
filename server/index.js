@@ -216,6 +216,7 @@ app.post("/api/plan", requireAuth, async (req, res) => {
     catch { plan = normalizePlan({ summary: raw.replace(/```json|```/g, "").trim() }); }
     res.json({ ok: true, plan });
   } catch (err) {
+    console.error("[Planning Agent] request failed", { provider, message: err?.message, stack: err?.stack });
     res.status(400).json({ ok: false, error: err.message });
   }
 });
