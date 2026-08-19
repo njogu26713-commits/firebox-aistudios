@@ -194,7 +194,7 @@ app.delete("/api/build/:id", dbRequired, requireAuth, async (req, res) => {
 });
 
 /* ── POST /api/plan — understand a build request before execution ─────────── */
-app.post("/api/plan", async (req, res) => {
+app.post("/api/plan", requireAuth, async (req, res) => {
   const { description, fileNames = [], provider = "cloud", localAi = {} } = req.body || {};
   if (!description?.trim()) return res.status(400).json({ error: "Description is required" });
   let aiConfig;

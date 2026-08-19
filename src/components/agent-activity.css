@@ -16,6 +16,7 @@
 .user-prompt-text { color:#f1f3f5; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 .preparation-line { min-height:22px; padding:14px 0 10px; color:#a99cff; font-size:13px; font-weight:600; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .preparation-error { color:#f08b8b; }
+.workspace-error-line { margin:8px 14px 4px; padding:9px 10px; border:1px solid #6b3438; border-radius:7px; color:#ff9b9b; background:#3a1f24; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
 .agent-narration-line { min-height:22px; padding:14px 0 10px; color:#e5e7eb; font-size:13px; font-weight:600; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .agent-narration-caret { display:inline-block; width:6px; height:14px; margin-left:4px; vertical-align:-2px; background:#a99cff; animation:agent-caret-blink 0.9s steps(1) infinite; }
 @keyframes agent-caret-blink { 50% { opacity:0; } }
