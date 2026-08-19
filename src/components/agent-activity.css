@@ -5,7 +5,7 @@
 .task-label { font-size:10px; letter-spacing:.08em; color:#858894; margin-bottom:4px; }
 .task-name { font-size:14px; font-weight:600; }
 .task-menu { border:0; background:transparent; color:#8d909a; cursor:pointer; }
-.current-operation { margin:0 14px 10px; padding:11px; display:flex; gap:10px; border-radius:8px; background:rgba(139,124,255,.07); border:1px solid rgba(139,124,255,.12); }
+.current-operation { margin:0 14px 10px; padding:10px 0; display:flex; gap:10px; background:transparent; border:0; }
 .current-dot { color:#8b7cff; }
 .current-title { font-size:13px; font-weight:600; }
 .current-description { margin-top:3px; font-size:11px; color:#858894; }
@@ -19,16 +19,16 @@
 .activity-record-summary span { display:flex; align-items:center; gap:5px; }
 .activity-record-summary:hover { color:#f1f3f5; }
 .activity-empty { padding:16px 0; color:#858894; font-size:12px; line-height:1.55; }
-.user-prompt-line { margin:12px 14px 2px; padding:9px 11px; border-radius:9px 9px 3px 9px; background:#252830; border:1px solid #353945; }
+.user-prompt-line { margin:12px 0 2px; padding:8px 0 4px; border:0; border-radius:0; background:transparent; }
 .user-prompt-label { margin-bottom:4px; color:#8b7cff; font-size:10px; font-weight:700; }
 .user-prompt-text { color:#f1f3f5; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 .user-prompt-followup { margin-top:14px; }
-.historical-conversation-block { margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); }
-.historical-agent-message { margin:10px 14px 4px; color:#d7dae0; font-size:12px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
-.preparation-line { min-height:22px; padding:14px 0 10px; color:#a99cff; font-size:13px; font-weight:600; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.historical-conversation-block { margin:0 0 12px; padding:0; border:0; }
+.historical-agent-message { margin:10px 0 4px; color:#d7dae0; font-size:12px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
+.preparation-line { min-height:22px; padding:14px 0 10px; color:#a99cff; font-size:13px; font-weight:600; line-height:1.45; white-space:normal; overflow:visible; overflow-wrap:anywhere; }
 .preparation-error { color:#f08b8b; }
-.workspace-error-line { margin:8px 14px 4px; padding:9px 10px; border:1px solid #6b3438; border-radius:7px; color:#ff9b9b; background:#3a1f24; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
-.agent-narration-line { min-height:22px; max-height:84px; padding:14px 0 10px; color:#e5e7eb; font-size:13px; font-weight:600; line-height:1.45; white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.workspace-error-line { margin:8px 0 4px; padding:8px 0; border:0; border-left:2px solid #a9444b; border-radius:0; color:#ff9b9b; background:transparent; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.agent-narration-line { min-height:22px; padding:14px 0 10px; color:#e5e7eb; font-size:13px; font-weight:600; line-height:1.45; white-space:normal; overflow:visible; display:block; overflow-wrap:anywhere; }
 .agent-narration-caret { display:inline-block; width:6px; height:14px; margin-left:4px; vertical-align:-2px; background:#a99cff; animation:agent-caret-blink 0.9s steps(1) infinite; }
 @keyframes agent-caret-blink { 50% { opacity:0; } }
 .activity-narrative { padding:12px 0; border-bottom:1px solid #292b31; }
@@ -56,7 +56,7 @@
 .completed-label { display:flex; align-items:center; gap:3px; color:#55d69a; }
 .running-label { color:#9b8cff; }
 .error-label { color:#ff6b6b; }
-.activity-details { margin-top:8px; padding:9px; border-radius:7px; background:#101114; border:1px solid #292b31; color:#aeb1bb; font-family:monospace; font-size:10px; white-space:pre-wrap; }
+.activity-details { margin-top:8px; padding:6px 0; border:0; background:transparent; color:#aeb1bb; font-family:monospace; font-size:10px; white-space:pre-wrap; }
 .activity-summary { padding:12px 14px; border-top:1px solid #292b31; background:#121316; }
 .summary-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
 .action-chip { display:inline-flex; align-items:center; gap:5px; min-height:25px; padding:0 7px; border:1px solid #292b31; border-radius:7px; background:#202126; color:#aeb1bb; font-size:11px; }
