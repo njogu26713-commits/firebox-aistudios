@@ -4,6 +4,9 @@ import { TOOL_ACTIVITY_LABELS } from "./toolContract.js";
 const compact = (value) => JSON.stringify(value, (_key, item) => typeof item === "string" && item.length > 8000 ? `${item.slice(0, 8000)}…` : item);
 const CHECK_TOOLS = new Set(["run_tests", "run_build"]);
 const failedCheck = (value) => value?.ok === false || value?.success === false || value?.passed === false || Number(value?.exitCode) > 0 || Number(value?.statusCode) >= 400;
+const sleep = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
+const ACTION_FOCUS_DELAY_MS = 1200;
+const ACTION_RESULT_DELAY_MS = 900;
 
 async function requestToolNarration({ config, toolName, args, signal }) {
   const target = args?.path || args?.file || args?.command || args?.package || toolName;
@@ -89,13 +92,17 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
         try { progress = await requestToolNarration({ config, toolName:name, args, signal }); } catch { progress = ""; }
       }
       if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
+      // Keep the active narration visible long enough for the user to understand which single action is in focus.
+      await sleep(ACTION_FOCUS_DELAY_MS);
       emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
       try {
         const result = await executeTool(name, args);
         const serialized = compact(result);
+        // Do not immediately jump to the next action. Let the completed result remain observable before asking the model to continue.
+        await sleep(ACTION_RESULT_DELAY_MS);
         emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: serialized });
-        transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call." });
+        transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. Read and use its result before continuing. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call. For a created or modified file, inspect or verify it when appropriate before moving on; never rush through a batch of files." });
         if (CHECK_TOOLS.has(name) && failedCheck(result)) {
           repairAttempts += 1;
           emit("workflow-repair", { tool: name, attempt: repairAttempts, maxAttempts: maxRepairAttempts, message: `${name} reported a project failure; diagnosing before the next check.` });
