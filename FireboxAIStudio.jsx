@@ -1202,12 +1202,12 @@ export default function FireboxAIStudio() {
     const es = new EventSource(eventUrl);
     esRef.current = es;
 
-    const structuredEvents = ["agent.started", "task.started", "file.read", "file.created", "file.modified", "file.deleted", "command.started", "command.output", "command.completed", "dependency.installing", "test.started", "test.completed", "preview.starting", "preview.ready", "preview.error", "checkpoint.created", "agent.completed", "agent.failed"];
-    const structuredKinds = { "file.read":"files", "file.created":"files", "file.modified":"files", "file.deleted":"files", "command.started":"tool", "command.output":"tool", "command.completed":"tool", "dependency.installing":"tool", "test.started":"tool", "test.completed":"tool", "preview.starting":"preview", "preview.ready":"preview", "preview.error":"preview", "agent.started":"agent", "task.started":"task", "agent.completed":"build", "agent.failed":"error", "checkpoint.created":"checkpoint" };
+    const structuredEvents = ["agent.started", "task.started", "agent.message", "file.read", "file.created", "file.modified", "file.deleted", "command.started", "command.output", "command.completed", "dependency.installing", "test.started", "test.completed", "preview.starting", "preview.ready", "preview.error", "checkpoint.created", "agent.completed", "agent.failed"];
+    const structuredKinds = { "agent.message":"agent", "file.read":"files", "file.created":"files", "file.modified":"files", "file.deleted":"files", "command.started":"tool", "command.output":"tool", "command.completed":"tool", "dependency.installing":"tool", "test.started":"tool", "test.completed":"tool", "preview.starting":"preview", "preview.ready":"preview", "preview.error":"preview", "agent.started":"agent", "task.started":"task", "agent.completed":"build", "agent.failed":"error", "checkpoint.created":"checkpoint" };
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
-        if (eventName === "agent.started" || ["file.created", "file.modified", "file.deleted", "command.started", "dependency.installing", "test.started", "preview.starting"].includes(eventName)) setPreparationActive(false);
+        if (eventName === "agent.started" || eventName === "agent.message" || ["file.created", "file.modified", "file.deleted", "command.started", "dependency.installing", "test.started", "preview.starting"].includes(eventName)) setPreparationActive(false);
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
         const detail = data.details || data.error || data.output || data.command || data.path || "";
@@ -1233,7 +1233,7 @@ export default function FireboxAIStudio() {
           "agent.completed": "Project work completed",
           "agent.failed": "Agent work failed",
         };
-        const title = data.title || narrativeTitles[eventName] || eventName;
+        const title = data.title || (eventName === "agent.message" ? data.description || data.text || "" : narrativeTitles[eventName] || eventName);
         const text = data.description || detail || filePath || command || "";
         appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:title, text, file:filePath, command, details:data.details || data.error || "", eventType:eventName, aiGenerated:true });
       } catch { /* ignore malformed structured event */ }

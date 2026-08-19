@@ -38,6 +38,8 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
     for (const call of toolCalls) {
       const name = call.function?.name;
       if (!name) continue;
+      const progress = content.trim().replace(/\s+/g, " ");
+      if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
       let args = {};
       try { args = JSON.parse(call.function?.arguments || "{}"); } catch { throw new Error(`Invalid arguments returned for Firebox tool ${name}`); }
       emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
