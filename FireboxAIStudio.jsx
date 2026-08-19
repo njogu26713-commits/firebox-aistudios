@@ -946,7 +946,13 @@ export default function FireboxAIStudio() {
   const updateAgent = useCallback((name, patch) =>
     setAgentStates(prev => prev.map(a => a.name===name ? {...a,...patch} : a)), []);
   const appendActivity = useCallback((entry) => {
-    setLiveActivity(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80));
+    setLiveActivity(prev => {
+      const incomingText = String(entry.description || entry.text || entry.title || "").trim();
+      const previous = prev[prev.length - 1];
+      const previousText = String(previous?.description || previous?.text || previous?.title || "").trim();
+      if (incomingText && previous && entry.eventType === previous.eventType && incomingText === previousText) return prev;
+      return [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80);
+    });
   }, []);
 
   useEffect(() => {
