@@ -859,6 +859,7 @@ export default function FireboxAIStudio() {
 
   /* AI provider settings — Cloud remains the default and unchanged */
   const [aiProvider, setAiProvider] = useState(() => localStorage.getItem("firebox-ai-provider") || "cloud");
+  const [agentPageSelected, setAgentPageSelected] = useState(() => localStorage.getItem("firebox-agent-page-selected") === "true");
   const [localAiEndpoint, setLocalAiEndpoint] = useState(() => localStorage.getItem("firebox-local-ai-endpoint") || "http://127.0.0.1:11434/v1");
   const [localAiModel, setLocalAiModel] = useState(() => localStorage.getItem("firebox-local-ai-model") || "");
   const [localAiApiKey, setLocalAiApiKey] = useState(() => localStorage.getItem("firebox-local-ai-api-key") || "");
@@ -869,12 +870,13 @@ export default function FireboxAIStudio() {
 
   useEffect(() => {
     localStorage.setItem("firebox-ai-provider", aiProvider);
+    localStorage.setItem("firebox-agent-page-selected", String(agentPageSelected));
     localStorage.setItem("firebox-local-ai-endpoint", localAiEndpoint);
     localStorage.setItem("firebox-local-ai-model", localAiModel);
     localStorage.setItem("firebox-local-ai-api-key", localAiApiKey);
     localStorage.setItem("firebox-local-engine-url", localEngineUrl);
     localStorage.setItem("firebox-local-engine-token", localEngineToken);
-  }, [aiProvider, localAiEndpoint, localAiModel, localAiApiKey, localEngineUrl, localEngineToken]);
+  }, [aiProvider, agentPageSelected, localAiEndpoint, localAiModel, localAiApiKey, localEngineUrl, localEngineToken]);
 
   const localAiConfig = useMemo(() => ({
     endpoint: localAiEndpoint.trim(),
@@ -1682,6 +1684,10 @@ export default function FireboxAIStudio() {
 
   /* ── Send chat message — AI replies first, then acts ──────────────────── */
   const sendChatMessage = useCallback(async () => {
+    if (!agentPageSelected) {
+      setErrorMsg("Choose an AI Agent from the dropdown or the AI Agent page before sending this prompt.");
+      return;
+    }
     const baseText = chatInput.trim();
     if (!baseText) return;
     const launcherOverrides = activity === "home" && advancedOptionsOpen
@@ -1813,7 +1819,7 @@ export default function FireboxAIStudio() {
       setAiThinking(false);
       setPreparationActive(false);
     }
-  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase, beginPromptActivity]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, agentPageSelected, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase, beginPromptActivity]);
 
   const stopBuild = useCallback(() => {
     esRef.current?.close();
@@ -4253,6 +4259,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel activityBlocks={activityBlocks} taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} preparationError={preparationError} errorText={errorMsg} userPrompt={[...chatHistory].reverse().find(message => message.role === "user")?.text || ""} userPrompts={chatHistory.filter(message => message.role === "user")} /></div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
                       <div style={{ border:`1px solid ${palette.borderLight}`, borderRadius:16, background:palette.editorBg, padding:"10px 10px 8px", boxShadow:"0 8px 24px rgba(0,0,0,0.16)" }}>
+                        {!agentPageSelected && <select value="" onChange={e => { if (!e.target.value) return; setAiProvider(e.target.value); setAgentPageSelected(true); setLocalAiTestState("idle"); setLocalAiTestMessage(""); }} aria-label="Choose an AI Agent" style={{ display:"block", width:"100%", marginBottom:7, padding:"4px 2px", border:"none", background:"transparent", color:palette.textMuted, fontFamily:FONT_UI, fontSize:10, outline:"none" }}><option value="">Choose an AI Agent…</option>{AI_PROVIDER_CARDS.filter(agent => agent.enabled).map(agent => <option key={agent.id} value={agent.id}>{agent.title}</option>)}</select>}
                         <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ display:"block", width:"100%", boxSizing:"border-box", minHeight:42, maxHeight:85, resize:"none", padding:"0 3px", border:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_UI, fontSize:12, lineHeight:1.45, outline:"none" }}/>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:7 }}>
                           <button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} aria-label="Add attachment or start a new prompt" title="Add attachment" style={{ width:28, height:28, border:`1px solid ${palette.border}`, borderRadius:"50%", background:"transparent", color:palette.textMuted, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}><span style={{ fontSize:20, lineHeight:1, fontWeight:300 }}>+</span></button>
@@ -4291,6 +4298,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         if (!enabled) { setErrorMsg(`${title} provider is not enabled yet. Cloud AI and Local AI remain available.`); return; }
                         setErrorMsg("");
                         setAiProvider(id);
+                        setAgentPageSelected(true);
                         setLocalAiTestState("idle");
                         setLocalAiTestMessage("");
                         if (id === "custom") { setCustomAiModalOpen(true); return; }
