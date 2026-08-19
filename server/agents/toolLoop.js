@@ -5,6 +5,26 @@ const compact = (value) => JSON.stringify(value, (_key, item) => typeof item ===
 const CHECK_TOOLS = new Set(["run_tests", "run_build"]);
 const failedCheck = (value) => value?.ok === false || value?.success === false || value?.passed === false || Number(value?.exitCode) > 0 || Number(value?.statusCode) >= 400;
 
+async function requestToolNarration({ config, toolName, args, signal }) {
+  const target = args?.path || args?.file || args?.command || args?.package || toolName;
+  const response = await getStructuredCompletion({
+    config,
+    messages: [
+      { role:"system", content:"Write exactly one concise plain-text user-facing sentence describing the controlled Firebox action. Use first person, include the real target when available, and do not use Markdown, asterisks, bullets, or hidden reasoning." },
+      { role:"user", content:`The next controlled Firebox action is ${toolName} targeting ${String(target)}. Write the status sentence now.` },
+    ],
+    tools: [],
+    toolChoice: "none",
+    maxTokens: 80,
+    temperature: 0.2,
+    signal,
+  });
+  const content = Array.isArray(response?.choices?.[0]?.message?.content)
+    ? response.choices[0].message.content.map(part => typeof part === "string" ? part : part?.text || "").join("")
+    : String(response?.choices?.[0]?.message?.content || "");
+  return content.replace(/\s+/g, " ").replace(/\*{1,3}/g, "").trim();
+}
+
 export async function runFireboxToolLoop({ config, messages, toolDefinitions, executeTool, emit = () => {}, signal, maxTokens = 2200, temperature = 0.2, maxTurns = 24, maxRepairAttempts = 3 }) {
   const transcript = [...messages];
   let repairAttempts = 0;
@@ -62,10 +82,13 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
     for (const call of toolCalls) {
       const name = call.function?.name;
       if (!name) continue;
-      const progress = content.trim().replace(/\s+/g, " ");
-      if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
       let args = {};
       try { args = JSON.parse(call.function?.arguments || "{}"); } catch { throw new Error(`Invalid arguments returned for Firebox tool ${name}`); }
+      let progress = content.trim().replace(/\s+/g, " ");
+      if (!progress) {
+        try { progress = await requestToolNarration({ config, toolName:name, args, signal }); } catch { progress = ""; }
+      }
+      if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
       emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
       try {
         const result = await executeTool(name, args);
