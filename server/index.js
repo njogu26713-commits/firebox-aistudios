@@ -17,6 +17,7 @@ import authRouter, { requireAuth } from "./routes/auth.js";
 import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
+import { createCloudRuntime } from "./agents/cloudRuntime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -168,6 +169,28 @@ app.get("/api/build/:id/files", dbRequired, requireAuth, async (req, res) => {
 });
 
 /* ── GET /api/build/:id/file?path=... — single file content ─────────────── */
+app.post("/api/terminal", dbRequired, requireAuth, async (req, res) => {
+  const buildId = String(req.body?.buildId || "").trim();
+  const rawCommand = String(req.body?.command || "").trim();
+  if (!buildId || !rawCommand) return res.status(400).json({ ok:false, error:"A project and command are required." });
+  if (/[;&|`$<>]/.test(rawCommand)) return res.status(400).json({ ok:false, error:"Shell operators are not allowed in the Terminal command." });
+  const parts = rawCommand.split(/\s+/);
+  const [command, ...args] = parts;
+  if (!["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git"].includes(command)) return res.status(400).json({ ok:false, error:"This command is not allowed in the Cloud Terminal." });
+  const build = await Build.findById(buildId);
+  if (!build) return res.status(404).json({ ok:false, error:"Project not found." });
+  const runtime = await createCloudRuntime({ build });
+  const output = [];
+  try {
+    await runtime.runCommand(command, args, (chunk) => output.push(String(chunk)));
+    res.json({ ok:true, command:rawCommand, output:output.join("").slice(-20000) });
+  } catch (error) {
+    res.status(400).json({ ok:false, command:rawCommand, output:output.join("").slice(-20000), error:error.message });
+  } finally {
+    await runtime.close();
+  }
+});
+
 app.get("/api/build/:id/file", dbRequired, requireAuth, async (req, res) => {
   const { path } = req.query;
   if (!path) return res.status(400).json({ error: "path query param required" });

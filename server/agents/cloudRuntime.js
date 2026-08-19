@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createBrowserRuntime } from "../../local-engine/browser.js";
 
-const ALLOWED_COMMANDS = new Set(["npm", "node"]);
+const ALLOWED_COMMANDS = new Set(["npm", "npx", "pnpm", "yarn", "node", "python", "python3", "git"]);
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const clip = (value, limit = 6000) => String(value ?? "").slice(-limit);
 

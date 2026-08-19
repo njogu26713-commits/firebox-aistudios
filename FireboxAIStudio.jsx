@@ -656,6 +656,9 @@ export default function FireboxAIStudio() {
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalEntries, setTerminalEntries] = useState([]);
+  const [terminalRunning, setTerminalRunning] = useState(false);
 
   useEffect(() => {
     if (!currentBuildId) return;
@@ -665,9 +668,10 @@ export default function FireboxAIStudio() {
         liveActivity,
         activityBlocks,
         activityStartedAt,
+        terminalEntries,
       }));
     } catch {}
-  }, [currentBuildId, chatHistory, liveActivity, activityBlocks, activityStartedAt]);
+  }, [currentBuildId, chatHistory, liveActivity, activityBlocks, activityStartedAt, terminalEntries]);
 
   const [launcherFramework, setLauncherFramework] = useState("auto");
   const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
@@ -709,6 +713,28 @@ export default function FireboxAIStudio() {
   const [previewError, setPreviewError] = useState("");
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const refreshPreview = useCallback(() => setPreviewRefreshKey(value => value + 1), []);
+  const runTerminalCommand = useCallback(async () => {
+    const command = terminalInput.trim();
+    if (!command || terminalRunning) return;
+    const id = `${Date.now()}-${Math.random()}`;
+    const startedAt = new Date().toISOString();
+    setTerminalInput("");
+    setTerminalRunning(true);
+    setTerminalEntries(prev => [...prev, { id, command, status:"running", output:"", startedAt }]);
+    try {
+      const isLocal = aiProvider === "local";
+      const endpoint = isLocal ? `${localEngineUrl.replace(/\/$/, "")}/api/terminal` : "/api/terminal";
+      const headers = { "Content-Type": "application/json" };
+      if (isLocal && localEngineToken) headers.Authorization = `Bearer ${localEngineToken}`;
+      const body = isLocal ? { projectName: currentProjectName, command } : { buildId: currentBuildId, command };
+      const response = await fetch(endpoint, { method:"POST", headers, body:JSON.stringify(body) });
+      const data = await response.json().catch(() => ({}));
+      const output = [data.output, data.error].filter(Boolean).join("\\n");
+      setTerminalEntries(prev => prev.map(item => item.id === id ? { ...item, status: response.ok && data.ok !== false ? "complete" : "error", output } : item));
+    } catch (error) {
+      setTerminalEntries(prev => prev.map(item => item.id === id ? { ...item, status:"error", output:error.message } : item));
+    } finally { setTerminalRunning(false); }
+  }, [terminalInput, terminalRunning, aiProvider, localEngineUrl, localEngineToken, currentProjectName, currentBuildId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1889,6 +1915,7 @@ export default function FireboxAIStudio() {
       setChatHistory(restoredChat);
       setActivityBlocks(restoredBlocks);
       setLiveActivity(Array.isArray(session?.liveActivity) ? session.liveActivity : []);
+      setTerminalEntries(Array.isArray(session?.terminalEntries) ? session.terminalEntries : []);
       activePromptRef.current = [...restoredChat].reverse().find(message => message.role === "user")?.text || "";
       setActivityStartedAt(session?.activityStartedAt || null);
       setCurrentProjectName(build.projectName || build.name || "firebox-project");
@@ -2701,6 +2728,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               { id:"explorer", Icon:Files,     title:"Explorer",    badge: allFiles.length || null },
               { id:"agents",   Icon:Cpu,       title:"AI Agents",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
               { id:"workspace",Icon:Workflow, title:"Workspace",   badge: activeAgent ? "●" : null, badgeColor:"#DCDCAA" },
+              { id:"terminal", Icon:Terminal,  title:"Terminal" },
               { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
               { id:"search",   Icon:Search,    title:"Search"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
@@ -2959,6 +2987,31 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     )}
                   </div>
                 </>
+              )}
+
+              {/* Panel: Terminal */}
+              {activity === "terminal" && (
+                <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:palette.editorBg, color:palette.text, fontFamily:FONT_MONO }}>
+                  <div style={{ padding:"10px 12px", borderBottom:`1px solid ${palette.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:7, color:palette.textActive, fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}><Terminal size={14} color={palette.accent}/>Terminal</div>
+                    <span style={{ color:palette.textFaint, fontFamily:FONT_UI, fontSize:10 }}>{aiProvider === "cloud" ? "Cloud Runtime" : "Local Engine"}</span>
+                  </div>
+                  <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 12px", fontSize:11, lineHeight:1.55 }}>
+                    {terminalEntries.length === 0 ? <div style={{ color:palette.textFaint, fontFamily:FONT_UI, lineHeight:1.6 }}>Run commands in {currentProjectName || "your project"}.<br/>Commands execute through the selected Agent runtime.</div> : terminalEntries.map(entry => (
+                      <div key={entry.id} style={{ marginBottom:14 }}>
+                        <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:10, marginLeft:5 }}>{entry.status}</span></div>
+                        {entry.output && <pre style={{ margin:"4px 0 0 10px", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ borderTop:`1px solid ${palette.border}`, padding:"9px 10px 10px", flexShrink:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:7, border:`1px solid ${palette.borderLight}`, borderRadius:7, padding:"7px 8px", background:palette.sideBar }}>
+                      <span style={{ color:palette.accent, fontFamily:FONT_MONO, fontSize:12 }}>›</span>
+                      <input value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || !currentBuildId && aiProvider === "cloud"} placeholder={terminalRunning ? "Running command…" : "Run a command…"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:11 }} />
+                      <button onClick={runTerminalCommand} disabled={!terminalInput.trim() || terminalRunning || (!currentBuildId && aiProvider === "cloud")} style={{ border:"none", background:"transparent", color:terminalInput.trim() && !terminalRunning ? palette.accent : palette.textFaint, cursor:terminalInput.trim() && !terminalRunning ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:10 }}>{terminalRunning ? "…" : "Run"}</button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Panel: Explorer */}

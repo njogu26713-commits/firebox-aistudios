@@ -369,6 +369,22 @@ app.get("/health", auth, async (req, res) => {
   res.json({ ok: true, engine: "firebox-local", workspace: WORKSPACE, ollamaEndpoint: OLLAMA_ENDPOINT, model: OLLAMA_MODEL || null });
 });
 
+app.post("/api/terminal", auth, async (req, res) => {
+  const projectName = String(req.body?.projectName || "").trim();
+  const rawCommand = String(req.body?.command || "").trim();
+  if (!projectName || !rawCommand) return res.status(400).json({ ok:false, error:"A project and command are required." });
+  if (/[;&|`$<>]/.test(rawCommand)) return res.status(400).json({ ok:false, error:"Shell operators are not allowed in the Terminal command." });
+  const parts = rawCommand.split(/\s+/);
+  const [command, ...args] = parts;
+  const output = [];
+  try {
+    await runCommand(command, args, safeWorkspacePath(projectName), (chunk) => output.push(String(chunk)));
+    res.json({ ok:true, command:rawCommand, output:output.join("").slice(-20000) });
+  } catch (error) {
+    res.status(400).json({ ok:false, command:rawCommand, output:output.join("").slice(-20000), error:error.message });
+  }
+});
+
 app.post("/api/chat", auth, async (req, res) => {
   try {
     const config = normalizeAiConfig({ provider: "local", endpoint: req.body?.endpoint || OLLAMA_ENDPOINT, model: req.body?.model || OLLAMA_MODEL, apiKey: req.body?.apiKey || OLLAMA_API_KEY });
