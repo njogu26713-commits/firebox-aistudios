@@ -961,11 +961,10 @@ export default function FireboxAIStudio() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  /* scroll terminal to bottom */
+  /* keep the shell viewport anchored to the latest command/output */
   useEffect(() => {
-    if (terminalRef.current)
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-  }, [agentStates]);
+    if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+  }, [agentStates, terminalEntries, terminalRunning]);
 
   useEffect(() => {
     if (!authUser) { setRecentBuilds([]); return; }
@@ -4285,17 +4284,19 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   <div style={{ display:"flex", alignItems:"center", gap:9, color:palette.textActive, fontFamily:FONT_UI, fontSize:16, fontWeight:700 }}><Terminal size={18} color={palette.accent}/>Terminal</div>
                   <div style={{ display:"flex", alignItems:"center", gap:8, color:palette.textMuted, fontFamily:FONT_UI, fontSize:11 }}><span style={{ width:7, height:7, borderRadius:"50%", background:terminalRunning ? palette.accent : palette.success }}/>{aiProvider === "cloud" ? "Cloud Runtime" : "Local Engine"}</div>
                 </div>
-                <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"22px 26px", fontSize:13, lineHeight:1.6 }}>
-                  {terminalEntries.length === 0 ? <div style={{ color:palette.textFaint, fontFamily:FONT_UI }}>Type a command below to run it in {currentProjectName || "your project"}.</div> : terminalEntries.map(entry => (
+                <div ref={terminalRef} style={{ flex:1, minHeight:0, overflowY:"auto", padding:"22px 26px 28px", fontSize:13, lineHeight:1.6 }}>
+                  <div style={{ color:palette.textFaint, marginBottom:18 }}>Firebox Cloud Project Terminal · {currentProjectName || "no project selected"}</div>
+                  {terminalEntries.map(entry => (
                     <div key={entry.id} style={{ marginBottom:18 }}>
-                      <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.source === "agent" ? palette.textActive : palette.textMuted, fontFamily:FONT_UI, fontSize:10, marginLeft:8 }}>{entry.source === "agent" ? "Agent" : "You"}</span> <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:11, marginLeft:8 }}>{entry.status}</span></div>
-                      {entry.output && <pre style={{ margin:"5px 0 0 18px", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
+                      <div style={{ color:entry.source === "agent" ? palette.textActive : palette.accent }}><span style={{ color:palette.textFaint }}>{entry.source === "agent" ? "agent@firebox" : "you@firebox"}:~$</span> {entry.command}</div>
+                      {entry.output && <pre style={{ margin:"5px 0 0", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
+                      {entry.status === "running" && <div style={{ color:palette.accent }}>▌</div>}
                     </div>
                   ))}
-                </div>
-                <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:10, padding:"0 26px 18px", background:palette.editorBg }}>
-                  <span style={{ color:palette.accent, fontSize:16, lineHeight:1 }}>›</span>
-                  <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "Running command…" : "Type a command and press Enter"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
+                  <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                    <span style={{ color:palette.accent, whiteSpace:"nowrap" }}>you@firebox:~$</span>
+                    <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "running…" : ""} aria-label="Cloud project terminal command" style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
+                  </div>
                 </div>
               </div>
             ) : activity === "workspace" ? (
