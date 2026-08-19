@@ -1,0 +1,40 @@
+.agent-activity-panel { width:100%; height:100%; display:flex; flex-direction:column; background:#151619; color:#f5f5f5; overflow:hidden; }
+.active-task-card { margin:14px; padding:14px; display:flex; align-items:center; justify-content:space-between; border:1px solid #303238; border-radius:10px; background:#1b1c20; }
+.active-task-left { display:flex; align-items:center; gap:12px; }
+.agent-task-icon { width:34px; height:34px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:#20232b; color:#8b7cff; }
+.task-label { font-size:10px; letter-spacing:.08em; color:#858894; margin-bottom:4px; }
+.task-name { font-size:14px; font-weight:600; }
+.task-menu { border:0; background:transparent; color:#8d909a; cursor:pointer; }
+.current-operation { margin:0 14px 10px; padding:11px; display:flex; gap:10px; border-radius:8px; background:rgba(139,124,255,.07); border:1px solid rgba(139,124,255,.12); }
+.current-dot { color:#8b7cff; }
+.current-title { font-size:13px; font-weight:600; }
+.current-description { margin-top:3px; font-size:11px; color:#858894; }
+.activity-list { flex:1; padding:4px 14px 20px; overflow-y:auto; }
+.activity-item { position:relative; padding:8px 0; }
+.activity-line { display:flex; gap:10px; }
+.activity-icon { width:26px; height:26px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:7px; background:#202126; color:#858894; }
+.activity-running .activity-icon { color:#9b8cff; background:rgba(139,124,255,.12); }
+.activity-completed .activity-icon { color:#55d69a; }
+.activity-error .activity-icon { color:#ff6b6b; background:rgba(255,107,107,.1); }
+.activity-content { min-width:0; flex:1; }
+.activity-main { width:100%; padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.activity-title-row { display:flex; align-items:center; gap:5px; }
+.activity-title { font-size:13px; font-weight:600; }
+.activity-description { margin-top:3px; color:#858894; font-size:11px; line-height:1.45; }
+.activity-file { margin-top:5px; color:#a99cff; font-family:monospace; font-size:11px; }
+.activity-command { margin-top:5px; display:flex; align-items:center; gap:5px; color:#a7aab4; font-family:monospace; font-size:11px; }
+.activity-meta { margin-top:5px; display:flex; align-items:center; gap:8px; font-size:10px; color:#666a75; }
+.completed-label { display:flex; align-items:center; gap:3px; color:#55d69a; }
+.running-label { color:#9b8cff; }
+.error-label { color:#ff6b6b; }
+.activity-details { margin-top:8px; padding:9px; border-radius:7px; background:#101114; border:1px solid #292b31; color:#aeb1bb; font-family:monospace; font-size:10px; white-space:pre-wrap; }
+.activity-summary { padding:12px 14px; border-top:1px solid #292b31; background:#121316; }
+.summary-item { display:flex; align-items:center; gap:8px; margin-bottom:8px; color:#858894; font-size:11px; }
+.summary-item svg { color:#777b86; }
+.summary-item.checkpoint svg { color:#55d69a; }
+.completion-summary { margin-top:10px; font-size:10px; color:#5e626d; }
+.activity-spin { animation:activity-spin 1s linear infinite; }
+@keyframes activity-spin { to { transform:rotate(360deg); } }
+.activity-list::-webkit-scrollbar { width:5px; }
+.activity-list::-webkit-scrollbar-track { background:transparent; }
+.activity-list::-webkit-scrollbar-thumb { background:#303238; border-radius:10px; }

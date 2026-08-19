@@ -53,6 +53,7 @@ async function runProviderToolMode(build, res, aiConfig, signal) {
     },
   });
   await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+  emit("checkpoint.created", { agent:"Firebox Agent", title:"Checkpoint created", description:"Project changes persisted", status:"completed", timestamp:Date.now() });
   emit("agent.completed", { agent:"Firebox Agent", title:"Completed", description:"Project work finished", status:"completed" });
   emit("agent-complete", { output: result.content });
   emit("workflow-stage-complete", { stage: "autonomous", label: "Firebox Agent" });
@@ -188,6 +189,7 @@ export async function runAgentPipeline(build, res, signal) {
 
   if (!signal?.aborted) {
     await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
+    sse(res, "checkpoint.created", { agent:"Firebox Agent", title:"Checkpoint created", description:"Project changes persisted", status:"completed", timestamp:Date.now() });
     sse(res, "agent.completed", { agent:"Firebox Agent", title:"Completed", description:"Project is ready", status:"completed" });
     sse(res, "build-complete", { buildId: build._id.toString() });
   }

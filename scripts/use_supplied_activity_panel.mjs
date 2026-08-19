@@ -1,0 +1,10 @@
+import fs from "node:fs";
+const file = "FireboxAIStudio.jsx";
+const lines = fs.readFileSync(file, "utf8").split("\n");
+const start = lines.findIndex((line) => line.includes('                    <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 0 8px"'));
+const end = lines.findIndex((line, index) => index > start && line.includes('                    <div style={{ flexShrink:0, padding:"10px 10px 12px"'));
+if (start < 0 || end < 0) throw new Error(`Supplied panel bounds not found: ${start}, ${end}`);
+const replacement = `                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} /></div>`;
+lines.splice(start, end - start, replacement);
+fs.writeFileSync(file, lines.join("\n"));
+console.log(`Mounted supplied AgentActivityPanel at line ${start + 1}`);
