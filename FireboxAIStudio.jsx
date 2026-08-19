@@ -4,7 +4,7 @@ import MonacoEditor from "@monaco-editor/react";
 import AgentActivityPanel from "./src/components/AgentActivityPanel.jsx";
 import JSZip from "jszip";
 import {
-  Brain, Server, Palette, Database, ShieldCheck, FlaskConical, Rocket,
+  Brain, Server, Palette, Database, ShieldCheck, FlaskConical, Rocket, Cloud,
   CheckCircle2, AlertTriangle, Loader2, Play, Sparkles, Terminal,
   Copy, Check, ChevronRight, ChevronDown, RotateCcw, X, Search,
   GitBranch, Settings, Files, FileText, FileCode, FileJson,
@@ -85,6 +85,20 @@ const BUILD_LAUNCHER_TYPES = [
   { Icon: Landmark, label: "Finance Tracker", category:"Finance", description: "Monitor income, expenses, and budgets.", prompt: "Build a personal finance tracker with accounts, transactions, categories, budgets, recurring items, charts, and monthly summaries" },
   { Icon: Database, label: "CMS / Blog", category:"Content", description: "Publish and manage structured content.", prompt: "Build a content management system with posts, drafts, categories, tags, rich editing, publishing workflow, search, and an author dashboard" },
   { Icon: Bot, label: "AI Assistant", category:"AI", description: "Create an AI-powered workspace.", prompt: "Build an AI assistant application with conversation history, prompt input, streaming responses, settings, and a professional workspace UI" },
+];
+
+const FIREBOX_PLUGIN_CATALOG = [
+  { Icon: Database, name:"Database Connectors", description:"MongoDB, PostgreSQL, MySQL, and SQLite inspection and migration support.", capabilities:"Schema inspection · migrations · seed data" },
+  { Icon: Globe, name:"Browser Testing", description:"Playwright-based navigation, clicks, form filling, screenshots, assertions, and console inspection.", capabilities:"Navigate · interact · assert · diagnose" },
+  { Icon: Rocket, name:"Preview Runtimes", description:"React/Vite, Next.js, Vue, Angular, Express, Python, and static project previews.", capabilities:"Detect · start · inspect · repair" },
+  { Icon: Cloud, name:"Deployment", description:"Railway, Vercel, Netlify, Docker, and custom server deployment workflows.", capabilities:"Configure · build · deploy · monitor" },
+  { Icon: Package, name:"Package Manager", description:"npm, pnpm, yarn, and package security checks.", capabilities:"Install · update · audit dependencies" },
+  { Icon: ShieldCheck, name:"Authentication", description:"OAuth, email authentication, protected routes, and session configuration.", capabilities:"Sessions · users · roles · protection" },
+  { Icon: Boxes, name:"UI Component Libraries", description:"Tailwind, shadcn/ui, Material UI, Chakra UI, and accessible component patterns.", capabilities:"Components · themes · accessibility" },
+  { Icon: FlaskConical, name:"Testing", description:"Vitest, Jest, Playwright, Cypress, and API testing.", capabilities:"Unit · integration · browser · API" },
+  { Icon: Link, name:"API Integrations", description:"Stripe, OpenAI-compatible providers, email, storage, maps, and messaging services.", capabilities:"Connect · configure · validate" },
+  { Icon: CheckCircle2, name:"Code Quality", description:"ESLint, Prettier, TypeScript checks, dependency audits, and vulnerability reports.", capabilities:"Lint · format · type-check · audit" },
+  { Icon: Palette, name:"Image and Asset Tools", description:"Logos, icons, image optimization, uploads, and asset organization.", capabilities:"Generate · optimize · organize assets" },
 ];
 
 const BUILD_SUBTITLE_PROMPTS = [
@@ -2851,7 +2865,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               { id:"terminal", Icon:Terminal,  title:"Terminal" },
               { id:"secrets",  Icon:Key,       title:"Secrets" },
               { id:"projects", Icon:Package,   title:"Projects",    badge: recentBuilds.length || null },
-              { id:"search",   Icon:Search,    title:"Search"  },
+              { id:"plugins",  Icon:Boxes,     title:"Plugins"  },
               { id:"git",      Icon:GitBranch, title:"Source Control" },
             ];
             if (isMobile) {
@@ -3517,16 +3531,18 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 </>
               )}
 
-              {/* Panel: Search (placeholder) */}
-              {activity === "search" && (
-                <div style={{ padding:"10px 12px" }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:palette.textMuted, letterSpacing:"0.1em", marginBottom:10 }}>SEARCH</div>
-                  <input placeholder="Search" style={{
-                    width:"100%", background:"#3C3C3C", border:`1px solid ${palette.border}`,
-                    borderRadius:4, padding:"6px 10px", color:palette.text, fontSize:12, outline:"none",
-                    fontFamily:FONT_UI,
-                  }}/>
-                  <div style={{ fontSize:12, color:palette.textFaint, marginTop:12 }}>Search across generated files.</div>
+              {/* Panel: Plugins */}
+              {activity === "plugins" && (
+                <div style={{ flex:1, minHeight:0, overflowY:"auto", background:palette.editorBg, color:palette.text, fontFamily:FONT_UI }}>
+                  <div style={{ maxWidth:1120, margin:"0 auto", padding:isMobile ? "24px 16px 42px" : "34px 34px 56px" }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:18, marginBottom:24 }}>
+                      <div><div style={{ display:"flex", alignItems:"center", gap:8, color:palette.accent, fontSize:11, fontWeight:700, letterSpacing:"0.12em", marginBottom:8 }}><Boxes size={14}/> FIREBOX PLUGINS</div><div style={{ color:palette.textActive, fontSize:isMobile ? 24 : 30, fontWeight:750, letterSpacing:"-0.03em" }}>Extend your Agent</div><div style={{ color:palette.textMuted, fontSize:12, lineHeight:1.6, marginTop:8, maxWidth:650 }}>Give Firebox focused capabilities for databases, browser testing, previews, deployment, code quality, and integrations. Plugins are designed to work with the selected project and its permissions.</div></div>
+                      <div style={{ display:isMobile ? "none" : "flex", alignItems:"center", gap:7, padding:"8px 10px", border:`1px solid ${palette.border}`, color:palette.textMuted, fontSize:10 }}><span style={{ width:7, height:7, borderRadius:"50%", background:palette.success }}/>{FIREBOX_PLUGIN_CATALOG.length} capabilities available</div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap:12 }}>
+                      {FIREBOX_PLUGIN_CATALOG.map(({Icon,name,description,capabilities}) => <div key={name} style={{ minHeight:168, display:"flex", flexDirection:"column", padding:17, border:`1px solid ${palette.border}`, background:palette.panelBg }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}><div style={{ width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", background:`${palette.accent}18`, color:palette.accent }}><Icon size={18}/></div><span style={{ color:palette.success, fontSize:9, fontWeight:700, letterSpacing:"0.08em" }}>AVAILABLE</span></div><div style={{ marginTop:15, color:palette.textActive, fontSize:14, fontWeight:700 }}>{name}</div><div style={{ flex:1, marginTop:7, color:palette.textMuted, fontSize:11, lineHeight:1.55 }}>{description}</div><div style={{ marginTop:13, paddingTop:10, borderTop:`1px solid ${palette.border}`, color:palette.textFaint, fontSize:10, fontFamily:FONT_MONO }}>{capabilities}</div></div>)}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -4981,7 +4997,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
             );
 
             /* ── Conditional layout ── */
-            const utilityFullWidth = ["terminal", "secrets", "projects", "explorer", "search", "git"].includes(activity);
+            const utilityFullWidth = ["terminal", "secrets", "projects", "explorer", "plugins", "git"].includes(activity);
             if (isMobile) {
               return (
                 <>
