@@ -56,17 +56,29 @@ export function createBrowserRuntime({ getPreviewStatus, emit = () => {} }) {
     },
     browser_inspect: async () => {
       if (!page || page.isClosed()) throw new Error("No browser page is open. Use browser_open first.");
-      const elements = await page.locator("button, a, input, textarea, select, [role=button]").evaluateAll((items) => items.filter((item) => {
-        const style = getComputedStyle(item);
-        const rect = item.getBoundingClientRect();
-        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-      }).slice(0, 100).map((item) => ({
-        selector: selectorFor(item),
-        tag: item.tagName.toLowerCase(),
-        role: item.getAttribute("role") || "",
-        text: (item.innerText || item.getAttribute("aria-label") || item.getAttribute("placeholder") || item.getAttribute("name") || "").trim().slice(0, 240),
-        type: item.getAttribute("type") || "",
-      })));
+      const elements = await page.locator("button, a, input, textarea, select, [role=button]").evaluateAll((items) => {
+        const makeSelector = (element) => {
+          const escape = (value) => window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+          const testId = element.getAttribute("data-testid");
+          if (testId) return `[data-testid="${escape(testId)}"]`;
+          if (element.id) return `#${escape(element.id)}`;
+          const name = element.getAttribute("name");
+          if (name) return `${element.tagName.toLowerCase()}[name="${escape(name)}"]`;
+          return element.tagName.toLowerCase();
+        };
+        const visible = items.filter((item) => {
+          const style = getComputedStyle(item);
+          const rect = item.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        }).slice(0, 100);
+        return visible.map((item) => ({
+          selector: makeSelector(item),
+          tag: item.tagName.toLowerCase(),
+          role: item.getAttribute("role") || "",
+          text: (item.innerText || item.getAttribute("aria-label") || item.getAttribute("placeholder") || item.getAttribute("name") || "").trim().slice(0, 240),
+          type: item.getAttribute("type") || "",
+        }));
+      });
       return { ok: true, url: page.url(), title: await page.title().catch(() => ""), text: await currentText(), elements, consoleErrors: consoleErrors.slice(-20), pageErrors: pageErrors.slice(-20) };
     },
     browser_click: async (selector) => {

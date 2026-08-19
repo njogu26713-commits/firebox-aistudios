@@ -2,11 +2,11 @@ import Build from "../models/Build.js";
 
 const clip = (value, length = 12000) => String(value ?? "").slice(0, length);
 
-export function createCloudProjectTools({ build, emit = () => {} }) {
+export function createCloudProjectTools({ build, emit = () => {}, runtime = null }) {
   const structuredEvent = (name, phase, input = {}, extra = {}) => {
     const path = input.path || input.file || extra.path;
     const command = input.command ? [input.command, ...(input.args || [])].join(" ") : extra.command;
-    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting" };
+    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting", browser_open:"browser.opened", browser_inspect:"browser.inspected", browser_click:"browser.clicked", browser_fill:"browser.filled", browser_assert:"browser.asserted", browser_console:"browser.console" };
     const event = eventMap[name];
     if (event) emit(event, { phase, tool:name, title:name.replaceAll("_", " "), ...(path ? { path } : {}), ...(command ? { command } : {}), ...extra });
   };
@@ -30,6 +30,7 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
   const saveFiles = async (files) => {
     build.files = files;
     await Build.updateOne({ _id: build._id }, { $set: { files } });
+    if (runtime) await runtime.syncFiles(files);
       emit("files-updated", { files: files.map(({ content: _content, ...file }) => file), count: files.length });
       emit("file.modified", { phase:"completed", title:"Project files updated", count:files.length });
   };
@@ -75,11 +76,17 @@ export function createCloudProjectTools({ build, emit = () => {} }) {
       await saveFiles((build.files || []).filter((file) => file.path !== filePath));
       return { path: filePath };
     }),
-    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => ({ ok: true, skipped: true, message: "Command skipped: Railway cannot execute cloud commands. File changes were saved." })),
-    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => ({ ok: true, skipped: true, message: "Package install skipped: connect the Local Engine to install dependencies." })),
-    run_tests: () => withTool("run_tests", {}, async () => ({ ok: true, skipped: true, message: "Tests skipped: connect the Local Engine to run tests." })),
-    run_build: () => withTool("run_build", {}, async () => ({ ok: true, skipped: true, message: "Build skipped: connect the Local Engine to run the build." })),
-    start_preview: () => withTool("start_preview", {}, async () => ({ running: false, message: "Preview skipped: connect a project runtime." })),
-    get_preview_status: () => withTool("get_preview_status", {}, async () => ({ running: false })),
+    run_command: (command, args = []) => withTool("run_command", { command, args }, async () => runtime ? runtime.runCommand(command, args) : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    install_package: (packageName) => withTool("install_package", { package: packageName }, async () => runtime ? runtime.installPackage(packageName) : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    run_tests: () => withTool("run_tests", {}, async () => runtime ? runtime.runCommand("npm", ["test", "--", "--runInBand"]) : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    run_build: () => withTool("run_build", {}, async () => runtime ? runtime.runCommand("npm", ["run", "build"]) : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    start_preview: () => withTool("start_preview", {}, async () => runtime ? runtime.startPreview() : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    get_preview_status: () => withTool("get_preview_status", {}, async () => runtime ? runtime.getPreviewStatus() : (() => { throw new Error("Cloud Runtime is not available for this Agent job"); })()),
+    browser_open: (url) => withTool("browser_open", { url }, async () => runtime?.browser ? runtime.browser.browser_open(url) : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
+    browser_inspect: () => withTool("browser_inspect", {}, async () => runtime?.browser ? runtime.browser.browser_inspect() : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
+    browser_click: (selector) => withTool("browser_click", { selector }, async () => runtime?.browser ? runtime.browser.browser_click(selector) : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
+    browser_fill: (selector, text) => withTool("browser_fill", { selector, text }, async () => runtime?.browser ? runtime.browser.browser_fill(selector, text) : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
+    browser_assert: (selector, expectedText) => withTool("browser_assert", { selector, expectedText }, async () => runtime?.browser ? runtime.browser.browser_assert(selector, expectedText) : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
+    browser_console: () => withTool("browser_console", {}, async () => runtime?.browser ? runtime.browser.browser_console() : (() => { throw new Error("Cloud browser runtime is not available for this Agent job"); })()),
   };
 }

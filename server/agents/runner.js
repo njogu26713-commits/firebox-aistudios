@@ -5,6 +5,7 @@ import { getCompletionStream, getStructuredCompletion, normalizeAiConfig } from 
 import { FIREBOX_TOOL_DEFINITIONS } from "./toolContract.js";
 import { runFireboxToolLoop } from "./toolLoop.js";
 import { createCloudProjectTools } from "./cloudTools.js";
+import { createCloudRuntime } from "./cloudRuntime.js";
 import { AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "./workflow.js";
 
 function sse(res, event, data) {
@@ -56,13 +57,16 @@ async function waitForResume(buildId, res, signal) {
 
 async function runProviderToolMode(build, res, aiConfig, signal) {
   const emit = (event, data) => sse(res, event, { ...data, agent: "Firebox Agent" });
-  const tools = createCloudProjectTools({ build, emit });
+  const runtime = await createCloudRuntime({ build, emit });
+  const tools = createCloudProjectTools({ build, emit, runtime });
   emit("agent.started", { agent:"Firebox Agent", title:"Firebox Agent", description:"Starting autonomous project work", status:"working" });
   emit("task.started", { agent:"Firebox Agent", title:"Active task", description:build.description, status:"working" });
   emit("workflow-stage-start", { stage: "autonomous", label: "Firebox Agent", activity: "Choosing the next controlled project action" });
   const preparationPhases = await requestPreparationNarration({ config: aiConfig, description: build.description, signal });
   if (preparationPhases) emit("agent.preparation", { agent: "Firebox Agent", phases: preparationPhases, status: "working", aiGenerated: true });
-  const result = await runFireboxToolLoop({
+  let result;
+  try {
+    result = await runFireboxToolLoop({
     config: aiConfig,
     messages: [
       { role: "system", content: "You are the Firebox Agent. Use only the provided Firebox tools. First understand the user request, inspect the current project, and create a concrete internal task plan before making changes. Preserve its architecture unless the request requires a change. Use each tool result before deciding what to do next, and verify every important file or command result before preview. After implementation, you must run the most appropriate real project verification tool, such as run_tests or run_build. Read its result; if it reports an error, diagnose the actual error, inspect the relevant files, repair the project with real tools, and run the check again until it passes or the repair limit is reached. Do not return a completion summary before a successful verification check has passed. Work deliberately on one controlled action at a time: focus on the current file or command, allow it to finish, read or inspect the result again when appropriate, then confirm it before starting the next action. Never rush through a batch of files or claim a file is complete before the tool result confirms it. Before every tool call, write exactly one concise user-facing progress sentence describing the action you are about to perform, including the real file path or command when known, such as \"I’m writing code for src/App.jsx.\" or \"I’m running npm run build.\" This is a status update, not hidden reasoning. Make exactly one controlled tool call per response, wait for its result, then begin the next response by confirming the completed action and narrating the next action. Never invent completed work and never output source-code fences instead of using tools. After all requested work is complete, return one concise plain-text user-facing completion summary naming the files created or changed and the checks you actually ran. If an action is skipped or fails, explain it in one short sentence only. Avoid long reports, Markdown headings, repeated asterisks, star bullets, and decorative formatting." },
@@ -75,9 +79,16 @@ async function runProviderToolMode(build, res, aiConfig, signal) {
       if (!tools[name]) throw new Error(`Firebox tool is not available: ${name}`);
       if (name === "run_command") return tools[name](args.command, args.args || []);
       if (["read_file", "search_project", "create_file", "write_file", "delete_file", "edit_file", "install_package"].includes(name)) return tools[name](...(name === "edit_file" ? [args.path, args.search, args.replacement] : name === "create_file" || name === "write_file" ? [args.path, args.content] : name === "install_package" ? [args.package] : name === "read_file" || name === "delete_file" ? [args.path] : [args.term]));
+      if (name === "browser_open") return tools[name](args.url);
+      if (name === "browser_click") return tools[name](args.selector);
+      if (name === "browser_fill") return tools[name](args.selector, args.text);
+      if (name === "browser_assert") return tools[name](args.selector, args.expectedText || "");
       return tools[name]();
     },
-  });
+    });
+  } finally {
+    await runtime.close();
+  }
   await Build.findByIdAndUpdate(build._id, { $set: { status: "complete" } });
   if (result.content?.trim()) {
     const finalSummary = result.content.trim().replace(/\s+/g, " ").replace(/\*{1,3}/g, "").trim();
