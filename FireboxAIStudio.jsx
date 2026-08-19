@@ -739,7 +739,7 @@ export default function FireboxAIStudio() {
         ? "Analyzing"
         : preparationPlanText && planElapsed < 10000
         ? `Creating plan: ${preparationPlanText}`
-        : !preparationPlanText
+        : elapsed < 30000
         ? "Creating plan"
         : "Deciding what files/components need to change";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
@@ -1596,9 +1596,8 @@ export default function FireboxAIStudio() {
       await startBuild(text);
       return true;
     } catch (error) {
-      setPreparationActive(false);
-      setPreparationPlanText("");
-      setPreparationPlanStartedAt(0);
+      const remaining = Math.max(0, 40000 - (Date.now() - (preparationStartedAt || Date.now())));
+      if (remaining) window.setTimeout(() => setPreparationActive(false), remaining);
       setErrorMsg(error.message || "The AI plan could not be generated.");
       setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
       return false;
