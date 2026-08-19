@@ -152,7 +152,7 @@ export async function getStructuredCompletion({ config, messages, tools = [], to
     return readJson(response, "Local AI");
   }
   if (normalized.provider !== "cloud") return providerCompletion({ config: normalized, messages, tools, toolChoice, maxTokens, temperature, signal });
-  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, max_tokens: maxTokens, temperature, signal }));
+  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, max_tokens: maxTokens, temperature }));
 }
 
 export async function getCompletionStream({ config, messages, maxTokens, temperature, signal }) {
@@ -162,7 +162,7 @@ export async function getCompletionStream({ config, messages, maxTokens, tempera
     const response = await providerCompletion({ config: normalized, messages, maxTokens, temperature, signal });
     return (async function* () { const content = response.choices?.[0]?.message?.content || ""; if (content) yield content; })();
   }
-  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, stream: true, max_tokens: maxTokens, temperature, signal }));
+  return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, stream: true, max_tokens: maxTokens, temperature }));
 }
 
 export async function testLocalAi(config, signal) {

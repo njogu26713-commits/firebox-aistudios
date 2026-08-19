@@ -52,7 +52,7 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const normalized = useMemo(() => activities.map(normalizeActivity), [activities]);
   const agentCompleted = normalized.some(item => item.type === "agent.completed" && item.status === "completed");
   const displayActivities = useMemo(() => normalized.map(item => agentCompleted && item.status === "running" ? { ...item, status:"completed" } : item), [normalized, agentCompleted]);
-  const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.aiGenerated === true);
+  const aiActivities = displayActivities.filter(item => item.type !== "task.started" && item.type !== "agent.failed" && (item.type === "agent.output" || item.type === "agent.message" || item.aiGenerated === true));
   const runningActivity = [...aiActivities].reverse().find(item => item.status === "running");
   const latestAgentMessage = [...aiActivities].reverse().find(item => item.type === "agent.message");
   const narrative = aiActivities.slice(-8);
