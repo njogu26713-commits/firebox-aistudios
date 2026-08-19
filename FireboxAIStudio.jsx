@@ -4293,12 +4293,9 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     </div>
                   ))}
                 </div>
-                <div style={{ borderTop:`1px solid ${palette.border}`, padding:"14px 22px 18px", flexShrink:0, background:palette.titleBar }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, maxWidth:1100, border:`1px solid ${palette.borderLight}`, borderRadius:8, padding:"10px 12px", background:palette.editorBg }}>
-                    <span style={{ color:palette.accent, fontSize:16 }}>›</span>
-                    <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "Running command…" : "Type a command and press Enter"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
-                    <button onClick={runTerminalCommand} disabled={!terminalInput.trim() || terminalRunning || (!currentBuildId && aiProvider === "cloud")} style={{ border:"none", background:"transparent", color:terminalInput.trim() && !terminalRunning ? palette.accent : palette.textFaint, cursor:terminalInput.trim() && !terminalRunning ? "pointer" : "not-allowed", fontFamily:FONT_UI, fontSize:12 }}>{terminalRunning ? "Running…" : "Run"}</button>
-                  </div>
+                <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:10, padding:"0 26px 18px", background:palette.editorBg }}>
+                  <span style={{ color:palette.accent, fontSize:16, lineHeight:1 }}>›</span>
+                  <input autoFocus value={terminalInput} onChange={e => setTerminalInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); runTerminalCommand(); } }} disabled={terminalRunning || (!currentBuildId && aiProvider === "cloud")} placeholder={terminalRunning ? "Running command…" : "Type a command and press Enter"} style={{ flex:1, minWidth:0, border:"none", outline:"none", background:"transparent", color:palette.textActive, fontFamily:FONT_MONO, fontSize:13 }} />
                 </div>
               </div>
             ) : activity === "workspace" ? (
