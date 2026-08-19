@@ -43,10 +43,18 @@ async function fetchProvider(url, options, label) {
   }
 }
 
+function normalizeProviderError(label, status, body = "") {
+  const text = String(body || "");
+  if (status === 402 || /insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|credit(?:s)?\s+(?:limit|balance)/i.test(text)) {
+    return new Error(`Your ${label} AI provider is out of credits. Try another configured Agent or add credits to the provider account.`);
+  }
+  return new Error(`${label} request failed (${status})${text ? `: ${text.slice(0, 500)}` : ""}`);
+}
+
 async function readJson(response, label) {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`${label} request failed (${response.status})${body ? `: ${body.slice(0, 500)}` : ""}`);
+    throw normalizeProviderError(label, response.status, body);
   }
   return response.json();
 }
@@ -56,7 +64,10 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
   const localUrl = localCompletionUrl(config.endpoint);
   const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) }, "Local AI");
-  if (!response.ok) throw new Error(`Local AI request failed (${response.status})`);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw normalizeProviderError("Local AI", response.status, body);
+  }
   if (!response.body) throw new Error("Local AI returned an empty response body");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

@@ -14,6 +14,14 @@ import {
   ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole, LogOut, Clock3,
 } from "lucide-react";
 
+const friendlyProviderError = (message) => {
+  const text = String(message || "");
+  if (/402|insufficient\s+credits|out\s+of\s+credits|never\s+purchased\s+credits|credit(?:s)?\s+(?:limit|balance)/i.test(text)) {
+    return "This AI provider is out of credits. Try another configured Agent or add credits to the provider account.";
+  }
+  return text;
+};
+
 const projectSessionKey = (buildId) => `firebox-project-session-${String(buildId)}`;
 const readProjectSession = (buildId) => {
   if (!buildId) return null;
@@ -1031,7 +1039,7 @@ export default function FireboxAIStudio() {
       }
       await readDir(dirHandle, "");
       await persistImportedProject({ files, projectName: dirHandle.name, description: `Imported folder: ${dirHandle.name}`, source: "folder", sourceMeta: { folderName: dirHandle.name } });
-    } catch (err) { setErrorMsg(err.message); }
+    } catch (err) { setErrorMsg(friendlyProviderError(err.message)); }
     setImporting(false);
   }, [persistImportedProject]);
 
@@ -1054,7 +1062,7 @@ export default function FireboxAIStudio() {
       const rawName = zipFile.name.replace(/\.zip$/i, "").trim() || "firebox-project";
       await persistImportedProject({ files, projectName: rawName, description: `Imported ZIP: ${zipFile.name}`, source: "zip", sourceMeta: { fileName: zipFile.name, size: zipFile.size } });
       setZipImportOpen(false);
-    } catch (err) { setErrorMsg(err.message); }
+    } catch (err) { setErrorMsg(friendlyProviderError(err.message)); }
     setImporting(false);
   }, [persistImportedProject]);
   const importZip = useCallback(() => {
@@ -1233,7 +1241,7 @@ export default function FireboxAIStudio() {
       buildId = useLocalEngine ? data.jobId : data.buildId;
       setCurrentBuildId(buildId);
       setCurrentProjectName(data.projectName || "firebox-project");
-    } catch (err) { setPhase("error"); setErrorMsg(err.message); setPreparationActive(false); return; }
+    } catch (err) { setPhase("error"); setErrorMsg(friendlyProviderError(err.message)); setPreparationActive(false); return; }
 
     const eventUrl = useLocalEngine
       ? `${engineBase}/api/build/${buildId}/events?token=${encodeURIComponent(localEngineToken.trim())}`
@@ -1263,7 +1271,8 @@ export default function FireboxAIStudio() {
         if (eventName === "agent.started" || eventName === "agent.message" || ["file.created", "file.modified", "file.deleted", "command.started", "dependency.installing", "test.started", "preview.starting"].includes(eventName)) setPreparationActive(false);
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
-        const detail = data.details || data.error || data.output || data.command || data.path || "";
+        const safeError = friendlyProviderError(data.error || "");
+        const detail = data.details || safeError || data.output || data.command || data.path || "";
         const filePath = data.path || data.file || "";
         const command = data.command || "";
         const narrativeTitles = {
@@ -1288,7 +1297,7 @@ export default function FireboxAIStudio() {
         };
         const title = data.title || (eventName === "agent.message" ? data.description || data.text || "" : narrativeTitles[eventName] || eventName);
         const text = data.description || detail || filePath || command || "";
-        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:title, text, file:filePath, command, details:data.details || data.error || "", eventType:eventName, aiGenerated:true });
+        appendActivity({ id:`${eventName}-${Date.now()}-${Math.random()}`, kind:structuredKinds[eventName] || "agent", status:isError ? "error" : isDone ? "done" : "working", label:title, text, file:filePath, command, details:data.details || safeError || "", eventType:eventName, aiGenerated:true });
       } catch { /* ignore malformed structured event */ }
     }));
 
@@ -1444,7 +1453,7 @@ export default function FireboxAIStudio() {
       updateAgent(agent, { status:"error", streaming:"" });
       setPhase("error");
       setPreparationActive(false);
-      setErrorMsg(`${agent}: ${message}`);
+      setErrorMsg(`${agent}: ${friendlyProviderError(message)}`);
     });
 
     es.addEventListener("preview-ready", e => {
@@ -1484,7 +1493,7 @@ export default function FireboxAIStudio() {
     es.addEventListener("build-error", e => {
       streamTerminalRef.current = true;
       const { message } = JSON.parse(e.data);
-      setPhase("error"); setErrorMsg(message); es.close();
+      setPhase("error"); setErrorMsg(friendlyProviderError(message)); es.close();
     });
 
     es.onerror = () => {
@@ -1509,7 +1518,7 @@ export default function FireboxAIStudio() {
       if (!response.ok) throw new Error(data.error || "Unable to change build execution state");
       setBuildPaused(data.executionState === "paused");
     } catch (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(friendlyProviderError(error.message));
     }
   }, [currentBuildId, aiProvider, localEngineUrl, localEngineToken]);
 
@@ -1653,10 +1662,10 @@ export default function FireboxAIStudio() {
     } catch (error) {
       const remaining = Math.max(0, 40000 - (Date.now() - (preparationStartedAt || Date.now())));
       if (remaining) window.setTimeout(() => setPreparationActive(false), remaining);
-      const planError = `Planning Agent error: ${error.message || "The AI plan could not be generated."}`;
+      const planError = `Planning Agent error: ${friendlyProviderError(error.message || "The AI plan could not be generated.")}`;
       setPreparationError(planError);
       setErrorMsg(planError);
-      setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${error.message}` }]);
+      setChatHistory(prev => [...prev, { role:"ai", text:`I couldn't create the plan yet: ${friendlyProviderError(error.message)}` }]);
       return false;
     } finally {
       setPlanning(false);
@@ -2176,7 +2185,7 @@ export default function FireboxAIStudio() {
       setCurrentBuildId(data.buildId);
     } catch (err) {
       setPhase("error");
-      setErrorMsg(err.message);
+      setErrorMsg(friendlyProviderError(err.message));
       setGitAnalyzing(false);
       return;
     }
@@ -2254,7 +2263,7 @@ export default function FireboxAIStudio() {
       }
       setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent] || []).length }));
       updateAgent(agent, { status: "error", streaming: "" });
-      setErrorMsg(`${agent}: ${message}`);
+      setErrorMsg(`${agent}: ${friendlyProviderError(message)}`);
     });
 
     es.addEventListener("build-complete", () => {
