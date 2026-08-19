@@ -731,7 +731,7 @@ export default function FireboxAIStudio() {
     const startedAt = new Date().toISOString();
     setTerminalInput("");
     setTerminalRunning(true);
-    setTerminalEntries(prev => [...prev, { id, command, status:"running", output:"", startedAt }]);
+    setTerminalEntries(prev => [...prev, { id, command, source:"user", status:"running", output:"", startedAt }]);
     try {
       const isLocal = aiProvider === "local";
       const endpoint = isLocal ? `${localEngineUrl.replace(/\/$/, "")}/api/terminal` : "/api/terminal";
@@ -1276,6 +1276,17 @@ export default function FireboxAIStudio() {
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
+        const terminalEvent = ["command.started", "command.output", "command.completed", "dependency.installing", "test.started", "test.completed"].includes(eventName);
+        if (terminalEvent) {
+          const terminalCommand = data.command || (data.package ? `pnpm add ${data.package}` : eventName.startsWith("test") ? "npm test" : eventName === "dependency.installing" ? "install dependencies" : "project command");
+          const terminalOutput = data.output || (typeof data.result === "string" ? data.result : data.message || "");
+          const terminalStatus = data.phase === "error" || data.status === "error" ? "error" : data.phase === "completed" || eventName.endsWith(".completed") || data.status === "completed" ? "complete" : "running";
+          setTerminalEntries(prev => {
+            const index = [...prev].map((entry, position) => ({ entry, position })).reverse().find(({ entry }) => entry.source === "agent" && entry.status === "running" && (entry.command === terminalCommand || entry.command === "project command"))?.position;
+            if (index === undefined || (terminalStatus === "running" && eventName !== "command.output" && data.phase === "started")) return [...prev, { id:`agent-${Date.now()}-${Math.random()}`, command:terminalCommand, source:"agent", status:terminalStatus, output:terminalOutput, startedAt:new Date().toISOString() }];
+            return prev.map((entry, position) => position === index ? { ...entry, command:terminalCommand, status:terminalStatus, output:[entry.output, terminalOutput].filter(Boolean).join("\\n") } : entry);
+          });
+        }
         if (eventName === "preview.ready") {
           const browserPreviewUrl = data.gatewayUrl || data.url || data.previewUrl || null;
           setPreviewStatus(browserPreviewUrl ? "running" : "error");
@@ -4277,7 +4288,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"22px 26px", fontSize:13, lineHeight:1.6 }}>
                   {terminalEntries.length === 0 ? <div style={{ color:palette.textFaint, fontFamily:FONT_UI }}>Type a command below to run it in {currentProjectName || "your project"}.</div> : terminalEntries.map(entry => (
                     <div key={entry.id} style={{ marginBottom:18 }}>
-                      <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:11, marginLeft:8 }}>{entry.status}</span></div>
+                      <div style={{ color:palette.accent }}><span style={{ color:palette.textFaint }}>›</span> {entry.command} <span style={{ color:entry.source === "agent" ? palette.textActive : palette.textMuted, fontFamily:FONT_UI, fontSize:10, marginLeft:8 }}>{entry.source === "agent" ? "Agent" : "You"}</span> <span style={{ color:entry.status === "error" ? palette.error : entry.status === "running" ? palette.accent : palette.success, fontFamily:FONT_UI, fontSize:11, marginLeft:8 }}>{entry.status}</span></div>
                       {entry.output && <pre style={{ margin:"5px 0 0 18px", whiteSpace:"pre-wrap", overflowWrap:"anywhere", color:entry.status === "error" ? palette.error : palette.textMuted }}>{entry.output}</pre>}
                     </div>
                   ))}
