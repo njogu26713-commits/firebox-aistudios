@@ -11,6 +11,7 @@ import { FIREBOX_TOOL_DEFINITIONS } from "../server/agents/toolContract.js";
 import { runFireboxToolLoop } from "../server/agents/toolLoop.js";
 import { buildPlanningPrompt, normalizePlan, AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "../server/agents/workflow.js";
 import { createProjectTools } from "./tools.js";
+import { createBrowserRuntime } from "./browser.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.FIREBOX_ENGINE_PORT || 8787);
@@ -233,7 +234,7 @@ async function waitForResume(job, res, signal) {
 
 async function runAutonomousToolLoop(job, res, tools, config, signal) {
   const messages = [
-    { role: "system", content: "You are the Firebox Agent. Use Firebox tools to inspect, edit, test, repair, and preview the current project. Never assume direct filesystem or shell access. Inspect before major changes, keep changes compatible with the existing architecture, and verify your work before preview." },
+    { role: "system", content: "You are the Firebox Agent. Use Firebox tools to inspect, edit, test, repair, preview, and verify the current project. Never assume direct filesystem or shell access. Inspect before major changes, keep changes compatible with the existing architecture, and create a concrete task plan before editing. After code changes, run the project checks, start the preview, open it with browser_open, inspect the rendered page, and use browser_click, browser_fill, and browser_assert to test the real user workflow implied by the request. Read browser_console for console or page errors. If a browser interaction or assertion fails, inspect the failure, repair the relevant code with Firebox tools, and repeat the browser check before completing. Do not claim success from compilation alone." },
     { role: "user", content: job.description },
   ];
   return runFireboxToolLoop({
@@ -246,6 +247,10 @@ async function runAutonomousToolLoop(job, res, tools, config, signal) {
       if (!tools[name]) throw new Error(`Firebox tool is not available: ${name}`);
       if (name === "run_command") return tools[name](args.command, args.args || [], (output) => send(res, "tool-output", { tool: name, output: String(output).slice(-4000) }));
       if (["read_file", "search_project", "create_file", "write_file", "delete_file", "edit_file", "install_package"].includes(name)) return tools[name](...(name === "edit_file" ? [args.path, args.search, args.replacement] : name === "create_file" || name === "write_file" ? [args.path, args.content] : name === "install_package" ? [args.package] : name === "read_file" || name === "delete_file" ? [args.path] : [args.term]));
+      if (name === "browser_open") return tools[name](args.url);
+      if (name === "browser_click") return tools[name](args.selector);
+      if (name === "browser_fill") return tools[name](args.selector, args.text);
+      if (name === "browser_assert") return tools[name](args.selector, args.expectedText || "");
       return tools[name]();
     },
   });
@@ -256,22 +261,25 @@ async function runBuild(job, res, signal) {
   await fs.mkdir(projectDir, { recursive: true });
   const outputs = {};
   const emit = (event, data) => send(res, event, data);
+  const getJobPreviewStatus = async () => {
+    const preview = previews.get(job.projectName);
+    if (!preview || preview.child.exitCode !== null || preview.child.killed) return { running: false, projectName: job.projectName, error: preview?.error || null };
+    const url = `http://127.0.0.1:${preview.port}`;
+    const healthy = await probePreview(url);
+    return { running: healthy, healthy, projectName: job.projectName, port: preview.port, url, lastOutput: preview.lastOutput || null };
+  };
+  const browser = createBrowserRuntime({ getPreviewStatus: getJobPreviewStatus, emit });
   const tools = createProjectTools({
     root: projectDir,
     emit,
+    browser,
     startPreview: async () => {
       const packageJson = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
       const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
       if (!script) throw new Error("Project has no dev or start script");
       return startPreviewProcess(projectDir, job.projectName, script);
     },
-    getPreviewStatus: async () => {
-      const preview = previews.get(job.projectName);
-      if (!preview || preview.child.exitCode !== null || preview.child.killed) return { running: false, projectName: job.projectName, error: preview?.error || null };
-      const url = `http://127.0.0.1:${preview.port}`;
-      const healthy = await probePreview(url);
-      return { running: healthy, healthy, projectName: job.projectName, port: preview.port, url, lastOutput: preview.lastOutput || null };
-    },
+    getPreviewStatus: getJobPreviewStatus,
   });
   const config = normalizeAiConfig({ provider: "local", endpoint: job.endpoint, model: job.model, apiKey: job.apiKey });
   const inspectedProject = await tools.inspect_project();

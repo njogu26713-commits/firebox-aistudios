@@ -29,10 +29,10 @@ async function runAllowlisted(command, args, cwd, onOutput = () => {}) {
   });
 }
 
-export function createProjectTools({ root, emit = () => {}, startPreview = null, getPreviewStatus = null }) {
+export function createProjectTools({ root, emit = () => {}, startPreview = null, getPreviewStatus = null, browser = null }) {
   const resolve = (relativePath) => safeWorkspacePath(relativePath, root);
   const structuredEvent = (name, phase, input = {}, extra = {}) => {
-    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting" };
+    const eventMap = { inspect_project:"task.started", read_file:"file.read", create_file:"file.created", write_file:"file.modified", edit_file:"file.modified", delete_file:"file.deleted", run_command:"command.started", install_package:"dependency.installing", run_tests:"test.started", run_build:"command.started", start_preview:"preview.starting", get_preview_status:"preview.starting", browser_open:"browser.opened", browser_inspect:"browser.inspected", browser_click:"browser.clicked", browser_fill:"browser.filled", browser_assert:"browser.asserted", browser_console:"browser.console" };
     const event = eventMap[name];
     if (event) emit(event, { phase, tool:name, title:name.replaceAll("_", " "), ...(input.path ? { path:input.path } : {}), ...(input.command ? { command:[input.command, ...(input.args || [])].join(" ") } : {}), ...extra });
   };
@@ -115,5 +115,11 @@ export function createProjectTools({ root, emit = () => {}, startPreview = null,
     install_package: (packageName) => withTool("install_package", { package: packageName }, () => runAllowlisted(process.platform === "win32" ? "npm.cmd" : "npm", ["install", String(packageName)], root, (output) => emit("tool-output", { tool: "install_package", output: output.slice(-4000) }))),
     start_preview: () => withTool("start_preview", {}, async () => startPreview ? startPreview() : { running: false, message: "Preview callback is not configured" }),
     get_preview_status: () => withTool("get_preview_status", {}, async () => getPreviewStatus ? getPreviewStatus() : { running: false }),
+    browser_open: (url) => withTool("browser_open", { url }, async () => browser ? browser.browser_open(url) : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
+    browser_inspect: () => withTool("browser_inspect", {}, async () => browser ? browser.browser_inspect() : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
+    browser_click: (selector) => withTool("browser_click", { selector }, async () => browser ? browser.browser_click(selector) : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
+    browser_fill: (selector, text) => withTool("browser_fill", { selector, text }, async () => browser ? browser.browser_fill(selector, text) : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
+    browser_assert: (selector, expectedText) => withTool("browser_assert", { selector, expectedText }, async () => browser ? browser.browser_assert(selector, expectedText) : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
+    browser_console: () => withTool("browser_console", {}, async () => browser ? browser.browser_console() : (() => { throw new Error("Browser runtime is not available. Connect the Local Engine with browser support enabled."); })()),
   };
 }

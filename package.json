@@ -6,6 +6,7 @@
     "dev": "vite --port 5000 --host 0.0.0.0",
     "server": "node server/index.js",
     "local-engine": "node local-engine/index.js",
+    "local-engine:install-browser": "playwright install chromium",
     "build": "vite build",
     "start": "NODE_ENV=production node server/index.js",
     "test": "node --test tests/*.test.js"
@@ -19,6 +20,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.400.0",
     "mongoose": "^8.24.2",
+    "playwright": "^1.62.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-resizable-panels": "^4.12.2"
