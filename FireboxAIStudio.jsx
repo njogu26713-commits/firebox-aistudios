@@ -1908,15 +1908,16 @@ export default function FireboxAIStudio() {
 
   /* ── Tab management ───────────────────────────────────────────────────── */
   const openFile = useCallback((file) => {
+    if (!file?.path) return;
+    setActivity("workspace");
     setOpenTabs(prev => {
-      if (prev.find(t => t.path === file.path)) return prev;
+      const existing = prev.find(tab => tab.path === file.path);
+      if (existing) return prev.map(tab => tab.path === file.path ? { ...tab, ...file } : tab);
       return [...prev, file];
     });
     setActiveTabPath(file.path);
-    if (!tabContents[file.path]) {
-      setTabContents(prev => ({ ...prev, [file.path]: file.content }));
-    }
-  }, [tabContents]);
+    setTabContents(prev => ({ ...prev, [file.path]: String(file.content ?? prev[file.path] ?? "") }));
+  }, []);
 
   const closeTab = useCallback((path, e) => {
     e?.stopPropagation();
@@ -2365,7 +2366,7 @@ export default function FireboxAIStudio() {
       if (!m[group]) m[group] = [];
       m[group].push(f);
     });
-    return m;
+    return Object.fromEntries(Object.entries(m).filter(([, files]) => files.length > 0));
   }, [allFiles]);
 
   // Breadcrumb parts
@@ -3965,7 +3966,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                     if (!byAgent[f.agent]) byAgent[f.agent] = [];
                                     byAgent[f.agent].push(f);
                                   });
-                                  return Object.entries(byAgent).map(([agentName, agentFiles]) => {
+                                  return Object.entries(byAgent).filter(([, agentFiles]) => agentFiles.length > 0).map(([agentName, agentFiles]) => {
                                     const meta     = AGENT_META.find(a => a.name === agentName);
                                     const AgIcon   = meta?.Icon || FileText;
                                     const agColor  = meta?.color || palette.textMuted;
