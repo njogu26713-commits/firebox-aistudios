@@ -14,6 +14,12 @@ import {
   ShoppingCart, GraduationCap, Landmark, CalendarDays, MessageCircle, Bot, Store, SlidersHorizontal, Layers3, Boxes, ClipboardList, BarChart3, LockKeyhole, LogOut, Clock3,
 } from "lucide-react";
 
+const projectSessionKey = (buildId) => `firebox-project-session-${String(buildId)}`;
+const readProjectSession = (buildId) => {
+  if (!buildId) return null;
+  try { return JSON.parse(localStorage.getItem(projectSessionKey(buildId)) || "null"); } catch { return null; }
+};
+
 /* ─── VS Code colour palette ─────────────────────────────────────────────── */
 const VS = {
   /* structural */
@@ -647,6 +653,18 @@ export default function FireboxAIStudio() {
   const [typewriterText, setTypewriterText] = useState("");
   const [typewriterStopped, setTypewriterStopped] = useState(false);
   const [subtitleText, setSubtitleText] = useState("");
+
+  useEffect(() => {
+    if (!currentBuildId) return;
+    try {
+      localStorage.setItem(projectSessionKey(currentBuildId), JSON.stringify({
+        chatHistory,
+        liveActivity,
+        activityStartedAt,
+      }));
+    } catch {}
+  }, [currentBuildId, chatHistory, liveActivity, activityStartedAt]);
+
   const [launcherFramework, setLauncherFramework] = useState("auto");
   const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
   const [launcherDatabase, setLauncherDatabase] = useState("auto");
@@ -1800,6 +1818,8 @@ export default function FireboxAIStudio() {
   /* ── Load a past project into the editor ──────────────────────────────── */
   const loadProjectFiles = useCallback(async (build) => {
     setLoadingProjectId(build._id);
+    setCurrentBuildId(null);
+    setChatHistory([]); setLiveActivity([]); setActivityStartedAt(null);
     setActivity("workspace"); setSideOpen(false);
     const waitFiveSeconds = () => new Promise(resolve => setTimeout(resolve, 5000));
     try {
@@ -1829,6 +1849,10 @@ export default function FireboxAIStudio() {
         setOpenTabs([first]); setActiveTabPath(first.path);
         setTabContents({ [first.path]: first.content });
       }
+      const session = readProjectSession(build._id);
+      setChatHistory(Array.isArray(session?.chatHistory) ? session.chatHistory : []);
+      setLiveActivity(Array.isArray(session?.liveActivity) ? session.liveActivity : []);
+      setActivityStartedAt(session?.activityStartedAt || null);
       setCurrentProjectName(build.projectName || build.name || "firebox-project");
       setCurrentProjectMeta({ fileCount: files.length, framework, packageManager });
       setDescription(build.description || "");
