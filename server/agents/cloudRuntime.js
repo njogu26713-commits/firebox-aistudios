@@ -64,6 +64,29 @@ async function detectProjectRoot(workspaceRoot) {
   return workspaceRoot;
 }
 
+async function detectPreview(projectRoot) {
+  let packageJson = null;
+  try { packageJson = JSON.parse(await fs.readFile(path.join(projectRoot, "package.json"), "utf8")); } catch {}
+  if (!packageJson) {
+    try { await fs.access(path.join(projectRoot, "index.html")); return { kind:"static", framework:"static", packageManager:null, script:null, command:"npx", args:["--yes", "serve", ".", "-l"] }; } catch { throw new Error("No package.json or index.html was found in the project root"); }
+  }
+  const dependencies = { ...(packageJson.dependencies || {}), ...(packageJson.devDependencies || {}) };
+  const framework = dependencies.next ? "next" : dependencies["@angular/core"] ? "angular" : dependencies.vue ? "vue" : dependencies.react ? "react" : dependencies.express ? "express" : "node";
+  const packageManager = await fs.access(path.join(projectRoot, "pnpm-lock.yaml")).then(() => "pnpm").catch(async () => await fs.access(path.join(projectRoot, "yarn.lock")).then(() => "yarn").catch(async () => await fs.access(path.join(projectRoot, "package-lock.json")).then(() => "npm").catch(() => "npm")));
+  const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : packageJson.scripts?.preview ? "preview" : null;
+  if (!script) throw new Error(`Project has package.json but no dev, start, or preview script. Available scripts: ${Object.keys(packageJson.scripts || {}).join(", ") || "none"}`);
+  return { kind:"node", framework, packageManager, script };
+}
+
+function packageCommand(name) { return name === "pnpm" ? "pnpm" : name === "yarn" ? "yarn" : "npm"; }
+function previewArgs(info, port) {
+  if (info.kind === "static") return ["--yes", "serve", ".", "-l", String(port)];
+  const args = ["run", info.script];
+  if (info.framework === "next") return [...args, "--", "-H", "0.0.0.0", "-p", String(port)];
+  if (info.framework === "express" || info.script === "start") return args;
+  return [...args, "--", "--host", "0.0.0.0", "--port", String(port)];
+}
+
 async function probe(url) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
@@ -96,13 +119,14 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
     },
     async startPreview() {
       if (preview?.child && preview.child.exitCode === null) return runtime.getPreviewStatus();
-      const packageJson = JSON.parse(await fs.readFile(path.join(projectRoot, "package.json"), "utf8"));
-      const script = packageJson.scripts?.dev ? "dev" : packageJson.scripts?.start ? "start" : null;
-      if (!script) throw new Error("Project has no dev or start script");
+      const info = await detectPreview(projectRoot);
       previewPort += 1;
-      const commandArgs = ["run", script, "--", "--host", "0.0.0.0", "--port", String(previewPort)];
-      const child = spawn("npm", commandArgs, { cwd: projectRoot, shell: false, detached: process.platform !== "win32", env: { ...process.env, ...runtimeEnv, PORT: String(previewPort), TERM: process.env.TERM || "xterm-256color" } });
-      preview = { child, port: previewPort, output: "" };
+      let command = info.kind === "static" ? "npx" : packageCommand(info.packageManager);
+      let commandArgs = previewArgs(info, previewPort);
+      if (info.kind !== "static" && info.packageManager === "pnpm") { command = "npx"; commandArgs = ["--yes", "pnpm", ...commandArgs]; }
+      if (info.kind !== "static" && info.packageManager === "yarn") { command = "corepack"; commandArgs = ["yarn", ...commandArgs]; }
+      const child = spawn(command, commandArgs, { cwd: projectRoot, shell: false, detached: process.platform !== "win32", env: { ...process.env, ...runtimeEnv, PORT: String(previewPort), HOST: "0.0.0.0", TERM: process.env.TERM || "xterm-256color" } });
+      preview = { child, port: previewPort, output: "", framework: info.framework, packageManager: info.packageManager, script: info.script };
       child.stdout.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });
       child.stderr.on("data", (chunk) => { preview.output = clip(`${preview.output}${chunk}`); emit("runtime-output", { tool: "start_preview", output: clip(chunk) }); });
       child.on("error", (error) => { if (preview) preview.error = error.message; });
@@ -115,7 +139,7 @@ export async function createCloudRuntime({ build, emit = () => {} }) {
     async getPreviewStatus() {
       if (!preview || preview.child.exitCode !== null || preview.child.killed) return { running: false, url: null, error: preview?.error || null };
       const url = `http://127.0.0.1:${preview.port}`;
-      return { running: await probe(url), url, port: preview.port, output: preview.output || "" };
+      return { running: await probe(url), url, port: preview.port, output: preview.output || "", framework:preview.framework, packageManager:preview.packageManager, script:preview.script };
     },
   };
   await runtime.syncFiles(build.files || []);

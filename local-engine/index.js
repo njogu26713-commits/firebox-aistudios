@@ -116,7 +116,8 @@ async function waitForPreviewReady(url, child, maxWaitMs = 15000) {
 async function startPreviewProcess(projectDir, projectName, script = null, port = PREVIEW_PORT) {
   const detected = await detectProject(projectDir);
   const selectedScript = script || detected.script;
-  if (!selectedScript) throw new Error("Project has no supported dev, start, or preview script");
+  const isStatic = !selectedScript && detected.framework === "static";
+  if (!selectedScript && !isStatic) throw new Error("Project has no supported dev, start, or preview script");
   const packageManager = detected.packageManager;
   const framework = detected.framework;
   const allocatedPort = allocatePreviewPort(projectName, port);
@@ -127,10 +128,10 @@ async function startPreviewProcess(projectDir, projectName, script = null, port 
     if (await probePreview(url)) return { projectName, port: existing.port, url, gatewayUrl:previewGatewayUrl(projectName), healthy: true, status:"running", framework:existing.framework, packageManager:existing.packageManager, script:existing.script, startedAt:existing.startedAt };
     stopPreviewProcess(projectName);
   }
-  const command = packageManagerCommand(packageManager);
-  const args = ["run", selectedScript];
-  if (framework === "next") args.push("--", "-H", "0.0.0.0", "-p", String(allocatedPort));
-  else args.push("--", "--host", "0.0.0.0", "--port", String(allocatedPort));
+  const command = isStatic ? (process.platform === "win32" ? "npx.cmd" : "npx") : packageManagerCommand(packageManager);
+  const args = isStatic ? ["--yes", "serve", ".", "-l", String(allocatedPort)] : ["run", selectedScript];
+  if (!isStatic && framework === "next") args.push("--", "-H", "0.0.0.0", "-p", String(allocatedPort));
+  else if (!isStatic && framework !== "express" && selectedScript !== "start") args.push("--", "--host", "0.0.0.0", "--port", String(allocatedPort));
   const child = spawn(command, args, { cwd: projectDir, shell: false, windowsHide: true });
   const preview = { child, projectName, port:allocatedPort, script:selectedScript, framework, packageManager, startedAt: new Date().toISOString(), lastAccessAt:Date.now(), status:"starting", healthy:false, lastOutput: "" };
   child.stdout?.on("data", (chunk) => { preview.lastOutput = String(chunk).slice(-4000); });
