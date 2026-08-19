@@ -1,7 +1,7 @@
 import Build from "../models/Build.js";
 import { AGENT_DEFS } from "./config.js";
 import { extractFiles } from "../utils/fileParser.js";
-import { getCompletionStream, normalizeAiConfig } from "../aiProvider.js";
+import { getCompletionStream, getStructuredCompletion, normalizeAiConfig } from "../aiProvider.js";
 import { FIREBOX_TOOL_DEFINITIONS } from "./toolContract.js";
 import { runFireboxToolLoop } from "./toolLoop.js";
 import { createCloudProjectTools } from "./cloudTools.js";
@@ -12,6 +12,30 @@ function sse(res, event, data) {
 }
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function requestPreparationNarration({ config, description, signal }) {
+  try {
+    const response = await getStructuredCompletion({
+      config,
+      messages: [
+        { role: "system", content: "You are preparing a coding task. Return only valid JSON with exactly four string fields: understanding, analyzing, planning, deciding. Write concise user-facing first-person progress sentences for each phase. Mention the user's real request and likely project areas when possible. Do not use Markdown, asterisks, generic filler, or claim that a file was changed before tools change it." },
+        { role: "user", content: `Prepare this coding task: ${description}` },
+      ],
+      tools: [],
+      toolChoice: "none",
+      maxTokens: 360,
+      temperature: 0.2,
+      signal,
+    });
+    const raw = response?.choices?.[0]?.message?.content;
+    const text = Array.isArray(raw) ? raw.map(part => typeof part === "string" ? part : part?.text || "").join("") : String(raw || "");
+    const parsed = JSON.parse(text.replace(/^```json\s*|\s*```$/g, "").trim());
+    const phases = [parsed.understanding, parsed.analyzing, parsed.planning, parsed.deciding].map(value => String(value || "").replace(/\\s+/g, " ").trim()).filter(Boolean);
+    return phases.length === 4 ? phases : null;
+  } catch {
+    return null;
+  }
+}
 
 async function waitForResume(buildId, res, signal) {
   let announced = false;
@@ -36,6 +60,8 @@ async function runProviderToolMode(build, res, aiConfig, signal) {
   emit("agent.started", { agent:"Firebox Agent", title:"Firebox Agent", description:"Starting autonomous project work", status:"working" });
   emit("task.started", { agent:"Firebox Agent", title:"Active task", description:build.description, status:"working" });
   emit("workflow-stage-start", { stage: "autonomous", label: "Firebox Agent", activity: "Choosing the next controlled project action" });
+  const preparationPhases = await requestPreparationNarration({ config: aiConfig, description: build.description, signal });
+  if (preparationPhases) emit("agent.preparation", { agent: "Firebox Agent", phases: preparationPhases, status: "working", aiGenerated: true });
   const result = await runFireboxToolLoop({
     config: aiConfig,
     messages: [
@@ -87,8 +113,8 @@ export async function runAgentPipeline(build, res, signal) {
     try {
       await runProviderToolMode(build, res, aiConfig, signal);
     } catch (error) {
-      await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
       const rawMessage = String(error?.message || "");
+      await Build.findByIdAndUpdate(build._id, { $set: { status: "failed", errorMessage: rawMessage || "The Agent could not complete the requested work." } });
     const safeDescription = /tool.?use.?failed|parse tool call|invalid.*json|failed_generation/i.test(rawMessage)
       ? "The Agent could not produce a valid controlled tool action after retrying. No file was changed for that action."
       : /no assistant content|no firebox tool calls/i.test(rawMessage)
@@ -192,7 +218,8 @@ export async function runAgentPipeline(build, res, signal) {
       sse(res, "agent.failed", { agent:agentDef.name, title:capability.label, description:err.message, status:"error", details:err.stack || err.message });
       sse(res, "agent-error", { agent: agentDef.name, message: err.message, capability });
       sse(res, "workflow-stage-error", { stage: capability.id, label: capability.label, agent: agentDef.name, message: err.message });
-      await Build.findByIdAndUpdate(build._id, { $set: { status: "failed" } });
+              await Build.findByIdAndUpdate(build._id, { $set: { status: "failed", errorMessage: String(err?.message || "Agent stage failed") } });
+
       return;
     }
   }

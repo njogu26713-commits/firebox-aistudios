@@ -645,6 +645,7 @@ export default function FireboxAIStudio() {
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
   const [understandingText, setUnderstandingText] = useState("");
+  const [preparationPhases, setPreparationPhases] = useState([]);
   const [preparationActive, setPreparationActive] = useState(false);
   const [preparationPlanText, setPreparationPlanText] = useState("");
   const [preparationDecisionText, setPreparationDecisionText] = useState("");
@@ -745,30 +746,19 @@ export default function FireboxAIStudio() {
     return () => clearTimeout(timer);
   }, [preHomeVisible]);
   useEffect(() => {
-    if (!preparationActive) {
+    if (!preparationActive || preparationPhases.length === 0) {
       setUnderstandingText("");
       return undefined;
     }
     const startedAt = Date.now();
+    let phaseIndex = 0;
     let lastPhrase = "";
     let charIndex = 0;
     let timer;
     const tick = () => {
       const elapsed = Date.now() - startedAt;
-      const planElapsed = preparationPlanStartedAt ? Date.now() - preparationPlanStartedAt : 0;
-      const phrase = elapsed < 10000
-        ? "Understanding"
-        : elapsed < 20000
-        ? "Analyzing"
-        : preparationPlanText && planElapsed < 10000
-        ? `Creating plan: ${preparationPlanText}`
-        : preparationError
-        ? preparationError
-        : preparationDecisionText
-        ? preparationDecisionText
-        : preparationPlanText
-        ? `Creating plan: ${preparationPlanText}`
-        : "Analyzing";
+      phaseIndex = Math.min( preparationPhases.length - 1, Math.floor(elapsed / 10000) );
+      const phrase = preparationPhases[phaseIndex] || "";
       if (phrase !== lastPhrase) { lastPhrase = phrase; charIndex = 0; }
       charIndex = Math.min(charIndex + 1, phrase.length);
       const dots = ".".repeat((Math.floor(Date.now() / 420) % 3) + 1);
@@ -777,7 +767,7 @@ export default function FireboxAIStudio() {
     };
     timer = setTimeout(tick, 80);
     return () => clearTimeout(timer);
-  }, [preparationActive, preparationPlanText, preparationPlanStartedAt]);
+  }, [preparationActive, preparationPhases]);
 
   useEffect(() => {
     if (activity !== "home" || chatInput.trim() || typewriterStopped) {
@@ -1252,11 +1242,15 @@ export default function FireboxAIStudio() {
     const es = new EventSource(eventUrl);
     esRef.current = es;
 
-    const structuredEvents = ["agent.started", "task.started", "agent.message", "file.read", "file.created", "file.modified", "file.deleted", "command.started", "command.output", "command.completed", "dependency.installing", "test.started", "test.completed", "preview.starting", "preview.ready", "preview.error", "checkpoint.created", "agent.completed", "agent.failed"];
+    const structuredEvents = ["agent.started", "task.started", "agent.preparation", "agent.message", "file.read", "file.created", "file.modified", "file.deleted", "command.started", "command.output", "command.completed", "dependency.installing", "test.started", "test.completed", "preview.starting", "preview.ready", "preview.error", "checkpoint.created", "agent.completed", "agent.failed"];
     const structuredKinds = { "agent.message":"agent", "file.read":"files", "file.created":"files", "file.modified":"files", "file.deleted":"files", "command.started":"tool", "command.output":"tool", "command.completed":"tool", "dependency.installing":"tool", "test.started":"tool", "test.completed":"tool", "preview.starting":"preview", "preview.ready":"preview", "preview.error":"preview", "agent.started":"agent", "task.started":"task", "agent.completed":"build", "agent.failed":"error", "checkpoint.created":"checkpoint" };
     structuredEvents.forEach(eventName => es.addEventListener(eventName, event => {
       try {
         const data = JSON.parse(event.data || "{}");
+        if (eventName === "agent.preparation" && Array.isArray(data.phases)) {
+          setPreparationPhases(data.phases.map(value => String(value || "").trim()).filter(Boolean));
+          return;
+        }
         if (eventName === "agent.started" || eventName === "agent.message" || ["file.created", "file.modified", "file.deleted", "command.started", "dependency.installing", "test.started", "preview.starting"].includes(eventName)) setPreparationActive(false);
         const isError = eventName.endsWith(".error") || eventName.endsWith(".failed") || data.status === "error";
         const isDone = eventName.endsWith(".completed") || eventName.endsWith(".ready") || data.status === "completed";
@@ -1676,6 +1670,7 @@ export default function FireboxAIStudio() {
     setSideOpen(false);
     setDescription(baseText);
     setPreparationActive(true);
+    setPreparationPhases([]);
     setPreparationStartedAt(Date.now());
     setPreparationPlanText("");
     setPreparationDecisionText("");
