@@ -20,7 +20,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       signal,
     });
     const message = response?.choices?.[0]?.message || {};
-    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.slice(0, 1) : [];
     const content = Array.isArray(message.content)
       ? message.content.map((part) => typeof part === "string" ? part : part?.text || "").join("")
       : String(message.content || "");
