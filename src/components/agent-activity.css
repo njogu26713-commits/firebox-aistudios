@@ -19,7 +19,7 @@
 .activity-record-summary span { display:flex; align-items:center; gap:5px; }
 .activity-record-summary:hover { color:#f1f3f5; }
 .activity-empty { padding:16px 0; color:#858894; font-size:12px; line-height:1.55; }
-.user-prompt-line { margin:12px 0 2px; padding:8px 0 4px; border:0; border-radius:0; background:transparent; }
+.user-prompt-line { width:fit-content; max-width:88%; margin:12px 0 8px auto; padding:9px 11px; border:1px solid #353945; border-radius:10px 10px 3px 10px; background:#252830; }
 .user-prompt-label { margin-bottom:4px; color:#8b7cff; font-size:10px; font-weight:700; }
 .user-prompt-text { color:#f1f3f5; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 .user-prompt-followup { margin-top:14px; }
