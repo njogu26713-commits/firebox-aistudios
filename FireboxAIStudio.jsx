@@ -1354,7 +1354,7 @@ export default function FireboxAIStudio() {
       setPhase("complete");
       setActiveAgent(null);
       setWorkflowStage({ stage:"preview", label:"Preview", activity:livePreviewUrl ? "Build complete — live preview is ready" : "Build complete — connect the Local Engine for a live project preview", completed:true });
-      setPreviewOpen(Boolean(livePreviewUrl || previewContent));
+      setPreviewOpen(Boolean(livePreviewUrl));
       es.close();
       fetch("/api/builds").then(r=>r.json()).then(d => Array.isArray(d) && setRecentBuilds(d)).catch(()=>{});
     });
@@ -1371,7 +1371,7 @@ export default function FireboxAIStudio() {
       setErrorMsg("Connection lost before the Agent returned a result. Check the provider response and Railway logs.");
       es.close();
     };
-  }, [updateAgent, appendActivity, aiProvider, providerConfig, localAiConfig, localEngineUrl, localEngineToken, previewContent]);
+  }, [updateAgent, appendActivity, aiProvider, providerConfig, localAiConfig, localEngineUrl, localEngineToken]);
 
   const setBuildExecutionState = useCallback(async (nextState) => {
     if (!currentBuildId) return;
