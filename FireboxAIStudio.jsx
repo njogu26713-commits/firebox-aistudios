@@ -984,7 +984,9 @@ export default function FireboxAIStudio() {
   const [gitPushResult, setGitPushResult] = useState(null);  // { commitUrl } | { error }
 
   /* git — saved token + repo list */
-  const [gitTokenSaved,    setGitTokenSaved]    = useState(false);   // token exists in DB
+  const [gitTokenSaved,    setGitTokenSaved]    = useState(false);   // credential exists in DB
+  const [gitAuthMethod,    setGitAuthMethod]    = useState("pat");
+  const [gitUsername,      setGitUsername]      = useState("");
   const [gitTokenSaving,   setGitTokenSaving]   = useState(false);
   const [gitRepos,         setGitRepos]         = useState([]);
   const [gitReposLoading,  setGitReposLoading]  = useState(false);
@@ -2078,9 +2080,10 @@ export default function FireboxAIStudio() {
       try {
         const res  = await fetch("/api/git/token");
         const data = await res.json();
-        if (data.token) {
-          setGitToken(data.token);
+        if (data.connected) {
           setGitTokenSaved(true);
+          setGitAuthMethod(data.provider === "oauth" ? "oauth" : "pat");
+          setGitUsername(data.username || "");
           // also pre-load repos
           setGitReposLoading(true);
           try {
@@ -2092,6 +2095,16 @@ export default function FireboxAIStudio() {
         }
       } catch {}
     })();
+  }, []);
+
+  const startGithubOAuth = useCallback(async () => {
+    setGitError("");
+    try {
+      const response = await fetch("/api/git/oauth/start");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.url) throw new Error(data.error || "Unable to start GitHub OAuth");
+      window.location.href = data.url;
+    } catch (error) { setGitError(error.message); }
   }, []);
 
   /* ── Git: save token to DB + fetch repos ────────────────────────────────── */
@@ -2122,7 +2135,7 @@ export default function FireboxAIStudio() {
   /* ── Git: remove saved token ─────────────────────────────────────────────── */
   const removeGitToken = useCallback(async () => {
     await fetch("/api/git/token", { method:"DELETE" });
-    setGitToken(""); setGitTokenSaved(false); setGitRepos([]);
+    setGitToken(""); setGitTokenSaved(false); setGitUsername(""); setGitAuthMethod("pat"); setGitRepos([]);
     setGitRepo(null); setGitFileShas({}); setGitBranches([]); setGitError("");
     setGitPushResult(null); setGitShowPromptStep(false);
   }, []);
@@ -3536,6 +3549,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                     {/* ── Step 1: Token entry (no saved token) ── */}
                     {!gitRepo && !gitTokenSaved && (
                       <div style={{ padding:"10px 10px 0" }}>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:5, marginBottom:12, padding:3, background:palette.editorBg, border:`1px solid ${palette.border}`, borderRadius:6 }}>
+                          <button onClick={() => setGitAuthMethod("oauth")} style={{ padding:"7px 5px", border:"none", borderRadius:4, background:gitAuthMethod === "oauth" ? palette.accent : "transparent", color:gitAuthMethod === "oauth" ? "#fff" : palette.textMuted, cursor:"pointer", fontSize:11, fontWeight:600 }}>GitHub OAuth</button>
+                          <button onClick={() => setGitAuthMethod("pat")} style={{ padding:"7px 5px", border:"none", borderRadius:4, background:gitAuthMethod === "pat" ? palette.accent : "transparent", color:gitAuthMethod === "pat" ? "#fff" : palette.textMuted, cursor:"pointer", fontSize:11, fontWeight:600 }}>Personal Token</button>
+                        </div>
+                        {gitAuthMethod === "oauth" ? <div>
+                          <div style={{ fontSize:12, color:palette.textMuted, marginBottom:10, lineHeight:1.6 }}>Connect GitHub through OAuth. Firebox will request repository access without asking you to paste a token.</div>
+                          <button onClick={startGithubOAuth} className="build-btn" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:7, width:"100%", padding:"8px", borderRadius:4, border:"none", background:palette.accent, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}><Github size={13}/> Continue with GitHub</button>
+                          <div style={{ marginTop:10, fontSize:10, color:palette.textFaint, lineHeight:1.5 }}>OAuth requires <code>GITHUB_CLIENT_ID</code>, <code>GITHUB_CLIENT_SECRET</code>, and the callback URL configured in Railway.</div>
+                        </div> : <div>
                         <div style={{ fontSize:12, color:palette.textMuted, marginBottom:10, lineHeight:1.6 }}>
                           Enter your GitHub personal access token to see all your repositories.
                         </div>
@@ -3586,8 +3608,9 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                           <a href="https://github.com/settings/tokens/new?scopes=repo" target="_blank" rel="noreferrer"
                             style={{ color:palette.accent }}>github.com/settings/tokens</a>
                           {" "}with <code style={{ fontSize:10, background:"#3C3C3C", padding:"1px 4px", borderRadius:3 }}>repo</code> scope.
-                          The token is saved to your database.
+                          The token is validated with GitHub and stored securely for your account.
                         </div>
+                        </div>}
                       </div>
                     )}
 

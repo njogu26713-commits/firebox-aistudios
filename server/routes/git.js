@@ -7,6 +7,7 @@ import { callWithFallback } from "../groqPool.js";
 import { parseEditOutput, applyEdits } from "../utils/editParser.js";
 import { ANALYZE_AGENT_DEFS } from "../agents/analyzeConfig.js";
 import { runAnalysisPipeline } from "../agents/analyzeRunner.js";
+import crypto from "node:crypto";
 
 const dbRequired = (req, res, next) => {
   if (!isDBConnected()) return res.status(503).json({ error: "Database not connected. Set MONGODB_URI to enable this feature." });
@@ -14,6 +15,9 @@ const dbRequired = (req, res, next) => {
 };
 
 const router = express.Router();
+const oauthStates = new Map();
+const credentialId = userId => String(userId);
+const getCredential = req => GithubToken.findOne({ ownerId: req.user._id }).select("+token").lean();
 
 /* ── GitHub API helper ───────────────────────────────────────────────────── */
 async function ghFetch(path, token, options = {}) {
@@ -39,48 +43,60 @@ function parseRepoUrl(url) {
   return { owner: m[1], repo: m[2] };
 }
 
-/* ── GET /api/git/token — retrieve saved token ──────────────────────────── */
-router.get("/token", dbRequired, async (req, res) => {
+/* ── Source Control credentials ─────────────────────────────────────────── */
+router.get("/token", dbRequired, requireAuth, async (req, res) => {
   try {
-    const doc = await GithubToken.findById("singleton").lean();
-    if (!doc) return res.json({ token: null });
-    res.json({ token: doc.token });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const doc = await getCredential(req);
+    res.json({ connected: Boolean(doc), provider: doc?.provider || null, username: doc?.username || "" });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-/* ── POST /api/git/token — save token ───────────────────────────────────── */
-router.post("/token", dbRequired, async (req, res) => {
-  const { token } = req.body;
-  if (!token?.trim()) return res.status(400).json({ error: "token is required" });
+router.post("/token", dbRequired, requireAuth, async (req, res) => {
+  const token = String(req.body?.token || "").trim();
+  if (!token) return res.status(400).json({ error: "token is required" });
   try {
-    await GithubToken.findByIdAndUpdate(
-      "singleton",
-      { token: token.trim(), createdAt: new Date() },
-      { upsert: true, new: true }
-    );
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const user = await ghFetch("/user", token);
+    await GithubToken.findOneAndUpdate({ ownerId:req.user._id }, { _id:credentialId(req.user._id), ownerId:req.user._id, provider:"pat", token, username:user.login || "", updatedAt:new Date() }, { upsert:true, new:true });
+    res.json({ ok:true, connected:true, provider:"pat", username:user.login || "" });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-/* ── DELETE /api/git/token — remove saved token ─────────────────────────── */
-router.delete("/token", dbRequired, async (req, res) => {
-  try {
-    await GithubToken.findByIdAndDelete("singleton");
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.delete("/token", dbRequired, requireAuth, async (req, res) => {
+  try { await GithubToken.deleteOne({ ownerId:req.user._id }); res.json({ ok:true }); }
+  catch (err) { res.status(500).json({ error:err.message }); }
 });
 
-/* ── GET /api/git/repos — list all repos for the saved token ────────────── */
-router.get("/repos", dbRequired, async (req, res) => {
+router.get("/oauth/start", dbRequired, requireAuth, async (req, res) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  if (!clientId || !process.env.GITHUB_CLIENT_SECRET) return res.status(503).json({ error:"GitHub OAuth is not configured. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in Railway." });
+  const state = crypto.randomBytes(24).toString("hex");
+  oauthStates.set(state, { userId:String(req.user._id), expiresAt:Date.now() + 10 * 60 * 1000 });
+  const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/git/oauth/callback`;
+  const url = new URL("https://github.com/login/oauth/authorize");
+  url.searchParams.set("client_id", clientId); url.searchParams.set("redirect_uri", redirectUri); url.searchParams.set("scope", "repo"); url.searchParams.set("state", state);
+  res.json({ url:url.toString() });
+});
+
+router.get("/oauth/callback", dbRequired, async (req, res) => {
+  const stateData = oauthStates.get(String(req.query.state || ""));
+  oauthStates.delete(String(req.query.state || ""));
+  if (!stateData || stateData.expiresAt < Date.now()) return res.status(400).send("GitHub OAuth state expired. Return to Firebox and try again.");
+  if (req.query.error) return res.redirect("/?github=cancelled");
   try {
-    const doc = await GithubToken.findById("singleton").lean();
-    if (!doc) return res.status(401).json({ error: "No token saved. Please connect your GitHub account first." });
+    const response = await fetch("https://github.com/login/oauth/access_token", { method:"POST", headers:{Accept:"application/json", "Content-Type":"application/json"}, body:JSON.stringify({ client_id:process.env.GITHUB_CLIENT_ID, client_secret:process.env.GITHUB_CLIENT_SECRET, code:req.query.code, redirect_uri:process.env.GITHUB_OAUTH_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/git/oauth/callback` }) });
+    const data = await response.json();
+    if (!data.access_token) throw new Error(data.error_description || "GitHub OAuth did not return an access token");
+    const user = await ghFetch("/user", data.access_token);
+    await GithubToken.findOneAndUpdate({ ownerId:stateData.userId }, { _id:credentialId(stateData.userId), ownerId:stateData.userId, provider:"oauth", token:data.access_token, username:user.login || "", updatedAt:new Date() }, { upsert:true, new:true });
+    res.redirect("/?github=connected");
+  } catch (err) { res.redirect(`/?github=error&message=${encodeURIComponent(err.message)}`); }
+});
+
+/* ── GET /api/git/repos — list all repos for the saved credential ───────── */
+router.get("/repos", dbRequired, requireAuth, async (req, res) => {
+  try {
+    const doc = await getCredential(req);
+    if (!doc) return res.status(401).json({ error: "No GitHub connection. Choose OAuth or Personal Access Token first." });
     const token = doc.token;
 
     // Fetch up to 100 repos sorted by last updated
