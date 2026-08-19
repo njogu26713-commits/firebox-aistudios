@@ -29,6 +29,22 @@ function iconFor(type, status) {
 function formatDuration(seconds) { return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; }
 function formatTime(timestamp) { return new Date(timestamp).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
+function HistoricalActivityBlock({ block }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = (block.activities || []).map(normalizeActivity);
+  const message = [...items].reverse().find(item => item.type === "agent.message" || item.type === "agent.output");
+  const records = items.filter(item => !["agent.message", "agent.output", "agent.completed", "agent.started", "task.started", "agent.failed"].includes(item.type));
+  return <section className="historical-conversation-block">
+    <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{block.prompt}</div></div>
+    {message && <div className="historical-agent-message">{message.description || message.title}</div>}
+    {records.length > 0 && <>
+      <div className="activity-record-icons">{records.slice(-12).map((item, index) => <span key={`${item.id}-${index}`} className={`activity-record-icon activity-record-icon-${item.status}`} title={item.title || item.type}>{iconFor(item.type, item.status)}</span>)}</div>
+      <button type="button" className="activity-record-summary" onClick={() => setExpanded(value => !value)}><span>{expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} {records.length} controlled actions</span><span>{expanded ? "Hide" : "Show"}</span></button>
+      {expanded && records.slice(-20).map(item => <div key={item.id} className={`activity-narrative activity-${item.status}`}><div className="activity-narrative-title">{item.title}</div><div className="activity-narrative-description">{item.description || item.file || item.command}</div><div className="activity-narrative-meta">{formatTime(item.timestamp)}{item.status === "completed" && <span className="completed-label"><CheckCircle2 size={12}/>done</span>}</div></div>)}
+    </>}
+  </section>;
+}
+
 function AgentNarrationLine({ text, active = true }) {
   const [visibleText, setVisibleText] = useState("");
   useEffect(() => {
@@ -45,7 +61,7 @@ function AgentNarrationLine({ text, active = true }) {
   return <div className="agent-narration-line" aria-live="polite">{visibleText}{active && <span className="agent-narration-caret" aria-hidden="true" />}</div>;
 }
 
-export default function AgentActivityPanel({ taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", errorText = "", userPrompt = "", userPrompts = [] }) {
+export default function AgentActivityPanel({ activityBlocks = [], taskName = "Working on your project", activities = [], startedAt, checkpointAt, preparationText = "", preparationError = "", errorText = "", userPrompt = "", userPrompts = [] }) {
   const [now, setNow] = useState(Date.now());
   const [expandedId, setExpandedId] = useState(null);
   const [recordsExpanded, setRecordsExpanded] = useState(false);
@@ -61,8 +77,10 @@ export default function AgentActivityPanel({ taskName = "Working on your project
   const actionGroups = useMemo(() => normalized.reduce((groups, item) => { const key = item.type.startsWith("file.") ? "files" : item.type.startsWith("command.") || item.type === "dependency.installing" ? "tools" : item.type.startsWith("test.") ? "tests" : item.type.startsWith("preview.") ? "preview" : item.type.startsWith("agent.") ? "agent" : "activity"; groups[key] = (groups[key] || 0) + 1; return groups; }, {}), [normalized]);
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
+  const currentPrompt = promptMessages[promptMessages.length - 1];
   return <aside className="agent-activity-panel">
-    {promptMessages[0] && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{promptMessages[0].text}</div></div>}
+    {activityBlocks.map((block, index) => <HistoricalActivityBlock key={`activity-block-${index}-${block.prompt}`} block={block} />)}
+    {currentPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{currentPrompt.text}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {errorText && <div className="workspace-error-line" role="alert">{errorText}</div>}
     {!preparationText && latestAgentMessage && <AgentNarrationLine text={latestAgentMessage.description || latestAgentMessage.title} active={!agentCompleted} />}
@@ -77,6 +95,5 @@ export default function AgentActivityPanel({ taskName = "Working on your project
       </>}
       {!latestAgentMessage && !runningActivity && recordActivities.length === 0 && <div className="activity-empty" aria-label="Live AI activity field" />}
     </div>
-    {promptMessages.slice(1).map((message, index) => <div key={`user-prompt-${index}-${message.text}`} className="user-prompt-line user-prompt-followup"><div className="user-prompt-label">You</div><div className="user-prompt-text">{message.text}</div></div>)}
   </aside>;
 }

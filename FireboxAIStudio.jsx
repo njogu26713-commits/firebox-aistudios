@@ -639,6 +639,8 @@ export default function FireboxAIStudio() {
 
   /* chat state */
   const [chatHistory,    setChatHistory]    = useState([]);  // [{role:"user"|"ai", text:string}]
+  const [activityBlocks, setActivityBlocks] = useState([]); // [{ prompt, activities, startedAt }]
+  const activePromptRef = useRef("");
   const [chatInput,      setChatInput]      = useState("");
   const [aiThinking,     setAiThinking]     = useState(false);  // waiting for /api/chat response
   const [aiStreamText,   setAiStreamText]   = useState("");     // partial AI reply text
@@ -660,10 +662,11 @@ export default function FireboxAIStudio() {
       localStorage.setItem(projectSessionKey(currentBuildId), JSON.stringify({
         chatHistory,
         liveActivity,
+        activityBlocks,
         activityStartedAt,
       }));
     } catch {}
-  }, [currentBuildId, chatHistory, liveActivity, activityStartedAt]);
+  }, [currentBuildId, chatHistory, liveActivity, activityBlocks, activityStartedAt]);
 
   const [launcherFramework, setLauncherFramework] = useState("auto");
   const [launcherPackageManager, setLauncherPackageManager] = useState("auto");
@@ -972,6 +975,17 @@ export default function FireboxAIStudio() {
       return [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80);
     });
   }, []);
+
+  const beginPromptActivity = useCallback((prompt) => {
+    const nextPrompt = String(prompt || "").trim();
+    setLiveActivity(previous => {
+      if (activePromptRef.current && previous.length) {
+        setActivityBlocks(blocks => [...blocks, { prompt: activePromptRef.current, activities: previous, startedAt: activityStartedAt || Date.now() }]);
+      }
+      return [];
+    });
+    activePromptRef.current = nextPrompt;
+  }, [activityStartedAt]);
 
   useEffect(() => {
     if (!activityStartedAt || phase !== "building") return undefined;
@@ -1657,6 +1671,7 @@ export default function FireboxAIStudio() {
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
+    beginPromptActivity(text);
     setActivity("workspace");
     setSideOpen(false);
     setDescription(baseText);
@@ -1667,6 +1682,7 @@ export default function FireboxAIStudio() {
     setPreparationError("");
     setPreparationPlanStartedAt(0);
     if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
+      setChatHistory(prev => [...prev, { role: "user", text }]);
       const planStarted = await requestBuildPlan(text);
       if (planStarted !== false) setChatInput("");
       return;
@@ -1777,7 +1793,7 @@ export default function FireboxAIStudio() {
       setAiThinking(false);
       setPreparationActive(false);
     }
-  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase]);
+  }, [chatInput, chatHistory, requestBuildPlan, startEditFiles, startBuild, currentBuildId, allFiles, aiProvider, providerConfig, localAiConfig, activity, advancedOptionsOpen, launcherFramework, launcherPackageManager, launcherDatabase, beginPromptActivity]);
 
   const stopBuild = useCallback(() => {
     esRef.current?.close();
@@ -1800,7 +1816,7 @@ export default function FireboxAIStudio() {
     setActiveAgent(null); setErrorMsg(""); streamingRef.current = {};
     setActivity("workspace");
     setAgentStartTimes({}); setAgentElapsed({}); setAgentVisSteps({}); setStepsCollapsed({});
-    setChatHistory([]); setChatInput(""); setTypewriterStopped(false); setTypewriterText("");
+    setChatHistory([]); setActivityBlocks([]); activePromptRef.current = ""; setChatInput(""); setTypewriterStopped(false); setTypewriterText("");
     setCurrentBuildId(null);
     setActivityStartedAt(null);
     setActivityClock(Date.now());
@@ -1819,7 +1835,7 @@ export default function FireboxAIStudio() {
   const loadProjectFiles = useCallback(async (build) => {
     setLoadingProjectId(build._id);
     setCurrentBuildId(null);
-    setChatHistory([]); setLiveActivity([]); setActivityStartedAt(null);
+    setChatHistory([]); setLiveActivity([]); setActivityBlocks([]); activePromptRef.current = ""; setActivityStartedAt(null);
     setActivity("workspace"); setSideOpen(false);
     const waitFiveSeconds = () => new Promise(resolve => setTimeout(resolve, 5000));
     try {
@@ -1850,8 +1866,12 @@ export default function FireboxAIStudio() {
         setTabContents({ [first.path]: first.content });
       }
       const session = readProjectSession(build._id);
-      setChatHistory(Array.isArray(session?.chatHistory) ? session.chatHistory : []);
+      const restoredChat = Array.isArray(session?.chatHistory) ? session.chatHistory : [];
+      const restoredBlocks = Array.isArray(session?.activityBlocks) ? session.activityBlocks : [];
+      setChatHistory(restoredChat);
+      setActivityBlocks(restoredBlocks);
       setLiveActivity(Array.isArray(session?.liveActivity) ? session.liveActivity : []);
+      activePromptRef.current = [...restoredChat].reverse().find(message => message.role === "user")?.text || "";
       setActivityStartedAt(session?.activityStartedAt || null);
       setCurrentProjectName(build.projectName || build.name || "firebox-project");
       setCurrentProjectMeta({ fileCount: files.length, framework, packageManager });
@@ -4210,7 +4230,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                 <div style={{ flex:1, minHeight:0, display:"grid", gridTemplateColumns:isMobile ? "1fr" : "minmax(250px, 0.34fr) minmax(0, 0.66fr)", gap:0 }}>
                   <div style={{ minHeight:0, display:"flex", flexDirection:"column", borderRight:isMobile ? "none" : `1px solid ${palette.border}`, background:palette.sideBar }}>
                     <div style={{ flexShrink:0, padding:"12px 12px 9px", borderBottom:`1px solid ${palette.border}` }}><div style={{ display:"flex", alignItems:"center", gap:7, color:palette.text, fontSize:12, fontWeight:700 }}><ChevronDown size={13} color={palette.textMuted}/><FireboxAgentMark size={15}/><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentProjectName}</span></div></div>
-                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} preparationError={preparationError} errorText={errorMsg} userPrompt={[...chatHistory].reverse().find(message => message.role === "user")?.text || ""} userPrompts={chatHistory.filter(message => message.role === "user")} /></div>
+                    <div style={{ flex:1, minHeight:0, display:"flex", overflow:"hidden" }}><AgentActivityPanel activityBlocks={activityBlocks} taskName={description || currentProjectName || "Working on your project"} activities={liveActivity} startedAt={activityStartedAt} checkpointAt={liveActivity.find(item => item.eventType === "checkpoint.created")?.time} preparationText={preparationActive ? understandingText : ""} preparationError={preparationError} errorText={errorMsg} userPrompt={[...chatHistory].reverse().find(message => message.role === "user")?.text || ""} userPrompts={chatHistory.filter(message => message.role === "user")} /></div>
                     <div style={{ flexShrink:0, padding:"10px 10px 12px", borderTop:`1px solid ${palette.border}`, background:palette.titleBar }}>
                       <textarea ref={chatInputRef} value={chatInput} onChange={e => { setChatInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,85)+"px"; }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (phase !== "building") sendChatMessage(); } }} placeholder="Ask anything, describe an app, or request a change…" rows={2} style={{ width:"100%", boxSizing:"border-box", minHeight:52, maxHeight:85, resize:"none", padding:"9px 10px", border:`1px solid ${palette.borderLight}`, borderRadius:8, background:palette.editorBg, color:palette.textActive, fontFamily:FONT_UI, fontSize:11, lineHeight:1.45, outline:"none" }}/>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 }}><button onClick={() => { setChatInput(""); setTimeout(() => chatInputRef.current?.focus(), 0); }} style={{ border:`1px solid ${palette.border}`, borderRadius:999, background:"transparent", color:palette.textMuted, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>＋ New project</button><button onClick={sendChatMessage} disabled={!chatInput.trim() || phase === "building" || aiThinking} title="Build" style={{ width:28, height:28, border:"none", borderRadius:7, background:chatInput.trim() ? palette.accent : "#38383a", color:chatInput.trim() ? "#fff" : palette.textFaint, display:"flex", alignItems:"center", justifyContent:"center", cursor:chatInput.trim() ? "pointer" : "not-allowed" }}><Send size={13}/></button></div>
