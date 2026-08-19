@@ -43,6 +43,9 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
   let repairNoticeSent = false;
   let verificationCompleted = false;
   let verificationPromptAttempts = 0;
+  let projectInspected = false;
+  let pendingFileVerification = null;
+  const fileMutations = new Set(["create_file", "write_file", "edit_file"]);
   for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
     let response;
@@ -105,6 +108,12 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       if (!name) continue;
       let args = {};
       try { args = JSON.parse(call.function?.arguments || "{}"); } catch { throw new Error(`Invalid arguments returned for Firebox tool ${name}`); }
+      if (name !== "inspect_project" && !projectInspected) {
+        throw new Error("Professional workflow requires inspect_project before any other project action");
+      }
+      if (pendingFileVerification && !(name === "read_file" && args.path === pendingFileVerification)) {
+        throw new Error(`Read and verify ${pendingFileVerification} before starting another file change`);
+      }
       let progress = content.trim().replace(/\s+/g, " ");
       if (!progress) {
         try { progress = await requestToolNarration({ config, toolName:name, args, signal }); } catch { progress = ""; }
@@ -115,13 +124,16 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
       try {
         const result = await executeTool(name, args);
+        if (name === "inspect_project") projectInspected = true;
+        if (name === "read_file" && args.path === pendingFileVerification) pendingFileVerification = null;
+        if (fileMutations.has(name)) pendingFileVerification = args.path;
         const serialized = compact(result);
         // Do not immediately jump to the next action. Let the completed result remain observable before asking the model to continue.
         await sleep(ACTION_RESULT_DELAY_MS);
         emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: serialized });
         if (!VERIFICATION_TOOLS.has(name)) verificationCompleted = false;
-        transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. Read and use its result before continuing. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call. For a created or modified file, inspect or verify it when appropriate before moving on; never rush through a batch of files." });
+        transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. Read and use its result before continuing. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call. For every created, written, or edited file, the next controlled action must be read_file on that exact path so the complete file can be checked before any other file is changed. Never batch file changes or claim a file is complete before its read-back result confirms it." });
         const browserFailed = BROWSER_CHECK_TOOLS.has(name) && (failedCheck(result) || result?.consoleErrors?.length || result?.pageErrors?.length);
         if ((CHECK_TOOLS.has(name) && failedCheck(result)) || browserFailed) {
           repairAttempts += 1;
