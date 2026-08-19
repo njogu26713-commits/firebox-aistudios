@@ -1754,12 +1754,50 @@ export default function FireboxAIStudio() {
 
   /* ── Send chat message — AI replies first, then acts ──────────────────── */
   const sendChatMessage = useCallback(async () => {
+    const baseText = chatInput.trim();
+    if (!baseText) return;
+    const buildVerb = /\b(build|create|make|develop|implement|add|fix|edit|change|update|remove|design|generate|install|integrate|refactor|debug|test|deploy|import|write|modify)\b/i.test(baseText);
+    const conversationalMessage = !buildVerb && (/^(hi|hello|hey|hiya|good morning|good afternoon|good evening)\b[!.?\s]*$/i.test(baseText) || /^(what|why|how|when|where|who|can you|could you|would you|do you|are you|is it|tell me|explain)\b/i.test(baseText) || baseText.endsWith("?"));
+    if (conversationalMessage) {
+      const userMsg = { role:"user", text:baseText };
+      setChatHistory(prev => [...prev, userMsg]);
+      setChatInput("");
+      setAiThinking(true);
+      setAiStreamText("");
+      try {
+        const historyForApi = [...chatHistory.slice(-9), userMsg];
+        const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ messages:historyForApi, hasFiles:allFiles.length > 0, fileNames:allFiles.map(f => f.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
+        if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Error ${res.status}`); }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let reply = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream:true });
+          const parts = buffer.split("\\n\\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            const line = part.replace(/^data:\s*/, "").trim();
+            if (!line) continue;
+            let event; try { event = JSON.parse(line); } catch { continue; }
+            if (event.token) { reply += event.token; setAiStreamText(reply); }
+            if (event.done) reply = event.text || reply;
+            if (event.error) throw new Error(event.error);
+          }
+        }
+        setChatHistory(prev => [...prev, { role:"ai", text:reply || "I’m here. Tell me what you would like to understand or build." }]);
+        setAiStreamText("");
+      } catch (error) {
+        setChatHistory(prev => [...prev, { role:"ai", text:`I couldn’t answer that right now: ${error.message}` }]);
+      } finally { setAiThinking(false); }
+      return;
+    }
     if (!agentPageSelected) {
       setErrorMsg("Choose an AI Agent from the dropdown or the AI Agent page before sending this prompt.");
       return;
     }
-    const baseText = chatInput.trim();
-    if (!baseText) return;
     const launcherOverrides = activity === "home" && advancedOptionsOpen
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
