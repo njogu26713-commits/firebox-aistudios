@@ -5,8 +5,13 @@ const compact = (value) => JSON.stringify(value, (_key, item) => typeof item ===
 const CHECK_TOOLS = new Set(["run_tests", "run_build"]);
 const failedCheck = (value) => value?.ok === false || value?.success === false || value?.passed === false || Number(value?.exitCode) > 0 || Number(value?.statusCode) >= 400;
 const sleep = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
-const ACTION_FOCUS_DELAY_MS = 1200;
-const ACTION_RESULT_DELAY_MS = 900;
+const ACTION_RESULT_DELAY_MS = 2500;
+const focusDelayFor = (toolName) => {
+  if (["create_file", "write_file", "edit_file", "delete_file"].includes(toolName)) return 5000;
+  if (["read_file", "search_project"].includes(toolName)) return 3500;
+  if (["run_command", "run_tests", "run_build", "install_package"].includes(toolName)) return 4500;
+  return 4000;
+};
 
 async function requestToolNarration({ config, toolName, args, signal }) {
   const target = args?.path || args?.file || args?.command || args?.package || toolName;
@@ -93,7 +98,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       }
       if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
       // Keep the active narration visible long enough for the user to understand which single action is in focus.
-      await sleep(ACTION_FOCUS_DELAY_MS);
+      await sleep(focusDelayFor(name));
       emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
       try {
         const result = await executeTool(name, args);
