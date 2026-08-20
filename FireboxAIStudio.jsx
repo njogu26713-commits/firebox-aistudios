@@ -3716,7 +3716,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                         )}
 
                         {/* Repos list */}
-                        <div style={{ flex:1, overflowY:"auto" }}>
+                        <div style={{ flex:1, overflowY:"auto", position:"relative", zIndex:1, pointerEvents:"auto" }}>
                           {gitReposLoading ? (
                             <div style={{ padding:"20px 10px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                               <Loader2 size={14} color={palette.textMuted} style={{ animation:"spin 1s linear infinite" }}/>
@@ -3736,12 +3736,15 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                               .filter(r => !gitRepoFilter || r.fullName.toLowerCase().includes(gitRepoFilter.toLowerCase()))
                               .map(r => (
                                 <button
+                                  type="button"
                                   key={r.id}
-                                  onClick={() => connectGitRepo(r.fullName)}
+                                  aria-label={`Open repository ${r.fullName}`}
+                                  onClick={event => { event.preventDefault(); event.stopPropagation(); connectGitRepo(r.fullName); }}
+                                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); connectGitRepo(r.fullName); } }}
                                   style={{
-                                    display:"block", width:"100%", textAlign:"left",
+                                    position:"relative", zIndex:2, pointerEvents:"auto", display:"block", width:"100%", textAlign:"left",
                                     background:"transparent", border:"none", borderBottom:`1px solid ${palette.border}`,
-                                    padding:"8px 12px", cursor:"pointer", color:palette.text,
+                                    padding:"8px 12px", cursor:"pointer", color:palette.text, touchAction:"manipulation",
                                   }}
                                   onMouseEnter={e => (e.currentTarget.style.background="#2A2D2E")}
                                   onMouseLeave={e => (e.currentTarget.style.background="transparent")}
