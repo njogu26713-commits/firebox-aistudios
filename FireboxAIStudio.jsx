@@ -1437,18 +1437,32 @@ export default function FireboxAIStudio() {
       } catch { /* ignore malformed inspection event */ }
     });
     es.addEventListener("tool-start", e => {
-      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
+      try {
+        const data = JSON.parse(e.data || "{}");
+        const tool = data.tool || "controlled action";
+        const target = data.input?.path || data.input?.command || data.input?.package || "";
+        appendActivity({ eventType:"tool.started", kind:"tool", status:"working", label:data.label || `Running ${tool}`, text:target ? `${tool} · ${target}` : tool, command:data.input?.command || "", details:data.input ? JSON.stringify(data.input) : "", aiGenerated:true });
+      } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-complete", e => {
-      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
+      try {
+        const data = JSON.parse(e.data || "{}");
+        const tool = data.tool || "controlled action";
+        const result = typeof data.result === "string" ? data.result : data.result ? JSON.stringify(data.result) : "Action completed";
+        appendActivity({ eventType:"tool.completed", kind:"tool", status:"done", label:data.label || `${tool} completed`, text:result.slice(0, 360), details:result, aiGenerated:true });
+      } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-error", e => {
-      try { JSON.parse(e.data); } catch { /* ignore malformed activity event */ }
+      try {
+        const data = JSON.parse(e.data || "{}");
+        appendActivity({ eventType:"tool.error", kind:"tool", status:"error", label:data.label || `${data.tool || "Controlled action"} failed`, text:data.message || "The controlled action failed", details:data.details || data.message || "", aiGenerated:true });
+      } catch { /* ignore malformed activity event */ }
     });
 
     es.addEventListener("agent-start", e => {
       const { agent, capability, task } = JSON.parse(e.data);
       setActiveAgent(agent);
+      appendActivity({ eventType:"agent.started", kind:"agent", status:"working", label:agent || "Firebox Agent", text:task || "Agent started working", aiGenerated:true });
       updateAgent(agent, { status:"working", streaming:"" });
       streamingRef.current[agent] = "";
 
@@ -1513,6 +1527,7 @@ export default function FireboxAIStudio() {
       }
       setAgentVisSteps(prev => ({ ...prev, [agent]: (AGENT_STEPS[agent]||[]).length }));
       updateAgent(agent, { status:"done", streaming:"" });
+      appendActivity({ eventType:"agent.completed", kind:"build", status:"done", label:`${agent || "Agent"} completed`, text:files?.length ? `${files.length} project file(s) updated` : "Agent completed this stage", aiGenerated:true });
       if (files?.length) {
         setAllFiles(prev => {
           const next = [...prev, ...files];
