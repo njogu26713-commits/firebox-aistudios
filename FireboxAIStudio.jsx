@@ -1788,90 +1788,18 @@ export default function FireboxAIStudio() {
   const sendChatMessage = useCallback(async () => {
     const baseText = chatInput.trim();
     if (!baseText) return;
-    const buildVerb = /\b(build|create|make|develop|implement|add|fix|edit|change|update|remove|design|generate|install|integrate|refactor|debug|test|deploy|import|write|modify)\b/i.test(baseText);
-    const conversationalMessage = !buildVerb && (/^(hi|hello|hey|hiya|good morning|good afternoon|good evening)\b[!.?\s]*$/i.test(baseText) || /^(what|why|how|when|where|who|can you|could you|would you|do you|are you|is it|tell me|explain)\b/i.test(baseText) || baseText.endsWith("?"));
-    if (conversationalMessage) {
-      const userMsg = { role:"user", text:baseText };
-      setChatHistory(prev => [...prev, userMsg]);
-      setChatInput("");
-      setAiThinking(true);
-      setAiStreamText("");
-      try {
-        const historyForApi = [...chatHistory.slice(-9), userMsg];
-        const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ messages:historyForApi, hasFiles:allFiles.length > 0, fileNames:allFiles.map(f => f.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
-        if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Error ${res.status}`); }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let reply = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream:true });
-          const parts = buffer.split("\\n\\n");
-          buffer = parts.pop() || "";
-          for (const part of parts) {
-            const line = part.replace(/^data:\s*/, "").trim();
-            if (!line) continue;
-            let event; try { event = JSON.parse(line); } catch { continue; }
-            if (event.token) { reply += event.token; setAiStreamText(reply); }
-            if (event.done) reply = event.text || reply;
-            if (event.error) throw new Error(event.error);
-          }
-        }
-        setChatHistory(prev => [...prev, { role:"ai", text:reply || "I’m here. Tell me what you would like to understand or build." }]);
-        setAiStreamText("");
-      } catch (error) {
-        setChatHistory(prev => [...prev, { role:"ai", text:`I couldn’t answer that right now: ${error.message}` }]);
-      } finally { setAiThinking(false); }
-      return;
-    }
-    if (!agentPageSelected) {
-      setErrorMsg("Choose an AI Agent from the dropdown or the AI Agent page before sending this prompt.");
-      return;
-    }
     const launcherOverrides = activity === "home" && advancedOptionsOpen
       ? `\n\nOptional technical preferences (use only when compatible): framework=${launcherFramework}; package manager=${launcherPackageManager}; database=${launcherDatabase}. Firebox should still choose the safest compatible stack when an option is set to auto.`
       : "";
     const text = `${baseText}${launcherOverrides}`;
-    beginPromptActivity(text);
-    setActivity("workspace");
-    setSideOpen(false);
-    setDescription(baseText);
-    setPreparationActive(true);
-    setPreparationPhases([]);
-    setPreparationStartedAt(Date.now());
-    setPreparationPlanText("");
-    setPreparationDecisionText("");
-    setPreparationError("");
-    setPreparationPlanStartedAt(0);
-    if (allFiles.length === 0 && (activity === "home" || activity === "workspace")) {
-      setChatHistory(prev => [...prev, { role: "user", text }]);
-      const planStarted = await requestBuildPlan(text);
-      if (planStarted !== false) setChatInput("");
-      return;
-    }
-    if (currentBuildId && allFiles.length > 0) {
-      const userMsg = { role: "user", text };
-      setChatHistory(prev => [...prev, userMsg]);
-      setChatInput("");
-      setActivity("workspace");
-      setSideOpen(false);
-      // Keep Understanding → Analyzing → Creating plan → Deciding changes visible for 10 seconds each before editing.
-      await new Promise(resolve => window.setTimeout(resolve, 40000));
-      await startEditFiles(text);
-      return;
-    }
-    const userMsg = { role: "user", text };
+    const userMsg = { role:"user", text };
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput("");
     setAiThinking(true);
     setAiStreamText("");
-    setActivity("workspace");
-    setSideOpen(false);
     setTimeout(() => chatInputRef.current?.focus(), 0);
 
-    // Build conversation for the API (last 10 messages for context)
+    // Let the selected AI classify the message before showing coding-workflow UI.
     const historyForApi = [...chatHistory.slice(-9), userMsg];
 
     try {
@@ -1944,11 +1872,35 @@ export default function FireboxAIStudio() {
       setAiStreamText("");
       setAiThinking(false);
 
-      // Perform the action the AI decided on
+      // Normal conversation stays a normal AI reply. Only an explicit AI action
+      // starts the typewriter coding workflow and project mutation path.
+      if (!action) {
+        setPreparationActive(false);
+        return;
+      }
+      if (!agentPageSelected) {
+        setErrorMsg("Choose an AI Agent before asking Firebox to change the project.");
+        setPreparationActive(false);
+        return;
+      }
+      setActivity("workspace");
+      setSideOpen(false);
+      setDescription(baseText);
+      setPreparationActive(true);
+      setPreparationPhases([]);
+      setPreparationStartedAt(Date.now());
+      setPreparationPlanText("");
+      setPreparationDecisionText("");
+      setPreparationError("");
+      setPreparationPlanStartedAt(0);
+      beginPromptActivity(text);
       if (action === "build") {
         await requestBuildPlan(text);
       } else if (action === "edit" && currentBuildId && allFiles.length > 0) {
-        startEditFiles(text);
+        await startEditFiles(text);
+      } else if (action === "edit") {
+        setErrorMsg("This project must be open before Firebox can edit its files.");
+        setPreparationActive(false);
       }
     } catch (err) {
       const message = aiProvider === "local"
