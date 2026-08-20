@@ -14,7 +14,7 @@ import { runAgentPipeline } from "./agents/runner.js";
 import { AGENT_DEFS } from "./agents/config.js";
 import gitRouter from "./routes/git.js";
 import authRouter, { requireAuth } from "./routes/auth.js";
-import { getCompletionStream, normalizeAiConfig, testLocalAi } from "./aiProvider.js";
+import { getCompletionStream, normalizeAiConfig, testLocalAi, testLocalAiHealth } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
 import { createCloudRuntime } from "./agents/cloudRuntime.js";
@@ -512,6 +512,15 @@ app.post("/api/test-local-ai", async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/test-local-ai/health", async (_req, res) => {
+  try {
+    const result = await testLocalAiHealth({ provider: "local" });
+    res.json(result);
+  } catch (err) {
+    res.status(503).json({ ok: false, error: err.message });
   }
 });
 

@@ -1,6 +1,7 @@
 import { callWithFallback } from "./groqPool.js";
 
 const DEFAULT_CLOUD_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:11434/v1";
 const PROVIDER_DEFAULTS = {
   openai: { endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   anthropic: { endpoint: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
@@ -15,10 +16,15 @@ export function normalizeAiConfig(input = {}) {
   if (provider === "cloud") return { provider: "cloud" };
   if (provider === "local" || SUPPORTED_EXTERNAL.has(provider)) {
     const defaults = provider === "local" ? {} : PROVIDER_DEFAULTS[provider];
-    let endpoint = String(input.endpoint || defaults.endpoint || "").trim().replace(/\/+$/, "");
+    const configuredEndpoint = provider === "local"
+      ? (process.env.OLLAMA_ENDPOINT || input.endpoint || DEFAULT_LOCAL_ENDPOINT)
+      : (input.endpoint || defaults.endpoint || "");
+    let endpoint = String(configuredEndpoint).trim().replace(/\/+$/, "");
     if (provider === "openai" || provider === "openrouter" || provider === "custom") endpoint = endpoint.replace(/\/chat\/completions$/i, "");
     if (provider === "anthropic") endpoint = endpoint.replace(/\/messages$/i, "");
-    const model = String(input.model || defaults.model || "").trim();
+    const model = String(provider === "local"
+      ? (process.env.OLLAMA_MODEL || input.model || "")
+      : (input.model || defaults.model || "")).trim();
     const apiKey = String(input.apiKey || "").trim();
     if (!endpoint) throw new Error(`${provider === "local" ? "Local AI" : provider} endpoint is required`);
     if (!model) throw new Error(`${provider === "local" ? "Local AI" : provider} model identifier is required`);
@@ -31,21 +37,33 @@ export function normalizeAiConfig(input = {}) {
   throw new Error(`Unsupported AI provider: ${provider}`);
 }
 
+function localApiBase(endpoint) {
+  return endpoint.replace(/\/chat\/completions$/i, "").replace(/\/+$/, "");
+}
+
 function localCompletionUrl(endpoint) {
-  return endpoint.endsWith("/chat/completions") ? endpoint : `${endpoint}/chat/completions`;
+  const base = localApiBase(endpoint);
+  return `${base}/chat/completions`;
+}
+
+function localModelsUrl(endpoint) {
+  const base = localApiBase(endpoint);
+  return `${base}/models`;
 }
 
 async function fetchProvider(url, options, label) {
   try {
     return await fetch(url, options);
   } catch (error) {
-    throw new Error(`${label} connection failed at ${url}: ${error?.message || "fetch failed"}`);
+    if (label === "Ollama" || label === "Local AI") throw new Error("Ollama is unavailable. Check the Ollama endpoint and Cloudflare Tunnel connection.");
+    throw new Error(`${label} connection failed: ${error?.message || "fetch failed"}`);
   }
 }
 
 async function readJson(response, label) {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+    if (label === "Ollama" || label === "Local AI") throw new Error(`Ollama is unavailable. Check the Ollama endpoint and Cloudflare Tunnel connection. (${response.status})`);
     throw new Error(`${label} request failed (${response.status})${body ? `: ${body.slice(0, 500)}` : ""}`);
   }
   return response.json();
@@ -55,9 +73,9 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
   const headers = { "Content-Type": "application/json" };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
   const localUrl = localCompletionUrl(config.endpoint);
-  const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) }, "Local AI");
-  if (!response.ok) throw new Error(`Local AI request failed (${response.status})`);
-  if (!response.body) throw new Error("Local AI returned an empty response body");
+  const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: config.model, messages, think: false, stream: true, max_tokens: maxTokens, temperature }) }, "Ollama");
+  if (!response.ok) throw new Error(`Ollama is unavailable. Check the Ollama endpoint and Cloudflare Tunnel connection. (${response.status})`);
+  if (!response.body) throw new Error("Ollama returned an empty response body.");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -149,7 +167,7 @@ export async function getStructuredCompletion({ config, messages, tools = [], to
     if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
     const localUrl = localCompletionUrl(normalized.endpoint);
     const response = await fetchProvider(localUrl, { method: "POST", headers, signal, body: JSON.stringify({ model: normalized.model, messages, tools, tool_choice: tools.length ? toolChoice : "none", think: false, stream: false, max_tokens: maxTokens, temperature }) }, "Local AI");
-    return readJson(response, "Local AI");
+    return readJson(response, "Ollama");
   }
   if (normalized.provider !== "cloud") return providerCompletion({ config: normalized, messages, tools, toolChoice, maxTokens, temperature, signal });
   return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, tools, tool_choice: tools.length ? toolChoice : "none", stream: false, max_tokens: maxTokens, temperature }));
@@ -163,6 +181,15 @@ export async function getCompletionStream({ config, messages, maxTokens, tempera
     return (async function* () { const content = response.choices?.[0]?.message?.content || ""; if (content) yield content; })();
   }
   return callWithFallback((client) => client.chat.completions.create({ model: DEFAULT_CLOUD_MODEL, messages, stream: true, max_tokens: maxTokens, temperature }));
+}
+
+export async function testLocalAiHealth(config = {}, signal) {
+  const normalized = normalizeAiConfig({ ...config, provider: "local" });
+  const headers = {};
+  if (normalized.apiKey) headers.Authorization = `Bearer ${normalized.apiKey}`;
+  const response = await fetchProvider(localModelsUrl(normalized.endpoint), { method: "GET", headers, signal }, "Ollama");
+  const data = await readJson(response, "Ollama");
+  return { ok: true, models: Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []) };
 }
 
 export async function testLocalAi(config, signal) {
