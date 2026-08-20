@@ -4789,7 +4789,7 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                                   title="Delete project"
                                   style={{
                                     position:"absolute", top:10, right:10,
-                                    opacity:0, transition:"opacity 0.15s, background 0.15s",
+                                    opacity:1, transition:"opacity 0.15s, background 0.15s",
                                     width:26, height:26, borderRadius:6,
                                     background:"rgba(244,135,113,0.12)",
                                     border:"1px solid rgba(244,135,113,0.25)",
