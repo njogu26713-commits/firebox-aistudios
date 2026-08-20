@@ -46,7 +46,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
   let projectInspected = false;
   let pendingFileVerification = null;
   const fileMutations = new Set(["create_file", "write_file", "edit_file"]);
-  for (let turn = 0; turn < maxTurns; turn += 1) {
+  turnLoop: for (let turn = 0; turn < maxTurns; turn += 1) {
     if (signal?.aborted) throw new Error("Firebox Agent stopped");
     let response;
     try {
@@ -79,6 +79,21 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       ? message.content.map((part) => typeof part === "string" ? part : part?.text || "").join("")
       : String(message.content || "");
     transcript.push({ role: "assistant", content: content || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
+
+    // Providers can occasionally choose a useful-looking action before obeying the
+    // inspection-first instruction. Perform the required inspection as a controlled
+    // recovery step, then ask the provider to choose its action again with the result.
+    if (!projectInspected && toolCalls.length && toolCalls[0]?.function?.name !== "inspect_project") {
+      transcript.pop();
+      const inspectionCall = { id: `firebox-inspect-${turn}`, type: "function", function: { name: "inspect_project", arguments: "{}" } };
+      emit("agent.message", { agent:"Firebox Agent", description:"I’m inspecting the existing project before continuing with the requested action.", status:"working", aiGenerated:true });
+      transcript.push({ role: "assistant", content: null, tool_calls: [inspectionCall] });
+      const inspectionResult = await executeTool("inspect_project", {});
+      projectInspected = true;
+      transcript.push({ role: "tool", tool_call_id: inspectionCall.id, name: "inspect_project", content: compact(inspectionResult) });
+      transcript.push({ role: "user", content: "The required project inspection is complete. Continue with the original request and choose the next appropriate Firebox tool." });
+      continue turnLoop;
+    }
 
     if (!toolCalls.length) {
       if (content.trim() && !verificationCompleted) {
