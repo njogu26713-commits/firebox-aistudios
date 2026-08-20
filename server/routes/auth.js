@@ -15,11 +15,11 @@ function dbRequired(req, res, next) {
   next();
 }
 
-function normalizeEmail(value) {
+export function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function validateCredentials(email, password) {
+export function validateCredentials(email, password) {
   if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address";
   if (String(password || "").length < 8) return "Password must be at least 8 characters";
   return null;

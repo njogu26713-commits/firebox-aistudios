@@ -2602,10 +2602,16 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
   const submitAuth = async (event) => {
     event?.preventDefault();
     setAuthBusy(true); setAuthMessage("");
+    const normalizedEmail = String(authEmail || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setAuthMessage("Please enter a valid email address.");
+      setAuthBusy(false);
+      return;
+    }
     try {
       const response = await fetch(`/api/auth/${authMode === "register" ? "register" : "login"}`, {
         method:"POST", headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ email:authEmail, password:authPassword }),
+        body:JSON.stringify({ email:normalizedEmail, password:authPassword }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Authentication failed");
@@ -2659,8 +2665,8 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
               <button type="button" disabled={authBusy} onClick={() => handleOAuth("github")} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:9, padding:"10px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, cursor:"pointer", fontFamily:FONT_UI, fontSize:12, fontWeight:600 }}><Github size={17}/> Continue with GitHub</button>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:10, margin:"17px 0", color:palette.textFaint, fontSize:10 }}><span style={{ flex:1, height:1, background:palette.border }}/><span>OR CONTINUE WITH EMAIL</span><span style={{ flex:1, height:1, background:palette.border }}/></div>
-            <form onSubmit={submitAuth} style={{ display:"grid", gap:10 }}>
-              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email address" autoComplete="email" style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, outline:"none", fontFamily:FONT_UI, fontSize:12 }}/>
+            <form onSubmit={submitAuth} noValidate style={{ display:"grid", gap:10 }}>
+              <input type="email" required value={authEmail} onChange={e => { setAuthEmail(e.target.value.trim()); setAuthMessage(""); }} placeholder="Email address" autoComplete="email" style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, outline:"none", fontFamily:FONT_UI, fontSize:12 }}/>
               <input type="password" required minLength={8} value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Password (8+ characters)" autoComplete={authMode === "register" ? "new-password" : "current-password"} style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", border:`1px solid ${palette.border}`, borderRadius:8, background:palette.editorBg, color:palette.text, outline:"none", fontFamily:FONT_UI, fontSize:12 }}/>
               <button type="submit" disabled={authBusy} style={{ width:"100%", padding:"11px 12px", marginTop:2, border:"none", borderRadius:8, background:palette.accent, color:"#fff", cursor:authBusy ? "wait" : "pointer", fontFamily:FONT_UI, fontSize:12, fontWeight:700 }}>{authBusy ? "Please wait…" : authMode === "register" ? "Create account" : "Sign in"}</button>
             </form>
