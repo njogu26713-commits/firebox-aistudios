@@ -1311,43 +1311,25 @@ export default function FireboxAIStudio() {
     agentTimerRefs.current = {};
 
     let buildId;
-    const useLocalEngine = aiProvider === "local";
-    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
-    if (useLocalEngine && (!engineBase || !localEngineToken.trim())) {
-      setPhase("error");
-      setErrorMsg("Local AI builds require the Local Firebox Engine URL and pairing token. Start the engine on Windows and enter both values in Settings.");
-      setPreparationActive(false);
-      return;
-    }
     try {
-      const requestUrl = useLocalEngine ? `${engineBase}/api/build` : "/api/build";
-      const headers = { "Content-Type": "application/json" };
-      if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
-      const res = await fetch(requestUrl, {
-        method:"POST", headers,
-        body: JSON.stringify(useLocalEngine ? {
-          description: buildDesc,
-          endpoint: localAiConfig.endpoint,
-          model: localAiConfig.model,
-          apiKey: localAiConfig.apiKey,
-          toolMode: true,
-        } : {
+      const res = await fetch("/api/build", {
+        method:"POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           description: buildDesc,
           provider: aiProvider,
           localAi: aiProvider !== "cloud" ? providerConfig : undefined,
           toolMode: true,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to start");
-      buildId = useLocalEngine ? data.jobId : data.buildId;
+      buildId = data.buildId;
       setCurrentBuildId(buildId);
       setCurrentProjectName(data.projectName || "firebox-project");
     } catch (err) { setPhase("error"); setErrorMsg(err.message); setPreparationActive(false); return; }
 
-    const eventUrl = useLocalEngine
-      ? `${engineBase}/api/build/${buildId}/events?token=${encodeURIComponent(localEngineToken.trim())}`
-      : `/api/build/${buildId}/events`;
+    const eventUrl = `/api/build/${buildId}/events`;
     streamTerminalRef.current = false;
     const es = new EventSource(eventUrl);
     esRef.current = es;
@@ -1619,12 +1601,8 @@ export default function FireboxAIStudio() {
 
   const setBuildExecutionState = useCallback(async (nextState) => {
     if (!currentBuildId) return;
-    const useLocalEngine = aiProvider === "local";
-    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
-    if (useLocalEngine && (!engineBase || !localEngineToken.trim())) return;
-    const url = useLocalEngine ? `${engineBase}/api/build/${currentBuildId}/${nextState === "paused" ? "pause" : "resume"}` : `/api/build/${currentBuildId}/${nextState === "paused" ? "pause" : "resume"}`;
+    const url = `/api/build/${currentBuildId}/${nextState === "paused" ? "pause" : "resume"}`;
     const headers = { "Content-Type": "application/json" };
-    if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
     try {
       const response = await fetch(url, { method:"POST", headers });
       const data = await response.json().catch(() => ({}));
