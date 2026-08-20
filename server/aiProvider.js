@@ -79,23 +79,28 @@ async function* streamLocalCompletion({ config, messages, maxTokens, temperature
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  const parseEvents = function* (chunk) {
+    for (const event of chunk.replace(/\r\n/g, "\n").split("\n\n")) {
+      const line = event.split("\n").find((entry) => entry.startsWith("data:"));
+      if (!line) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      let parsed; try { parsed = JSON.parse(payload); } catch { continue; }
+      const token = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || "";
+      if (token) yield token;
+    }
+  };
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split("\n\n");
+      const events = buffer.replace(/\r\n/g, "\n").split("\n\n");
       buffer = events.pop() || "";
-      for (const event of events) {
-        const line = event.split("\n").find((entry) => entry.startsWith("data:"));
-        if (!line) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
-        let parsed; try { parsed = JSON.parse(payload); } catch { continue; }
-        const token = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || "";
-        if (token) yield token;
-      }
+      for (const token of parseEvents(events.join("\n\n"))) yield token;
     }
+    buffer += decoder.decode();
+    for (const token of parseEvents(buffer)) yield token;
   } finally { reader.releaseLock(); }
 }
 
