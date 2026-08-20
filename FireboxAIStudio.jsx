@@ -1176,7 +1176,6 @@ export default function FireboxAIStudio() {
     setLocalAiTestMessage("");
     let modelsUrl = "";
     let chatUrl = "";
-    const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
 
     try {
       if (aiProvider !== "local") {
@@ -1187,7 +1186,16 @@ export default function FireboxAIStudio() {
         setLocalAiTestMessage(`Connection works. ${data.plan.summary || "Provider returned a valid response."}`);
         return;
       }
-      if (engineBase && localEngineToken.trim()) {
+      if (aiProvider === "local") {
+        const healthResponse = await fetch("/api/test-local-ai/health", { headers: { Accept: "application/json" } });
+        const healthData = await healthResponse.json().catch(() => ({}));
+        if (!healthResponse.ok || !healthData.ok) throw new Error(healthData.error || "Ollama is unavailable. Check the Ollama endpoint and Cloudflare Tunnel connection.");
+        const availableModels = (healthData.models || []).map(model => model.id).filter(Boolean);
+        setLocalAiTestState("success");
+        setLocalAiTestMessage(`Ollama connection works. ${availableModels.length} model(s) available${availableModels.length ? `: ${availableModels.join(", ")}` : "."}`);
+        return;
+      }
+      if (false && localEngineToken.trim()) {
         const engineUrl = `${engineBase}/api/test-ollama`;
         const engineResponse = await fetch(engineUrl, {
           method: "POST",
