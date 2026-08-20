@@ -86,7 +86,11 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
     if (!projectInspected && toolCalls.length && toolCalls[0]?.function?.name !== "inspect_project") {
       transcript.pop();
       const inspectionCall = { id: `firebox-inspect-${turn}`, type: "function", function: { name: "inspect_project", arguments: "{}" } };
-      emit("agent.message", { agent:"Firebox Agent", description:"I’m inspecting the existing project before continuing with the requested action.", status:"working", aiGenerated:true });
+      let inspectionNarration = "";
+      try { inspectionNarration = await requestToolNarration({ config, toolName:"inspect_project", args:{}, signal }); } catch { inspectionNarration = "I’m inspecting the existing project before continuing."; }
+      emit("agent.message", { agent:"Firebox Agent", description:inspectionNarration, status:"working", aiGenerated:true });
+      await sleep(focusDelayFor("inspect_project"));
+      emit("tool-start", { tool:"inspect_project", label:TOOL_ACTIVITY_LABELS.inspect_project || "Inspecting project", input:{}, turn:turn + 1 });
       transcript.push({ role: "assistant", content: null, tool_calls: [inspectionCall] });
       const inspectionResult = await executeTool("inspect_project", {});
       projectInspected = true;
