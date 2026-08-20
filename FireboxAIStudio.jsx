@@ -1739,17 +1739,15 @@ export default function FireboxAIStudio() {
     setPlanning(true);
     setBuildPlan(null);
     try {
-      const useLocalEngine = aiProvider === "local";
-      const engineBase = localEngineUrl.trim().replace(/\/+$/, "");
-      if (useLocalEngine && (!engineBase || !localEngineToken.trim())) throw new Error("Local AI planning requires the Local Firebox Engine URL and pairing token.");
-      const requestUrl = useLocalEngine ? `${engineBase}/api/plan` : "/api/plan";
+      // Local AI is Ollama through the Railway backend. The Local Firebox Engine
+      // URL is a separate execution/runtime setting and must not receive planning requests.
+      const requestUrl = "/api/plan";
       const headers = { "Content-Type": "application/json" };
-      if (useLocalEngine) headers.Authorization = `Bearer ${localEngineToken.trim()}`;
       let response;
       try {
         response = await fetch(requestUrl, { method:"POST", headers, body: JSON.stringify({ description:text, fileNames:allFiles.map(file => file.path), provider:aiProvider, localAi:aiProvider !== "cloud" ? providerConfig : undefined }) });
       } catch (networkError) {
-        throw new Error(`Unable to reach the Planning Agent endpoint (${requestUrl}) for provider ${aiProvider}. Check that the deployed server is running and inspect Railway logs. Network detail: ${networkError?.message || "fetch failed"}`);
+        throw new Error(`Unable to reach the Firebox planning backend for provider ${aiProvider}. Check the deployed server and Ollama endpoint. Network detail: ${networkError?.message || "fetch failed"}`);
       }
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.plan) throw new Error(data.error || "Unable to create a build plan");
