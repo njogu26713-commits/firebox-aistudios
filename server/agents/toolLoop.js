@@ -7,13 +7,12 @@ const BROWSER_CHECK_TOOLS = new Set(["browser_assert", "browser_console"]);
 const VERIFICATION_TOOLS = new Set([...CHECK_TOOLS, ...BROWSER_CHECK_TOOLS]);
 const failedCheck = (value) => value?.ok === false || value?.success === false || value?.passed === false || Number(value?.exitCode) > 0 || Number(value?.statusCode) >= 400;
 const sleep = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
-const ACTION_RESULT_DELAY_MS = 2500;
-const focusDelayFor = (toolName) => {
-  if (["create_file", "write_file", "edit_file", "delete_file"].includes(toolName)) return 5000;
-  if (["read_file", "search_project"].includes(toolName)) return 3500;
-  if (["run_command", "run_tests", "run_build", "install_package"].includes(toolName)) return 4500;
-  return 4000;
-};
+// Each controlled action gets a deliberate narration window before execution and
+// a visible completion window after execution. The tool call itself is awaited,
+// so the next model turn cannot begin while the current action is still running.
+const ACTION_RESULT_DELAY_MS = 3000;
+const NARRATION_HOLD_MS = 6000;
+const focusDelayFor = () => NARRATION_HOLD_MS;
 
 async function requestToolNarration({ config, toolName, args, signal }) {
   const target = args?.path || args?.file || args?.command || args?.package || toolName;
@@ -88,9 +87,10 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       const inspectionCall = { id: `firebox-inspect-${turn}`, type: "function", function: { name: "inspect_project", arguments: "{}" } };
       let inspectionNarration = "";
       try { inspectionNarration = await requestToolNarration({ config, toolName:"inspect_project", args:{}, signal }); } catch { inspectionNarration = "I’m inspecting the existing project before continuing."; }
-      emit("agent.message", { agent:"Firebox Agent", description:inspectionNarration, status:"working", aiGenerated:true });
+      const inspectionActionId = `firebox-action-${turn + 1}-inspect`;
+      emit("agent.message", { agent:"Firebox Agent", description:inspectionNarration, status:"working", aiGenerated:true, actionId:inspectionActionId, narrationDurationMs:NARRATION_HOLD_MS });
       await sleep(focusDelayFor("inspect_project"));
-      emit("tool-start", { tool:"inspect_project", label:TOOL_ACTIVITY_LABELS.inspect_project || "Inspecting project", input:{}, turn:turn + 1 });
+      emit("tool-start", { tool:"inspect_project", label:TOOL_ACTIVITY_LABELS.inspect_project || "Inspecting project", input:{}, actionId:inspectionActionId, narration:inspectionNarration, narrationDurationMs:NARRATION_HOLD_MS, turn:turn + 1 });
       transcript.push({ role: "assistant", content: null, tool_calls: [inspectionCall] });
       const inspectionResult = await executeTool("inspect_project", {});
       projectInspected = true;
@@ -137,10 +137,11 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
       if (!progress) {
         try { progress = await requestToolNarration({ config, toolName:name, args, signal }); } catch { progress = ""; }
       }
-      if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, turn:turn + 1 });
-      // Keep the active narration visible long enough for the user to understand which single action is in focus.
+      const actionId = `firebox-action-${turn + 1}-${name}`;
+      if (progress) emit("agent.message", { agent:"Firebox Agent", text:progress, description:progress, status:"working", aiGenerated:true, actionId, narrationDurationMs:NARRATION_HOLD_MS, turn:turn + 1 });
+      // Keep the AI-generated narration visible for six seconds before execution.
       await sleep(focusDelayFor(name));
-      emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, turn: turn + 1 });
+      emit("tool-start", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, input: args, actionId, narration:progress, narrationDurationMs:NARRATION_HOLD_MS, turn:turn + 1 });
       try {
         const result = await executeTool(name, args);
         if (name === "inspect_project") projectInspected = true;
@@ -149,7 +150,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
         const serialized = compact(result);
         // Do not immediately jump to the next action. Let the completed result remain observable before asking the model to continue.
         await sleep(ACTION_RESULT_DELAY_MS);
-        emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, turn: turn + 1 });
+        emit("tool-complete", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, result: serialized, actionId, narration:progress, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: serialized });
         if (!VERIFICATION_TOOLS.has(name)) verificationCompleted = false;
         transcript.push({ role:"user", content:"The previous controlled Firebox action has completed. Read and use its result before continuing. In your next response, first confirm that result in one concise plain-text sentence, then state the next file or action you are starting, and make only one next controlled tool call. For every created, written, or edited file, the next controlled action must be read_file on that exact path so the complete file can be checked before any other file is changed. Never batch file changes or claim a file is complete before its read-back result confirms it." });
@@ -164,7 +165,7 @@ export async function runFireboxToolLoop({ config, messages, toolDefinitions, ex
           emit("workflow-repair-complete", { tool: name, attempts: repairAttempts, message: "Project check passed after controlled repair handling." });
         }
       } catch (error) {
-        emit("tool-error", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, message: error.message, turn: turn + 1 });
+        emit("tool-error", { tool: name, label: TOOL_ACTIVITY_LABELS[name] || name, message: error.message, actionId, narration:progress, turn: turn + 1 });
         transcript.push({ role: "tool", tool_call_id: call.id, name, content: compact({ error: error.message }) });
         if (VERIFICATION_TOOLS.has(name)) {
           verificationCompleted = false;

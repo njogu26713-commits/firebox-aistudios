@@ -1011,6 +1011,12 @@ export default function FireboxAIStudio() {
   const [gitImporting,     setGitImporting]     = useState(false);   // importing repo as project
   const [gitBranches,      setGitBranches]      = useState([]);
   const [gitBranchesLoading,setGitBranchesLoading] = useState(false);
+  const [projectRepository, setProjectRepository] = useState(null);
+  const [gitProjectPushing, setGitProjectPushing] = useState(false);
+  const [gitProjectPushResult, setGitProjectPushResult] = useState(null);
+  const [gitRepoCreating, setGitRepoCreating] = useState(false);
+  const [gitCreateRepoName, setGitCreateRepoName] = useState("");
+  const [gitCreateRepoPrivate, setGitCreateRepoPrivate] = useState(true);
 
   const terminalRef    = useRef(null);
   const terminalInputRef = useRef(null);
@@ -1067,6 +1073,14 @@ export default function FireboxAIStudio() {
       return [...prev, { id: `${Date.now()}-${Math.random()}`, time: new Date(), ...entry }].slice(-80);
     });
   }, []);
+  const updateActivityByAction = useCallback((actionId, patch) => {
+    if (!actionId) { appendActivity(patch); return; }
+    setLiveActivity(prev => {
+      const index = prev.findIndex(item => item.actionId === actionId);
+      if (index === -1) return [...prev, { id:`${Date.now()}-${Math.random()}`, time:new Date(), ...patch, actionId }].slice(-80);
+      return prev.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, actionId, time:item.time || new Date() } : item);
+    });
+  }, [appendActivity]);
 
   const beginPromptActivity = useCallback((prompt) => {
     const nextPrompt = String(prompt || "").trim();
@@ -1441,7 +1455,9 @@ export default function FireboxAIStudio() {
         const data = JSON.parse(e.data || "{}");
         const tool = data.tool || "controlled action";
         const target = data.input?.path || data.input?.command || data.input?.package || "";
-        appendActivity({ eventType:"tool.started", kind:"tool", status:"working", label:data.label || `Running ${tool}`, text:target ? `${tool} · ${target}` : tool, command:data.input?.command || "", details:data.input ? JSON.stringify(data.input) : "", aiGenerated:true });
+        const narration = data.narration || "";
+        const actionEntry = { actionId:data.actionId, eventType:"tool.started", kind:"tool", status:"working", label:data.label || `Running ${tool}`, text:narration || (target ? `${tool} · ${target}` : tool), description:narration || (target ? `${tool} · ${target}` : tool), narration, command:data.input?.command || "", details:data.input ? JSON.stringify(data.input) : "", aiGenerated:true };
+        updateActivityByAction(data.actionId, actionEntry);
       } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-complete", e => {
@@ -1449,13 +1465,15 @@ export default function FireboxAIStudio() {
         const data = JSON.parse(e.data || "{}");
         const tool = data.tool || "controlled action";
         const result = typeof data.result === "string" ? data.result : data.result ? JSON.stringify(data.result) : "Action completed";
-        appendActivity({ eventType:"tool.completed", kind:"tool", status:"done", label:data.label || `${tool} completed`, text:result.slice(0, 360), details:result, aiGenerated:true });
+        const completion = { eventType:"tool.completed", kind:"tool", status:"done", label:data.label || `${tool} completed`, text:data.narration || result.slice(0, 360), description:data.narration || result.slice(0, 360), narration:data.narration || "", details:result, aiGenerated:true };
+        updateActivityByAction(data.actionId, completion);
       } catch { /* ignore malformed activity event */ }
     });
     es.addEventListener("tool-error", e => {
       try {
         const data = JSON.parse(e.data || "{}");
-        appendActivity({ eventType:"tool.error", kind:"tool", status:"error", label:data.label || `${data.tool || "Controlled action"} failed`, text:data.message || "The controlled action failed", details:data.details || data.message || "", aiGenerated:true });
+        const failure = { eventType:"tool.error", kind:"tool", status:"error", label:data.label || `${data.tool || "Controlled action"} failed`, text:data.narration || data.message || "The controlled action failed", description:data.narration || data.message || "The controlled action failed", narration:data.narration || "", details:data.details || data.message || "", aiGenerated:true };
+        updateActivityByAction(data.actionId, failure);
       } catch { /* ignore malformed activity event */ }
     });
 
@@ -1940,6 +1958,8 @@ export default function FireboxAIStudio() {
     setActivityClock(Date.now());
     setCurrentProjectName("firebox-project");
     setCurrentProjectMeta({ fileCount: 0, framework: null, packageManager: null });
+    setProjectRepository(null);
+    setGitProjectPushResult(null);
     setProjectOpenStatus(null);
     setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
     setAiThinking(false); setAiStreamText("");
@@ -1994,6 +2014,8 @@ export default function FireboxAIStudio() {
       setActivityStartedAt(session?.activityStartedAt || null);
       setCurrentProjectName(build.projectName || build.name || "firebox-project");
       setCurrentProjectMeta({ fileCount: files.length, framework, packageManager });
+      setProjectRepository(data.repository || build.repository || null);
+      setGitProjectPushResult(null);
       setDescription(build.description || "");
       setCurrentBuildId(build._id);
       setEditingFiles(false); setEditStream(""); setEditChangedFiles([]); setEditError("");
@@ -2107,13 +2129,12 @@ export default function FireboxAIStudio() {
 
   /* ── Git: connect repo ───────────────────────────────────────────────────── */
   const connectGitRepo = useCallback(async (repoFullName, requestedBranch = "") => {
-    const token = gitToken;
-    if (!repoFullName || !token) return;
+    if (!repoFullName || gitConnecting) return;
     setGitConnecting(true); setGitError(""); setGitRepo(null);
     try {
       const res  = await fetch("/api/git/connect", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ repoUrl: `github.com/${repoFullName}`, token, branch: requestedBranch || undefined }),
+        body: JSON.stringify({ repoUrl: `github.com/${repoFullName}`, branch: requestedBranch || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -2122,7 +2143,7 @@ export default function FireboxAIStudio() {
       setGitBranchesLoading(true);
       fetch("/api/git/branches", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner: data.owner, repo: data.repo, token }),
+        body: JSON.stringify({ owner: data.owner, repo: data.repo }),
       }).then(branchRes => branchRes.json().then(branchData => {
         if (branchRes.ok && Array.isArray(branchData)) setGitBranches(branchData);
       })).catch(() => {}).finally(() => setGitBranchesLoading(false));
@@ -2132,7 +2153,7 @@ export default function FireboxAIStudio() {
       setGitChangePrompt("");
     } catch (err) { setGitError(err.message); }
     setGitConnecting(false);
-  }, [gitToken]);
+  }, [gitConnecting]);
 
   /* ── Git: open a file from the repo ─────────────────────────────────────── */
   const openGitFile = useCallback(async (filePath) => {
@@ -2252,7 +2273,7 @@ export default function FireboxAIStudio() {
 
   /* ── Git: analyze repo with AI agents ───────────────────────────────────── */
   const startAnalyzeRepo = useCallback(async () => {
-    if (!gitRepo || !gitToken || gitAnalyzing) return;
+    if (!gitRepo || gitAnalyzing) return;
     setGitAnalyzing(true);
     setGitShowPromptStep(false);
     setGitError("");
@@ -2286,7 +2307,6 @@ export default function FireboxAIStudio() {
           owner:  gitRepo.owner,
           repo:   gitRepo.repo,
           branch: gitRepo.branch,
-          token:  gitToken,
           files:  gitRepo.files,
         }),
       });
@@ -2399,11 +2419,52 @@ export default function FireboxAIStudio() {
       setGitAnalyzing(false);
       es.close();
     };
-  }, [gitRepo, gitToken, gitAnalyzing, updateAgent]);
+  }, [gitRepo, gitAnalyzing, updateAgent]);
+
+  const linkProjectRepository = useCallback(async () => {
+    if (!currentBuildId || !gitRepo || !gitRepo.branch) return;
+    if (!window.confirm(`Allow Firebox to push this project to ${gitRepo.fullName}?`)) return;
+    setGitProjectPushing(true); setGitProjectPushResult(null); setGitError("");
+    try {
+      const res = await fetch("/api/git/repository/link", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ buildId:currentBuildId, owner:gitRepo.owner, repo:gitRepo.repo, branch:gitRepo.branch, pushEnabled:true }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to link repository");
+      setProjectRepository(data.repository); setGitProjectPushResult({ message:"Repository linked. Firebox may now push after confirmation." });
+    } catch (err) { setGitProjectPushResult({ error:err.message }); }
+    finally { setGitProjectPushing(false); }
+  }, [currentBuildId, gitRepo]);
+
+  const createProjectRepository = useCallback(async () => {
+    const name = gitCreateRepoName.trim() || currentProjectName.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100) || "firebox-project";
+    if (!currentBuildId) return;
+    if (!window.confirm(`Create the GitHub repository ${name} and allow Firebox to push this project?`)) return;
+    setGitRepoCreating(true); setGitProjectPushResult(null); setGitError("");
+    try {
+      const res = await fetch("/api/git/repository/create", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ buildId:currentBuildId, name, private:gitCreateRepoPrivate, pushEnabled:true }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to create repository");
+      setProjectRepository(data.repository); setGitCreateRepoName(""); setGitProjectPushResult({ message:"Repository created and linked. You can now push the project." });
+    } catch (err) { setGitProjectPushResult({ error:err.message }); }
+    finally { setGitRepoCreating(false); }
+  }, [currentBuildId, currentProjectName, gitCreateRepoName, gitCreateRepoPrivate]);
+
+  const pushProjectToGithub = useCallback(async () => {
+    if (!currentBuildId || !projectRepository || gitProjectPushing) return;
+    if (!window.confirm(`Push all current project files to ${projectRepository.fullName} on ${projectRepository.branch}?`)) return;
+    setGitProjectPushing(true); setGitProjectPushResult(null); setGitError("");
+    try {
+      const res = await fetch("/api/git/repository/push", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ buildId:currentBuildId, message:`Update ${currentProjectName} from Firebox` }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to push project");
+      setGitProjectPushResult({ message:`Pushed ${data.files} files to ${data.branch}.`, commitUrl:data.commitUrl });
+      setProjectRepository(prev => prev ? { ...prev, lastPushAt:new Date().toISOString() } : prev);
+    } catch (err) { setGitProjectPushResult({ error:err.message }); }
+    finally { setGitProjectPushing(false); }
+  }, [currentBuildId, projectRepository, gitProjectPushing, currentProjectName]);
 
   /* ── Git: import repo as editable project ───────────────────────────────── */
   const importRepoAsProject = useCallback(async () => {
-    if (!gitRepo || !gitToken || gitImporting) return;
+    if (!gitRepo || gitImporting) return;
     setGitImporting(true);
     setGitShowPromptStep(false);
     setGitError("");
@@ -2417,7 +2478,6 @@ export default function FireboxAIStudio() {
           owner:  gitRepo.owner,
           repo:   gitRepo.repo,
           branch: gitRepo.branch,
-          token:  gitToken,
           files:  gitRepo.files,
         }),
       });
@@ -2441,7 +2501,7 @@ export default function FireboxAIStudio() {
     }
 
     setGitImporting(false);
-  }, [gitRepo, gitToken, gitImporting, loadProjectFiles]);
+  }, [gitRepo, gitImporting, loadProjectFiles]);
 
   /* ── Delete a project ───────────────────────────────────────────────────── */
   const deleteProject = useCallback(async (buildId, e) => {
@@ -3512,6 +3572,39 @@ try{${activeContent}}catch(e){out.textContent+="\\n⚠ "+e.message;}
                   </div>
 
                   <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column" }}>
+
+                    {gitTokenSaved && currentBuildId && (
+                      <div style={{ margin:"6px 8px 8px", padding:"9px", border:`1px solid ${projectRepository ? "rgba(78,201,148,0.35)" : palette.border}`, background:projectRepository ? "rgba(78,201,148,0.06)" : "rgba(0,122,204,0.06)" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                          <Github size={12} color={projectRepository ? palette.success : palette.accent}/>
+                          <span style={{ fontSize:11, fontWeight:700, color:palette.textActive }}>Project repository</span>
+                          <span style={{ marginLeft:"auto", fontSize:9, color:projectRepository ? palette.success : palette.textMuted }}>{projectRepository ? "LINKED" : "NOT LINKED"}</span>
+                        </div>
+                        {projectRepository ? (
+                          <>
+                            <div style={{ fontSize:11, color:palette.text, fontFamily:FONT_MONO, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{projectRepository.fullName}</div>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                              <span style={{ fontSize:10, color:palette.textMuted }}>branch</span><span style={{ fontSize:10, color:palette.success, fontFamily:FONT_MONO }}>{projectRepository.branch}</span>
+                              <span style={{ marginLeft:"auto", fontSize:9, color:palette.textFaint }}>{projectRepository.lastPushAt ? `last push ${new Date(projectRepository.lastPushAt).toLocaleString()}` : "not pushed yet"}</span>
+                            </div>
+                            <button onClick={pushProjectToGithub} disabled={gitProjectPushing || projectRepository.pushEnabled !== true} style={{ width:"100%", marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"7px", border:"none", borderRadius:4, background:gitProjectPushing ? "#3C3C3C" : palette.success, color:"#07140f", fontSize:11, fontWeight:700, cursor:gitProjectPushing ? "wait" : "pointer", opacity:projectRepository.pushEnabled === true ? 1 : 0.55 }}>
+                              {gitProjectPushing ? <><Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> Pushing project…</> : <><Upload size={11}/> Push entire project</>}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontSize:10, color:palette.textMuted, lineHeight:1.45, marginBottom:7 }}>Link the selected repository below, or create a new private repository for this project.</div>
+                            {gitRepo && <button onClick={linkProjectRepository} disabled={gitProjectPushing} style={{ width:"100%", padding:"7px", border:"none", borderRadius:4, background:palette.accent, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}><GitBranch size={11}/> Link {gitRepo.fullName}</button>}
+                            <div style={{ display:"flex", gap:5, marginTop:6 }}>
+                              <input value={gitCreateRepoName} onChange={e => setGitCreateRepoName(e.target.value)} placeholder="new-repository-name" style={{ flex:1, minWidth:0, background:"#3C3C3C", border:`1px solid ${palette.border}`, borderRadius:4, padding:"5px 7px", color:palette.text, fontSize:10, fontFamily:FONT_MONO, outline:"none" }}/>
+                              <button onClick={createProjectRepository} disabled={gitRepoCreating} style={{ padding:"5px 8px", border:"none", borderRadius:4, background:palette.accent, color:"#fff", fontSize:10, fontWeight:600, cursor:gitRepoCreating ? "wait" : "pointer" }}>{gitRepoCreating ? <Loader2 size={11} style={{ animation:"spin 1s linear infinite" }}/> : "Create"}</button>
+                            </div>
+                            <label style={{ display:"flex", alignItems:"center", gap:5, marginTop:6, fontSize:10, color:palette.textMuted }}><input type="checkbox" checked={gitCreateRepoPrivate} onChange={e => setGitCreateRepoPrivate(e.target.checked)}/> Private repository</label>
+                          </>
+                        )}
+                        {gitProjectPushResult && <div style={{ marginTop:7, fontSize:10, color:gitProjectPushResult.error ? palette.error : palette.success, lineHeight:1.45 }}>{gitProjectPushResult.error || gitProjectPushResult.message}{gitProjectPushResult.commitUrl && <> · <a href={gitProjectPushResult.commitUrl} target="_blank" rel="noreferrer" style={{ color:palette.accent }}>view commit</a></>}</div>}
+                      </div>
+                    )}
 
                     {/* ── Step 1: Token entry (no saved token) ── */}
                     {!gitRepo && !gitTokenSaved && (

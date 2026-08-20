@@ -8,7 +8,7 @@ import "./agent-activity.css";
 
 const normalizeStatus = (status) => status === "working" ? "running" : status === "done" ? "completed" : status === "error" ? "error" : status || "pending";
 const normalizeType = (activity) => activity.eventType || (activity.kind === "files" ? "file.modified" : activity.kind === "tool" ? "command.started" : activity.kind === "preview" ? "preview.starting" : activity.kind === "build" ? "agent.completed" : "agent.started");
-const normalizeActivity = (activity) => ({ id:activity.id || `${Date.now()}-${Math.random()}`, type:normalizeType(activity), title:activity.title || activity.label || "", description:activity.description || activity.text || "", file:activity.file || activity.path || "", command:activity.command || "", status:normalizeStatus(activity.status), timestamp:activity.timestamp || new Date(activity.time || Date.now()).getTime(), details:activity.details || "", aiGenerated:Boolean(activity.aiGenerated) });
+const normalizeActivity = (activity) => ({ id:activity.id || `${Date.now()}-${Math.random()}`, actionId:activity.actionId || "", type:normalizeType(activity), title:activity.title || activity.label || "", description:activity.description || activity.text || "", narration:activity.narration || "", file:activity.file || activity.path || "", command:activity.command || "", status:normalizeStatus(activity.status), timestamp:activity.timestamp || new Date(activity.time || Date.now()).getTime(), details:activity.details || "", aiGenerated:Boolean(activity.aiGenerated) });
 
 function iconFor(type, status) {
   if (status === "error") return <XCircle size={15}/>;
@@ -70,11 +70,12 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
   const promptMessages = userPrompts.length ? userPrompts : (userPrompt ? [{ role:"user", text:userPrompt }] : []);
   const agentCompleted = normalized.some(item => item.type === "agent.completed" && item.status === "completed");
   const displayActivities = useMemo(() => normalized.map(item => agentCompleted && item.status === "running" ? { ...item, status:"completed" } : item), [normalized, agentCompleted]);
-  const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.type === "agent.completed");
+  const aiActivities = displayActivities.filter(item => item.type === "agent.output" || item.type === "agent.message" || item.type === "agent.completed" || item.narration);
   const recordActivities = displayActivities.filter(item => !["agent.output", "agent.message", "agent.completed", "agent.started", "task.started", "agent.failed"].includes(item.type));
   const runningActivity = [...displayActivities].reverse().find(item => item.status === "running" && !["agent.started", "task.started"].includes(item.type));
   const latestAgentMessage = [...aiActivities].reverse().find(item => item.type === "agent.message");
-  const liveNarration = latestAgentMessage;
+  const latestNarratedActivity = [...displayActivities].reverse().find(item => item.narration || item.type === "agent.message");
+  const liveNarration = latestNarratedActivity || latestAgentMessage;
   const actionGroups = useMemo(() => normalized.reduce((groups, item) => { const key = item.type.startsWith("file.") ? "files" : item.type.startsWith("command.") || item.type === "dependency.installing" ? "tools" : item.type.startsWith("test.") ? "tests" : item.type.startsWith("preview.") ? "preview" : item.type.startsWith("agent.") ? "agent" : "activity"; groups[key] = (groups[key] || 0) + 1; return groups; }, {}), [normalized]);
   const elapsed = startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0;
   const completed = normalized.filter(item => item.status === "completed").length;
@@ -84,7 +85,7 @@ export default function AgentActivityPanel({ activityBlocks = [], taskName = "Wo
     {currentPrompt && <div className="user-prompt-line"><div className="user-prompt-label">You</div><div className="user-prompt-text">{currentPrompt.text}</div></div>}
     {preparationText && <div className={`preparation-line${preparationError ? " preparation-error" : ""}`} aria-live="polite">{preparationText}</div>}
     {errorText && <div className="workspace-error-line" role="alert">{errorText}</div>}
-    {!preparationText && liveNarration && <AgentNarrationLine text={liveNarration.description || liveNarration.file || liveNarration.command || liveNarration.title} active={!agentCompleted && liveNarration.status === "running"} />}
+    {!preparationText && liveNarration && <AgentNarrationLine text={liveNarration.narration || liveNarration.description || liveNarration.file || liveNarration.command || liveNarration.title} active={!agentCompleted && liveNarration.status === "running"} />}
     <div className="activity-list">
       {recordActivities.length > 0 && <>
         <div className="activity-record-icons" aria-label={`${recordActivities.length} completed actions`}>

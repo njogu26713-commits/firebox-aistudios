@@ -122,26 +122,29 @@ router.get("/repos", dbRequired, requireAuth, async (req, res) => {
 });
 
 /* ── POST /api/git/branches — list branches for a repository ────────────── */
-router.post("/branches", async (req, res) => {
-  const { owner, repo, token } = req.body;
-  if (!owner || !repo || !token) return res.status(400).json({ error: "owner, repo and token are required" });
+router.post("/branches", dbRequired, requireAuth, async (req, res) => {
+  const { owner, repo } = req.body;
+  if (!owner || !repo) return res.status(400).json({ error: "owner and repo are required" });
   try {
-    const branches = await ghFetch(`/repos/${owner}/${repo}/branches?per_page=100`, token);
+    const credential = await getCredential(req);
+    if (!credential?.token) return res.status(401).json({ error: "Connect GitHub before loading branches." });
+    const branches = await ghFetch(`/repos/${owner}/${repo}/branches?per_page=100`, credential.token);
     res.json(branches.map(branch => branch.name));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 /* ── POST /api/git/connect ───────────────────────────────────────────────── */
-router.post("/connect", async (req, res) => {
-  const { repoUrl, token, branch: requestedBranch } = req.body;
-  if (!repoUrl?.trim() || !token?.trim())
-    return res.status(400).json({ error: "repoUrl and token are required" });
+router.post("/connect", dbRequired, requireAuth, async (req, res) => {
+  const { repoUrl, branch: requestedBranch } = req.body;
+  if (!repoUrl?.trim()) return res.status(400).json({ error: "repoUrl is required" });
   try {
+    const credential = await getCredential(req);
+    if (!credential?.token) return res.status(401).json({ error: "Connect GitHub before opening a repository." });
     const { owner, repo } = parseRepoUrl(repoUrl);
-    const info   = await ghFetch(`/repos/${owner}/${repo}`, token);
+    const info   = await ghFetch(`/repos/${owner}/${repo}`, credential.token);
     const branch = requestedBranch?.trim() || info.default_branch;
     const tree   = await ghFetch(
-      `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, token
+      `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, credential.token
     );
     const files = (tree.tree || [])
       .filter(f => f.type === "blob")
@@ -155,6 +158,98 @@ router.post("/connect", async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+/* ── POST /api/git/repository/link — attach a GitHub repo to a project ─────── */
+router.post("/repository/link", dbRequired, requireAuth, async (req, res) => {
+  const buildId = String(req.body?.buildId || "");
+  const owner = String(req.body?.owner || "").trim();
+  const repo = String(req.body?.repo || "").trim();
+  const branch = String(req.body?.branch || "").trim();
+  const pushEnabled = req.body?.pushEnabled === true;
+  if (!buildId || !owner || !repo || !branch) return res.status(400).json({ error:"buildId, owner, repo, and branch are required" });
+  try {
+    const credential = await getCredential(req);
+    if (!credential) return res.status(401).json({ error:"Connect GitHub before linking a repository." });
+    const build = await Build.findOne({ _id:buildId, ownerId:req.user._id });
+    if (!build) return res.status(404).json({ error:"Project not found" });
+    const info = await ghFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, credential.token);
+    const next = { provider:"github", owner, name:repo, fullName:info.full_name, branch, defaultBranch:info.default_branch, htmlUrl:info.html_url, pushEnabled };
+    build.repository = next;
+    await build.save();
+    res.json({ ok:true, repository:next });
+  } catch (err) { res.status(400).json({ error:err.message }); }
+});
+
+/* ── POST /api/git/repository/create — create and optionally attach a repo ─── */
+router.post("/repository/create", dbRequired, requireAuth, async (req, res) => {
+  const buildId = String(req.body?.buildId || "");
+  const name = String(req.body?.name || "").trim();
+  const description = String(req.body?.description || "").trim();
+  const isPrivate = req.body?.private !== false;
+  const pushEnabled = req.body?.pushEnabled === true;
+  if (!buildId || !/^[A-Za-z0-9._-]{1,100}$/.test(name)) return res.status(400).json({ error:"A valid repository name and buildId are required" });
+  try {
+    const credential = await getCredential(req);
+    if (!credential) return res.status(401).json({ error:"Connect GitHub before creating a repository." });
+    const build = await Build.findOne({ _id:buildId, ownerId:req.user._id });
+    if (!build) return res.status(404).json({ error:"Project not found" });
+    const created = await ghFetch("/user/repos", credential.token, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ name, description, private:isPrivate, auto_init:false }) });
+    const branch = "main";
+    const next = { provider:"github", owner:created.owner.login, name:created.name, fullName:created.full_name, branch, defaultBranch:created.default_branch || branch, htmlUrl:created.html_url, pushEnabled };
+    build.repository = next;
+    await build.save();
+    res.json({ ok:true, repository:next });
+  } catch (err) { res.status(400).json({ error:err.message }); }
+});
+
+/* ── POST /api/git/repository/push — commit current project files to GitHub ── */
+router.post("/repository/push", dbRequired, requireAuth, async (req, res) => {
+  const buildId = String(req.body?.buildId || "");
+  const message = String(req.body?.message || "Update project from Firebox").trim().slice(0, 200) || "Update project from Firebox";
+  if (!buildId) return res.status(400).json({ error:"buildId is required" });
+  try {
+    const credential = await getCredential(req);
+    if (!credential) return res.status(401).json({ error:"Connect GitHub before pushing changes." });
+    const build = await Build.findOne({ _id:buildId, ownerId:req.user._id });
+    if (!build) return res.status(404).json({ error:"Project not found" });
+    const repository = build.repository?.toObject?.() || build.repository;
+    if (!repository?.owner || !repository?.name || !repository?.branch) return res.status(409).json({ error:"Link or create a GitHub repository for this project first." });
+    if (repository.pushEnabled !== true) return res.status(403).json({ error:"GitHub push is disabled for this project. Confirm push access in Source Control first." });
+    const repoPath = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`;
+    let parentCommit = null;
+    try {
+      const ref = await ghFetch(`${repoPath}/git/ref/heads/${encodeURIComponent(repository.branch)}`, credential.token);
+      parentCommit = ref.object?.sha || null;
+    } catch (err) {
+      if (!/not found/i.test(err.message)) throw err;
+    }
+    const entries = [];
+    for (const file of build.files || []) {
+      if (!file.path || file.path.split("/").some(part => ["node_modules","dist","build",".next"].includes(part))) continue;
+      const binary = file.encoding === "base64" || file.isBinary;
+      const blob = await ghFetch(`${repoPath}/git/blobs`, credential.token, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ content:String(file.content || ""), encoding:binary ? "base64" : "utf-8" }) });
+      entries.push({ path:file.path, mode:"100644", type:"blob", sha:blob.sha });
+    }
+    if (!entries.length) return res.status(400).json({ error:"This project has no files to push." });
+    const treeBody = { tree:entries };
+    if (parentCommit) {
+      const parent = await ghFetch(`${repoPath}/git/commits/${parentCommit}`, credential.token);
+      treeBody.base_tree = parent.tree?.sha;
+    }
+    const tree = await ghFetch(`${repoPath}/git/trees`, credential.token, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(treeBody) });
+    const commit = await ghFetch(`${repoPath}/git/commits`, credential.token, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ message, tree:tree.sha, ...(parentCommit ? { parents:[parentCommit] } : {}) }) });
+    let refResult;
+    try {
+      refResult = await ghFetch(`${repoPath}/git/ref/heads/${encodeURIComponent(repository.branch)}`, credential.token, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ sha:commit.sha, force:false }) });
+    } catch (err) {
+      if (!/not found/i.test(err.message)) throw err;
+      refResult = await ghFetch(`${repoPath}/git/refs`, credential.token, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ ref:`refs/heads/${repository.branch}`, sha:commit.sha }) });
+    }
+    build.repository.lastPushAt = new Date();
+    await build.save();
+    res.json({ ok:true, commitSha:commit.sha, commitUrl:commit.html_url || `${repository.htmlUrl}/commit/${commit.sha}`, branch:repository.branch, files:entries.length, ref:refResult.ref });
+  } catch (err) { res.status(400).json({ error:err.message }); }
 });
 
 /* ── POST /api/git/file — fetch one file's content ───────────────────────── */
@@ -260,9 +355,12 @@ router.post("/ai-edit", async (req, res) => {
 
 /* ── POST /api/git/import-as-project — save repo files as an editable Build ── */
 router.post("/import-as-project", dbRequired, requireAuth, async (req, res) => {
-  const { owner, repo, branch, token, files: fileTree } = req.body;
-  if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
-    return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
+  const { owner, repo, branch, files: fileTree } = req.body;
+  if (!owner || !repo || !branch || !Array.isArray(fileTree))
+    return res.status(400).json({ error: "owner, repo, branch and files are required" });
+  const credential = await getCredential(req);
+  if (!credential?.token) return res.status(401).json({ error: "Connect GitHub before importing a repository." });
+  const token = credential.token;
 
   // Preserve every repository file except generated dependencies and build output.
   // Source assets, lockfiles, maps, configs, fonts, and documentation are valid
@@ -319,6 +417,7 @@ router.post("/import-as-project", dbRequired, requireAuth, async (req, res) => {
     status: "complete",
     importSource: "github",
     importMeta: { owner, repo, branch, fileCount: fetchedFiles.length },
+    repository: { provider:"github", owner, name:repo, fullName:`${owner}/${repo}`, branch, defaultBranch:branch, htmlUrl:`https://github.com/${owner}/${repo}`, pushEnabled:false },
     agents: [],
     files:  fetchedFiles,
   });
@@ -328,9 +427,12 @@ router.post("/import-as-project", dbRequired, requireAuth, async (req, res) => {
 
 /* ── POST /api/git/analyze — fetch repo files + start analysis build ──────── */
 router.post("/analyze", dbRequired, requireAuth, async (req, res) => {
-  const { owner, repo, branch, token, files: fileTree } = req.body;
-  if (!owner || !repo || !branch || !token || !Array.isArray(fileTree))
-    return res.status(400).json({ error: "owner, repo, branch, token and files are required" });
+  const { owner, repo, branch, files: fileTree } = req.body;
+  if (!owner || !repo || !branch || !Array.isArray(fileTree))
+    return res.status(400).json({ error: "owner, repo, branch and files are required" });
+  const credential = await getCredential(req);
+  if (!credential?.token) return res.status(401).json({ error: "Connect GitHub before analyzing a repository." });
+  const token = credential.token;
 
   // Decide which files to fetch (skip binaries, lock files, large assets)
   const SKIP_EXT  = new Set(["png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot","pdf","zip","gz","mp4","webm","mp3","lock","map","min.js","min.css"]);
