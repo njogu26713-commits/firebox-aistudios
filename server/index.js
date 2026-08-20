@@ -136,6 +136,12 @@ app.get("/api/build/:id/events", dbRequired, requireAuth, async (req, res) => {
 
   try {
     await runAgentPipeline(build, res, controller.signal);
+  } catch (error) {
+    const message = String(error?.error?.message || error?.message || "The Agent provider stopped before returning a result.");
+    await Build.findByIdAndUpdate(build._id, { $set: { status: "failed", errorMessage: message } }).catch(() => {});
+    if (!res.writableEnded) {
+      sse(res, "build-error", { message: message.includes("Groq") || /rate.?limit|provider|api key|timeout/i.test(message) ? `Groq provider error: ${message}` : message });
+    }
   } finally {
     clearInterval(heartbeat);
     if (!res.writableEnded) res.end();
