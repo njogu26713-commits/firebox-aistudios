@@ -7,6 +7,7 @@ import { runFireboxToolLoop } from "./toolLoop.js";
 import { createCloudProjectTools } from "./cloudTools.js";
 import { createCloudRuntime } from "./cloudRuntime.js";
 import { AGENT_CAPABILITIES, MAX_REPAIR_ATTEMPTS } from "./workflow.js";
+import { isExternalAgent, runExternalAgent } from "./externalAgent.js";
 
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -114,6 +115,10 @@ async function getStreamWithRepair({ config, messages, maxTokens, temperature, s
 }
 
 export async function runAgentPipeline(build, res, signal) {
+  if (isExternalAgent(build.provider)) {
+    await runExternalAgent(build, res, signal);
+    return;
+  }
   const agentOutputs = {};
   const aiConfig = normalizeAiConfig({
     provider: build.provider || "cloud",

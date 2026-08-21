@@ -260,6 +260,8 @@ const AI_PROVIDER_CARDS = [
   { id:"anthropic", Icon:Sparkles, title:"Anthropic", subtitle:"Claude models", description:"Advanced reasoning, large context understanding, and safe-by-design models.", color:"#F3A65B", action:"Configure", enabled:true },
   { id:"google", Icon:Globe, title:"Google", subtitle:"Gemini models", description:"Multimodal capabilities with long context and strong performance.", color:"#60A5FA", action:"Configure", enabled:true },
   { id:"openrouter", Icon:GitBranch, title:"OpenRouter", subtitle:"Multiple providers", description:"Access multiple model providers through one unified interface.", color:"#A78BFA", action:"Configure", enabled:true },
+  { id:"groq-agent", Icon:Server, title:"Groq Agent", subtitle:"Independent Agent Server", description:"Use the independent Groq coding agent through the HTTPS Agent Contract.", color:"#F97316", action:"Select", enabled:true },
+  { id:"openrouter-agent", Icon:GitBranch, title:"OpenRouter Agent", subtitle:"Independent Agent Server", description:"Use the independent OpenRouter coding agent through the HTTPS Agent Contract.", color:"#C084FC", action:"Select", enabled:true },
   { id:"custom", Icon:Settings, title:"Custom OpenAI-compatible", subtitle:"Your endpoint", description:"Use any compatible chat-completions endpoint with your own model and optional API key.", color:"#94A3B8", action:"Configure", enabled:true },
 ];
 
@@ -1758,6 +1760,13 @@ export default function FireboxAIStudio() {
     setPlanning(true);
     setBuildPlan(null);
     try {
+      if (aiProvider === "groq-agent" || aiProvider === "openrouter-agent") {
+        setPreparationPlanText("The selected independent Agent Server will inspect the project and generate its own execution plan.");
+        setPreparationDecisionText("Waiting for the selected Agent Server to begin the HTTPS Contract workflow.");
+        setPreparationPlanStartedAt(Date.now());
+        await startBuild(text);
+        return true;
+      }
       // Local AI is Ollama through the Railway backend. The Local Firebox Engine
       // URL is a separate execution/runtime setting and must not receive planning requests.
       const requestUrl = "/api/plan";
