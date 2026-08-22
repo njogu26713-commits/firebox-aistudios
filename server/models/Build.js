@@ -23,7 +23,7 @@ const buildSchema = new mongoose.Schema({
   projectName: { type: String, default: "firebox-project" },
   provider: {
     type: String,
-    enum: ["cloud", "local", "openai", "anthropic", "google", "openrouter", "groq-agent", "openrouter-agent", "openai-agent", "gemini-agent"],
+    enum: ["cloud", "local", "openai", "anthropic", "google", "openrouter", "groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent"],
     default: "cloud",
   },
   localAi: {
