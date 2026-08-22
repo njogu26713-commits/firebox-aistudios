@@ -9,11 +9,13 @@ const PROVIDER_DEFAULTS = {
   openrouter: { endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
   custom: { endpoint: "", model: "" },
 };
+const HTTPS_AGENT_PROVIDERS = new Set(["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent"]);
 const SUPPORTED_EXTERNAL = new Set(Object.keys(PROVIDER_DEFAULTS));
 
 export function normalizeAiConfig(input = {}) {
   const provider = String(input.provider || "cloud").toLowerCase();
-  if (provider === "cloud") return { provider: "cloud" };
+  if (provider === "cloud") return { provider: "groq-agent" };
+  if (HTTPS_AGENT_PROVIDERS.has(provider)) return { provider };
   if (provider === "local" || SUPPORTED_EXTERNAL.has(provider)) {
     const defaults = provider === "local" ? {} : PROVIDER_DEFAULTS[provider];
     const configuredEndpoint = provider === "local"

@@ -98,7 +98,7 @@ app.post("/api/build", dbRequired, requireAuth, async (req, res) => {
 
   let aiConfig;
   try {
-    aiConfig = normalizeAiConfig({ provider, ...localAi });
+    aiConfig = normalizeAiConfig({ provider: provider === "cloud" ? "groq-agent" : provider, ...localAi });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
