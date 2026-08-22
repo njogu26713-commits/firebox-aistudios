@@ -17,6 +17,7 @@ import authRouter, { requireAuth } from "./routes/auth.js";
 import { getCompletionStream, normalizeAiConfig, testLocalAi, testLocalAiHealth } from "./aiProvider.js";
 import { parseEditOutput, applyEdits } from "./utils/editParser.js";
 import { buildPlanningPrompt, normalizePlan } from "./agents/workflow.js";
+import { resolveStack } from "./stackResolver.js";
 import { createCloudRuntime } from "./agents/cloudRuntime.js";
 import ProjectSecret from "./models/ProjectSecret.js";
 import crypto from "node:crypto";
@@ -72,6 +73,7 @@ app.post("/api/import/project", dbRequired, requireAuth, async (req, res) => {
   if (!normalizedFiles.length)
     return res.status(400).json({ error: "No readable project files were supplied" });
   const estimatedBytes = normalizedFiles.reduce((total, file) => total + Buffer.byteLength(file.content, "utf8"), 0);
+  const stack = resolveStack({ description, files: normalizedFiles, projectType: "existing", project: { source } });
   if (estimatedBytes > 14 * 1024 * 1024)
     return res.status(413).json({ error: "This project is too large to store as one Firebox project. Remove generated dependencies or build output and try again." });
   const build = await Build.create({
@@ -83,13 +85,14 @@ app.post("/api/import/project", dbRequired, requireAuth, async (req, res) => {
     files: normalizedFiles,
     importSource: source,
     importMeta: sourceMeta,
+    stack,
   });
-  res.json({ buildId: build._id, projectName: build.projectName, filesCount: normalizedFiles.length });
+  res.json({ buildId: build._id, projectName: build.projectName, filesCount: normalizedFiles.length, stack });
 });
 
 /* ── POST /api/build — start a new build ────────────────────────────────── */
 app.post("/api/build", dbRequired, requireAuth, async (req, res) => {
-  const { description, projectName = "firebox-project", provider = "cloud", localAi = {}, toolMode = false } = req.body;
+  const { description, projectName = "firebox-project", provider = "cloud", localAi = {}, toolMode = false, stackPreferences = {} } = req.body;
   if (!description?.trim())
     return res.status(400).json({ error: "Description is required" });
 
@@ -100,18 +103,20 @@ app.post("/api/build", dbRequired, requireAuth, async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 
+  const stack = resolveStack({ description, projectType: "new", preferences: stackPreferences });
   const build = await Build.create({
     ownerId: req.user._id,
     description: description.trim(),
     projectName: String(projectName || "firebox-project").trim().slice(0, 120) || "firebox-project",
     provider: aiConfig.provider,
     localAi: aiConfig.provider !== "cloud" ? aiConfig : undefined,
+    stack,
     status: "running",
     toolMode: Boolean(toolMode),
     agents: AGENT_DEFS.map((a) => ({ name: a.name, status: "idle" })),
     files: [],
   });
-  res.json({ buildId: build._id, projectName: "firebox-project" });
+  res.json({ buildId: build._id, projectName: build.projectName, stack });
 });
 
 /* ── GET /api/build/:id/events — SSE stream ─────────────────────────────── */
@@ -279,8 +284,9 @@ app.delete("/api/build/:id", dbRequired, requireAuth, async (req, res) => {
 
 /* ── POST /api/plan — understand a build request before execution ─────────── */
 app.post("/api/plan", requireAuth, async (req, res) => {
-  const { description, fileNames = [], provider = "cloud", localAi = {} } = req.body || {};
+  const { description, fileNames = [], provider = "cloud", localAi = {}, stackPreferences = {} } = req.body || {};
   if (!description?.trim()) return res.status(400).json({ error: "Description is required" });
+  const stack = resolveStack({ description, files: fileNames, projectType: fileNames.length ? "existing" : "new", preferences: stackPreferences });
   let aiConfig;
   try {
     aiConfig = normalizeAiConfig({ provider, ...localAi });
@@ -298,7 +304,7 @@ app.post("/api/plan", requireAuth, async (req, res) => {
     let plan;
     try { plan = normalizePlan(JSON.parse(jsonText || raw)); }
     catch { plan = normalizePlan({ summary: raw.replace(/```json|```/g, "").trim() }); }
-    res.json({ ok: true, plan });
+    res.json({ ok: true, plan, stack });
   } catch (err) {
     console.error("[Planning Agent] request failed", { provider, message: err?.message, stack: err?.stack });
     res.status(400).json({ ok: false, error: err.message });

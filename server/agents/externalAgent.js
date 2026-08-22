@@ -3,6 +3,8 @@ import Build from "../models/Build.js";
 const AGENTS = {
   "groq-agent": { id: "groq-agent", name: "Groq Agent", url: process.env.GROQ_AGENT_URL, secret: process.env.GROQ_AGENT_SECRET || process.env.GROQ_AGENT_SHARED_SECRET },
   "openrouter-agent": { id: "openrouter-agent", name: "OpenRouter Agent", url: process.env.OPENROUTER_AGENT_URL, secret: process.env.OPENROUTER_AGENT_SECRET || process.env.OPENROUTER_AGENT_SHARED_SECRET },
+  "openai-agent": { id: "openai-agent", name: "OpenAI Agent", url: process.env.OPENAI_AGENT_URL, secret: process.env.OPENAI_AGENT_SECRET || process.env.OPENAI_AGENT_SHARED_SECRET },
+  "gemini-agent": { id: "gemini-agent", name: "Gemini Agent", url: process.env.GEMINI_AGENT_URL, secret: process.env.GEMINI_AGENT_SECRET || process.env.GEMINI_AGENT_SHARED_SECRET },
 };
 
 function endpoint(agentId) {
@@ -34,7 +36,7 @@ async function readContractEvents(response, onEvent) {
   }
 }
 
-export function isExternalAgent(provider) { return provider === "groq-agent" || provider === "openrouter-agent"; }
+export function isExternalAgent(provider) { return ["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent"].includes(provider); }
 export function externalAgentConfig(provider) { return AGENTS[provider] || null; }
 
 export async function runExternalAgent(build, res, signal) {
@@ -42,7 +44,8 @@ export async function runExternalAgent(build, res, signal) {
   const config = endpoint(agentId);
   const headers = { ...authHeaders(config), "content-type": "application/json", "x-request-id": build._id.toString() };
   const files = Array.isArray(build.files) ? build.files.map(file => ({ path: file.path, content: file.content })) : [];
-  const response = await fetch(`${config.url.replace(/\/$/, "")}/v1/agent/tasks`, { method: "POST", headers, signal, body: JSON.stringify({ taskId: build._id.toString(), requestId: build._id.toString(), agent: agentId, prompt: build.description, project: { buildId: build._id.toString(), files }, capabilities: ["project-files", "file-tools", "commands", "tests", "preview"] }) });
+  const projectType = files.length ? "existing" : "new";
+  const response = await fetch(`${config.url.replace(/\/$/, "")}/v1/agent/tasks`, { method: "POST", headers, signal, body: JSON.stringify({ taskId: build._id.toString(), requestId: build._id.toString(), agent: agentId, prompt: build.description, project: { id: build._id.toString(), buildId: build._id.toString(), workspaceId: build._id.toString(), type: projectType, framework: build.stack?.framework || null, database: build.stack?.database || null, stack: build.stack || null, files }, capabilities: { filesystem: true, terminal: true, preview: true, tests: true, "project-files": true, "file-tools": true, commands: true } }) });
   const accepted = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(accepted?.error?.message || `${config.name} returned HTTP ${response.status}`);
   forward(res, "external-agent.accepted", { agent: agentId, taskId: accepted.taskId, contractVersion: accepted.contractVersion });

@@ -23,7 +23,7 @@ const buildSchema = new mongoose.Schema({
   projectName: { type: String, default: "firebox-project" },
   provider: {
     type: String,
-    enum: ["cloud", "local", "openai", "anthropic", "google", "openrouter"],
+    enum: ["cloud", "local", "openai", "anthropic", "google", "openrouter", "groq-agent", "openrouter-agent", "openai-agent", "gemini-agent"],
     default: "cloud",
   },
   localAi: {
@@ -33,6 +33,7 @@ const buildSchema = new mongoose.Schema({
   },
   status:      { type: String, enum: ["running","complete","failed"], default: "running" },
   errorMessage: { type: String, default: "" },
+  stack: { type: mongoose.Schema.Types.Mixed, default: null },
   executionState: { type: String, enum: ["running", "paused", "stopping", "stopped"], default: "running" },
   toolMode: { type: Boolean, default: false },
   importSource: { type: String, enum: ["github", "zip", "folder", "upload"], default: null },
