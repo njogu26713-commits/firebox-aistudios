@@ -9,7 +9,7 @@ const PROVIDER_DEFAULTS = {
   openrouter: { endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
   custom: { endpoint: "", model: "" },
 };
-const HTTPS_AGENT_PROVIDERS = new Set(["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent"]);
+const HTTPS_AGENT_PROVIDERS = new Set(["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent", "firebox-agent"]);
 const SUPPORTED_EXTERNAL = new Set(Object.keys(PROVIDER_DEFAULTS));
 
 export function normalizeAiConfig(input = {}) {

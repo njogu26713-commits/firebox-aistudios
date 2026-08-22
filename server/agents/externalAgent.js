@@ -6,6 +6,7 @@ const AGENTS = {
   "openai-agent": { id: "openai-agent", name: "OpenAI Agent", url: process.env.OPENAI_AGENT_URL, secret: process.env.OPENAI_AGENT_SECRET || process.env.OPENAI_AGENT_SHARED_SECRET },
   "gemini-agent": { id: "gemini-agent", name: "Gemini Agent", url: process.env.GEMINI_AGENT_URL, secret: process.env.GEMINI_AGENT_SECRET || process.env.GEMINI_AGENT_SHARED_SECRET },
   "claude-agent": { id: "claude-agent", name: "Claude Agent", url: process.env.CLAUDE_AGENT_URL, secret: process.env.CLAUDE_AGENT_SECRET || process.env.CLAUDE_AGENT_SHARED_SECRET },
+  "firebox-agent": { id: "firebox-agent", name: "Firebox Agent", url: process.env.FIREBOX_AGENT_SERVER_URL, secret: process.env.FIREBOX_AGENT_SHARED_SECRET },
 };
 
 function endpoint(agentId) {
@@ -37,7 +38,7 @@ async function readContractEvents(response, onEvent) {
   }
 }
 
-export function isExternalAgent(provider) { return ["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent"].includes(provider); }
+export function isExternalAgent(provider) { return ["groq-agent", "openrouter-agent", "openai-agent", "gemini-agent", "claude-agent", "firebox-agent"].includes(provider); }
 export function externalAgentConfig(provider) { return AGENTS[provider] || null; }
 
 export async function runExternalAgent(build, res, signal) {
